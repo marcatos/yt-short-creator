@@ -27,3 +27,7 @@ npm-debug.log*
 # IDE
 .idea/
 .vscode/
+
+# Local agent / SDD scratch
+.cursor/
+.superpowers/

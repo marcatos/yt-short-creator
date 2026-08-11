@@ -62,21 +62,9 @@ class PinoLoggerAdapter implements Logger {
 }
 
 export function createLogger(logLevel: LogLevel = "INFO"): Logger {
-  const isDev = process.env.NODE_ENV !== "production";
-
+  // Avoid pino transport workers: Next.js bundles break pino-pretty's worker.js path.
   const logger = pino({
     level: PINO_LEVEL[logLevel],
-    ...(isDev
-      ? {
-          transport: {
-            target: "pino-pretty",
-            options: {
-              colorize: true,
-              translateTime: "SYS:standard",
-            },
-          },
-        }
-      : {}),
   });
 
   return new PinoLoggerAdapter(logger);
