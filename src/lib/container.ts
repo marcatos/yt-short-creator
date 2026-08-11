@@ -3,7 +3,11 @@ import {
   createRepositories,
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
-import { createInProcessJobQueue } from "@/src/adapters/jobs/in-process-queue";
+import {
+  createInProcessJobQueue,
+  type InProcessJobQueue,
+} from "@/src/adapters/jobs/in-process-queue";
+import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
 import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
@@ -19,7 +23,12 @@ import {
   createSyncChannel,
   type SyncChannel,
 } from "@/src/application/sync-channel";
+import {
+  createRunClipAnalysis,
+  type RunClipAnalysis,
+} from "@/src/application/run-clip-analysis";
 import type { Logger } from "@/src/ports/logger";
+import type { VideoDownloadPort } from "@/src/ports/video-download";
 import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
 
@@ -34,6 +43,9 @@ export type AppContainer = {
   catalog: GoogleYouTubeCatalogAdapter;
   connectChannel: ConnectChannel;
   syncChannel: SyncChannel;
+  runClipAnalysis: RunClipAnalysis;
+  jobQueue: InProcessJobQueue;
+  videoDownload: VideoDownloadPort;
   logger: Logger;
 };
 
@@ -52,6 +64,19 @@ export function getContainer(): AppContainer {
   const logger = createLogger(env.LOG_LEVEL);
   const clock = new SystemClock();
   const id = new UuidIdPort();
+  const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
+  const videoDownload = createYtdlpDownload({ mediaStore, logger });
+  const llm = createOpenAiCompatibleLlm({
+    apiKey: env.LLM_API_KEY,
+    baseUrl: env.LLM_BASE_URL,
+    model: env.LLM_MODEL,
+    logger,
+  });
+  const jobQueue = createInProcessJobQueue({
+    logger,
+    idPort: id,
+    clock,
+  });
   const auth = new GoogleYouTubeAuthAdapter({
     clientId: env.YOUTUBE_CLIENT_ID,
     clientSecret: env.YOUTUBE_CLIENT_SECRET,
@@ -64,6 +89,8 @@ export function getContainer(): AppContainer {
     auth,
     catalog,
     logger,
+    jobQueue,
+    videoDownload,
     connectChannel: createConnectChannel({
       auth,
       catalog,
@@ -81,6 +108,15 @@ export function getContainer(): AppContainer {
       clock,
       logger,
     }),
+    runClipAnalysis: createRunClipAnalysis({
+      llm,
+      videoDownload,
+      sourceVideos: repositories.sourceVideos,
+      candidates: repositories.candidates,
+      id,
+      clock,
+      logger,
+    }),
   };
 
   globalContainer.ytShortCreatorContainer = container;
@@ -93,23 +129,16 @@ export function startWorkers(): void {
   }
   workersStarted = true;
 
-  const env = loadEnv();
-  const logger = createLogger(env.LOG_LEVEL);
-  const clock = new SystemClock();
   const container = getContainer();
-  const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
-  const videoDownload = createYtdlpDownload({ mediaStore, logger });
-  const queue = createInProcessJobQueue({
-    logger,
-    idPort: new UuidIdPort(),
-    clock,
-  });
+  const logger = container.logger;
+  const clock = new SystemClock();
   const runner = createWorkerRunner({
-    queue,
+    queue: container.jobQueue,
     handlers: createHandlers({
       logger,
       sourceVideos: container.repositories.sourceVideos,
-      videoDownload,
+      videoDownload: container.videoDownload,
+      runClipAnalysis: container.runClipAnalysis,
     }),
     logger,
     clock,

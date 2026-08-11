@@ -16,6 +16,20 @@ async function syncChannelAction(formData: FormData): Promise<void> {
   revalidatePath("/library");
 }
 
+async function analyzeClipsAction(formData: FormData): Promise<void> {
+  "use server";
+
+  const sourceVideoId = formData.get("sourceVideoId");
+  if (typeof sourceVideoId !== "string" || !sourceVideoId) {
+    throw new Error("A source video ID is required");
+  }
+  await getContainer().jobQueue.enqueue({
+    type: "analyze_clips",
+    payload: { sourceVideoId },
+  });
+  revalidatePath("/library");
+}
+
 export default async function LibraryPage() {
   const { repositories } = getContainer();
   const channels = await repositories.channels.list();
@@ -96,6 +110,9 @@ export default async function LibraryPage() {
                 <th style={{ padding: "0.75rem", borderBottom: "1px solid #333" }}>
                   YouTube ID
                 </th>
+                <th style={{ padding: "0.75rem", borderBottom: "1px solid #333" }}>
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -125,6 +142,18 @@ export default async function LibraryPage() {
                     }}
                   >
                     {video.youtubeVideoId}
+                  </td>
+                  <td
+                    style={{ padding: "0.75rem", borderBottom: "1px solid #222" }}
+                  >
+                    <form action={analyzeClipsAction}>
+                      <input
+                        type="hidden"
+                        name="sourceVideoId"
+                        value={video.id}
+                      />
+                      <button type="submit">Analyze clips</button>
+                    </form>
                   </td>
                 </tr>
               ))}

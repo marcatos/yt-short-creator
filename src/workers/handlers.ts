@@ -1,3 +1,4 @@
+import type { RunClipAnalysis } from "@/src/application/run-clip-analysis";
 import type { Logger } from "@/src/ports/logger";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
@@ -16,6 +17,7 @@ type HandlerDeps = {
   logger: Logger;
   sourceVideos: SourceVideoRepository;
   videoDownload: VideoDownloadPort;
+  runClipAnalysis: RunClipAnalysis;
 };
 
 const stub = (label: string): JobHandler => async (ctx) => {
@@ -67,7 +69,23 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         localPath,
       });
     },
-    analyze_clips: stub("Clip analysis"),
+    analyze_clips: async (ctx) => {
+      const sourceVideoId = requireStringPayload(ctx.payload, "sourceVideoId");
+      const startedAt = performance.now();
+      handlerLogger.info("analyze_clips started", {
+        jobId: ctx.jobId,
+        sourceVideoId,
+      });
+      ctx.setProgress(10, "Analyzing source video");
+      const candidates = await deps.runClipAnalysis({ sourceVideoId });
+      ctx.setProgress(100, `Created ${candidates.length} clip candidates`);
+      handlerLogger.info("analyze_clips completed", {
+        jobId: ctx.jobId,
+        sourceVideoId,
+        candidateCount: candidates.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
     ideate: stub("Ideation"),
     assemble_generate_preview: stub("Generate preview"),
     render_short: stub("Render"),
@@ -103,6 +121,9 @@ export function createStubHandlers(): JobHandlers {
       async download() {
         return "";
       },
+    },
+    async runClipAnalysis() {
+      return [];
     },
   });
 }
