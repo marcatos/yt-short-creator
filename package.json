@@ -8,7 +8,7 @@
     "start": "next start",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "node -e \"require('fs').mkdirSync('./data',{recursive:true})\" && drizzle-kit migrate"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.1",
