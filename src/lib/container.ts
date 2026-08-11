@@ -358,6 +358,30 @@ export function getContainer(): AppContainer {
   return globalContainer.ytShortCreatorContainer;
 }
 
+/**
+ * Runs boot recovery, then unconditionally starts the worker runner.
+ *
+ * A recovery failure (e.g. a transient DB error) must never permanently
+ * disable job processing, so the failure is logged as a warning and
+ * swallowed here rather than propagated up and left unhandled.
+ */
+export async function recoverThenStartWorkers(
+  recoverQueue: () => Promise<unknown>,
+  runner: Pick<ReturnType<typeof createWorkerRunner>, "start">,
+  logger: Logger,
+): Promise<void> {
+  try {
+    await recoverQueue();
+  } catch (error: unknown) {
+    logger.warn("Queue recovery failed; starting workers anyway", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  }
+  runner.start();
+  logger.info("Workers started");
+}
+
 export function startWorkers(): void {
   if (workersStarted) {
     return;
@@ -398,14 +422,15 @@ export function startWorkers(): void {
     logger,
   });
 
-  void (async () => {
-    await recoverQueue();
-    runner.start();
-    logger.info("Workers started");
-  })().catch((error: unknown) => {
-    logger.error("Workers failed to start", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-  });
+  recoverThenStartWorkers(recoverQueue, runner, logger).catch(
+    (error: unknown) => {
+      // Only reachable if runner.start() itself throws. Reset the guard so a
+      // later call to startWorkers() (e.g. a subsequent request) can retry.
+      workersStarted = false;
+      logger.error("Workers failed to start", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    },
+  );
 }
