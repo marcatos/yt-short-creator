@@ -1,0 +1,29 @@
+# OS
+Thumbs.db
+Desktop.ini
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# App data / media
+data/
+media/
+*.db
+*.db-journal
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
