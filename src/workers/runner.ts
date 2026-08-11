@@ -1,11 +1,17 @@
-import type { InProcessJobQueue } from "@/src/adapters/jobs/in-process-queue";
+import {
+  isJobCancelledError,
+  isJobPausedError,
+  JobCancelledError,
+  JobPausedError,
+} from "@/src/domain/queue-control";
 import type { ClockPort } from "@/src/ports/clock";
+import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 
 import type { JobHandlers } from "./handlers";
 
 type RunnerDeps = {
-  queue: InProcessJobQueue;
+  queue: DurableJobQueue;
   handlers: JobHandlers;
   logger: Logger;
   clock: ClockPort;
@@ -41,19 +47,36 @@ export function createWorkerRunner(deps: RunnerDeps): WorkerRunner {
         }
 
         deps.queue.markRunning(job.id);
+        const controller = new AbortController();
+        deps.queue.attachAbortController(job.id, controller);
+        deps.queue.clearPauseRequest(job.id);
         const startedAt = deps.clock.now();
         runnerLogger.info("Job started", {
           jobId: job.id,
           type: job.type,
         });
+        const throwIfPausedOrCancelled = () => {
+          if (controller.signal.aborted) {
+            throw new JobCancelledError();
+          }
+          if (deps.queue.isPauseRequested(job.id)) {
+            throw new JobPausedError();
+          }
+        };
 
         try {
           await handler({
             jobId: job.id,
             payload: job.payload,
+            checkpoint: job.checkpoint,
             setProgress: (pct, message) => {
               deps.queue.setProgress(job.id, pct, message);
             },
+            saveCheckpoint: (step, data) =>
+              deps.queue.saveCheckpoint(job.id, step, data),
+            signal: controller.signal,
+            shouldPause: () => deps.queue.isPauseRequested(job.id),
+            throwIfPausedOrCancelled,
           });
           deps.queue.markSucceeded(job.id);
           const durationMs = deps.clock.now().getTime() - startedAt.getTime();
@@ -64,15 +87,36 @@ export function createWorkerRunner(deps: RunnerDeps): WorkerRunner {
             durationMs,
           });
         } catch (error) {
-          deps.queue.markFailed(job.id, error);
           const durationMs = deps.clock.now().getTime() - startedAt.getTime();
-          runnerLogger.error("Job finished", {
-            jobId: job.id,
-            type: job.type,
-            status: "failed",
-            durationMs,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          if (isJobPausedError(error)) {
+            deps.queue.markPaused(job.id);
+            runnerLogger.info("Job finished", {
+              jobId: job.id,
+              type: job.type,
+              status: "paused",
+              durationMs,
+            });
+          } else if (isJobCancelledError(error) || controller.signal.aborted) {
+            deps.queue.markCancelled(job.id);
+            runnerLogger.info("Job finished", {
+              jobId: job.id,
+              type: job.type,
+              status: "cancelled",
+              durationMs,
+            });
+          } else {
+            deps.queue.markFailed(job.id, error);
+            runnerLogger.error("Job finished", {
+              jobId: job.id,
+              type: job.type,
+              status: "failed",
+              durationMs,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } finally {
+          deps.queue.clearAbortController(job.id);
+          deps.queue.clearPauseRequest(job.id);
         }
       }
     } finally {

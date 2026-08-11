@@ -186,9 +186,14 @@ describe("render_short handler", () => {
     await handlers.render_short({
       jobId: "render-job-1",
       payload: { candidateId: candidate.id },
+      checkpoint: null,
       setProgress(pct) {
         progress.push(pct);
       },
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
 
     expect(renderInput).toMatchObject({

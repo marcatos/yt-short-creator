@@ -1,51 +1,26 @@
-# Task 5 Report: In-process job queue + worker shell
+# Task 5 Report: Worker runner control context
 
-**Status:** DONE  
-**Date:** 2026-08-11  
-**Commit:** `feat(jobs): add in-process queue with progress and worker runner`
+## Status
 
----
+Completed.
 
-## Summary
+## Implementation
 
-Implemented an in-process job queue implementing `JobQueuePort` with sequential worker processing (concurrency 1), progress tracking, job statuses (`queued|running|succeeded|failed|cancelled`), and start/end duration logging. Wired worker boot via Next.js `instrumentation.ts` → `startWorkers()` in a minimal `container.ts` stub.
+- Expanded `JobHandlerContext` with checkpoint persistence, `AbortSignal`, pause inspection, and cooperative pause/cancel throwing.
+- Changed `RunnerDeps.queue` to the `DurableJobQueue` port.
+- Attached and cleaned up an `AbortController` for each running job.
+- Routed paused, cancelled, and failed handler outcomes to their distinct durable queue transitions and structured completion logs.
+- Passed the claimed job's prior checkpoint into handlers.
+- Updated direct handler test fixtures for the expanded context contract.
 
----
+## TDD and verification
 
-## Files Created
+- RED: `npm test -- tests/workers/runner-control.test.ts` — 3 expected failures before implementation.
+- GREEN: `npm test -- tests/workers/runner-control.test.ts` — 3/3 passing.
+- Full suite: `npm test` — 28 files and 86 tests passing.
+- TypeScript: `npx tsc --noEmit` — passing.
+- IDE diagnostics: no linter errors in changed files.
 
-| File | Purpose |
-|------|---------|
-| `src/adapters/jobs/in-process-queue.ts` | `createInProcessJobQueue()` — enqueue, getProgress, runner-facing claim/status APIs |
-| `src/workers/handlers.ts` | `JobHandler` type + `createStubHandlers()` for all planned job types |
-| `src/workers/runner.ts` | `createWorkerRunner()` — sequential loop, logs job start/finish with `durationMs` |
-| `src/lib/container.ts` | `startWorkers()` stub wiring queue + runner + pino logger |
-| `instrumentation.ts` | Next.js hook calling `startWorkers()` on nodejs runtime |
-| `tests/adapters/job-queue.test.ts` | TDD: enqueue → progress 50 → progress 100 |
+## Concerns
 
----
-
-## Port Coverage
-
-| Port | Implementation |
-|------|----------------|
-| `JobQueuePort` | `createInProcessJobQueue()` |
-| `Logger` | Consumed via `createLogger()` in container; test noop logger |
-
----
-
-## Verification
-
-```
-npx vitest run tests/adapters/job-queue.test.ts  → 1/1 PASS
-npm test                                           → 25/25 PASS
-npx tsc --noEmit                                   → OK
-```
-
----
-
-## Next Task Hints
-
-- Task 6: Brand pack adapter (`fs-brand-pack.ts`)
-- Later: persist generic queue jobs to SQLite; replace stub handlers with real render/publish logic
-- Wire full `createContainer(env)` when env + repositories are ready in one place
+None. Pause remains cooperative by design: handlers must inspect `shouldPause()` or call `throwIfPausedOrCancelled()` at safe boundaries.

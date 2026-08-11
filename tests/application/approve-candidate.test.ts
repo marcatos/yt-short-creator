@@ -208,7 +208,12 @@ describe("candidate approval publishing flow", () => {
     await handlers.render_short({
       jobId: "render-job-1",
       payload: { candidateId: candidate.id },
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
     expect(candidate.status).toBe("ready");
     expect(queued.at(-1)).toEqual({
@@ -219,7 +224,12 @@ describe("candidate approval publishing flow", () => {
     await handlers.publish_short({
       jobId: "publish-job-1",
       payload: { candidateId: candidate.id },
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
 
     expect(uploads).toHaveLength(1);

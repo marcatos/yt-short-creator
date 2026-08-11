@@ -7,6 +7,7 @@ import type {
 import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
+import type { JobCheckpoint } from "@/src/domain/queue-control";
 import {
   isClipProvenance,
   isGenerateProvenance,
@@ -32,7 +33,12 @@ import { createPublishShortHandler } from "./publish-short-handler";
 export type JobHandlerContext = {
   jobId: string;
   payload: Record<string, unknown>;
+  checkpoint: JobCheckpoint | null;
   setProgress(pct: number, message: string): void;
+  saveCheckpoint(step: string, data?: unknown): Promise<void>;
+  signal: AbortSignal;
+  shouldPause(): boolean;
+  throwIfPausedOrCancelled(): void;
 };
 
 export type JobHandler = (ctx: JobHandlerContext) => Promise<void>;

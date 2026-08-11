@@ -262,7 +262,12 @@ describe("replay pipeline smoke", () => {
     await handlers.render_short({
       jobId: renderJob?.id ?? "render",
       payload: renderJob?.payload ?? {},
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
     expect(candidates.get(proposed.id)?.status).toBe("ready");
 
@@ -270,7 +275,12 @@ describe("replay pipeline smoke", () => {
     await handlers.publish_short({
       jobId: publishJob?.id ?? "publish",
       payload: publishJob?.payload ?? {},
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
     expect(candidates.get(proposed.id)?.status).toBe("published");
   });

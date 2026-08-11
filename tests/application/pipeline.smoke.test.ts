@@ -264,7 +264,12 @@ describe("pipeline smoke path", () => {
     await handlers.render_short({
       jobId: renderJob?.id ?? "missing-render-job",
       payload: renderJob?.payload ?? {},
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
 
     expect(candidates.get(generated.id)?.status).toBe("ready");
@@ -273,7 +278,12 @@ describe("pipeline smoke path", () => {
     await handlers.publish_short({
       jobId: publishJob?.id ?? "missing-publish-job",
       payload: publishJob?.payload ?? {},
+      checkpoint: null,
       setProgress() {},
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
     });
 
     expect(uploads).toHaveLength(1);
