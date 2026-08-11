@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ShortCandidate } from "@/src/domain/entities";
+import { withFullVideoLink } from "@/src/domain/full-video-link";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { IdPort } from "@/src/ports/id";
@@ -124,7 +125,10 @@ export function createRunClipAnalysis(
           origin: "clip",
           status: "proposed",
           title: window.title,
-          description: window.description,
+          description: withFullVideoLink(
+            window.description,
+            source.youtubeVideoId,
+          ),
           tags: window.tags,
           score: window.score,
           provenance: {

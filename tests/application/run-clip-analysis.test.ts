@@ -113,6 +113,8 @@ describe("runClipAnalysis", () => {
         origin: "clip",
         status: "proposed",
         title: "The braking trick that saves a lap",
+        description:
+          "A concise breakdown of late braking.\n\nFull video: https://youtu.be/youtube-1",
         score: 0.91,
         provenance: {
           sourceVideoId: "source-1",

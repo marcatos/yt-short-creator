@@ -1,10 +1,12 @@
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { PublishJob } from "@/src/domain/entities";
+import { withFullVideoLink } from "@/src/domain/full-video-link";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
 import type { Logger } from "@/src/ports/logger";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
+import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 
@@ -18,6 +20,7 @@ type Dependencies = {
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
   clock: ClockPort;
+  sourceVideos: SourceVideoRepository;
 };
 
 async function currentAccessToken(
@@ -92,12 +95,27 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
     try {
       const accessToken = await currentAccessToken(deps.auth, deps.clock.now());
       const settings = await deps.settings.get();
+      let description = candidate.description;
+      if (
+        candidate.origin === "clip" &&
+        "sourceVideoId" in candidate.provenance
+      ) {
+        const source = await deps.sourceVideos.getById(
+          candidate.provenance.sourceVideoId,
+        );
+        if (source?.youtubeVideoId) {
+          description = withFullVideoLink(
+            description,
+            source.youtubeVideoId,
+          );
+        }
+      }
       ctx.setProgress(20, "Uploading Short to YouTube");
       const result = await deps.upload.upload({
         accessToken,
         filePath: renderOutputPath,
         title: candidate.title,
-        description: candidate.description,
+        description,
         tags: candidate.tags,
         scheduledAt,
         privacy: scheduledAt ? "private" : settings.defaultPrivacy,

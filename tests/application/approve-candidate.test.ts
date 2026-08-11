@@ -212,7 +212,7 @@ describe("candidate approval publishing flow", () => {
     expect(uploads[0]).toMatchObject({
       filePath: "media/renders/candidate-1.mp4",
       title: "Racing line",
-      description: "A fast clip",
+      description: "A fast clip\n\nFull video: https://youtu.be/youtube-1",
     });
     expect(candidate.status).toBe("published");
   });
