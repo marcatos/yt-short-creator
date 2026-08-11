@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { JobPausedError } from "@/src/domain/queue-control";
+import { JobCancelledError, JobPausedError } from "@/src/domain/queue-control";
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type {
   RenderJob,
@@ -211,7 +211,11 @@ function makeHandlers(options: {
         throw new Error("unused");
       },
       async getStoredTokens() {
-        return null;
+        return {
+          accessToken: "access-token",
+          refreshToken: "refresh-token",
+          expiresAt: new Date(now.getTime() + 3_600_000),
+        };
       },
       async saveTokens() {},
     },
@@ -392,6 +396,43 @@ describe("render_short handler checkpoints", () => {
     expect(renderJobSaved?.status).not.toBe("failed");
     expect(candidateSaved?.status).not.toBe("failed");
   });
+
+  it("fails the candidate and render job when cancelled mid-render", async () => {
+    const renderCalled = { value: false };
+    let candidateSaved: ShortCandidate | undefined;
+    let renderJobSaved: RenderJob | undefined;
+    const handlers = makeHandlers({
+      candidate: baseCandidate(),
+      renderCalled,
+      onCandidateSave: (candidate) => {
+        candidateSaved = candidate;
+      },
+      onRenderJobSave: (job) => {
+        renderJobSaved = job;
+      },
+    });
+
+    let cancelAfterPrepare = false;
+    await expect(
+      handlers.render_short(
+        makeCtx({
+          payload: { candidateId: "candidate-1" },
+          checkpoint: null,
+          throwIfPausedOrCancelled() {
+            if (cancelAfterPrepare) {
+              throw new JobCancelledError();
+            }
+          },
+          async saveCheckpoint() {
+            cancelAfterPrepare = true;
+          },
+        }),
+      ),
+    ).rejects.toThrow(JobCancelledError);
+
+    expect(candidateSaved?.status).toBe("failed");
+    expect(renderJobSaved?.status).toBe("failed");
+  });
 });
 
 describe("publish_short handler checkpoints", () => {
@@ -418,6 +459,78 @@ describe("publish_short handler checkpoints", () => {
 
     expect(uploads).toBe(0);
     expect(savedCheckpoints).toEqual(["upload"]);
+  });
+
+  it("re-throws pause errors without marking the candidate or publish job failed", async () => {
+    const renderCalled = { value: false };
+    let candidateSaved: ShortCandidate | undefined;
+    const handlers = makeHandlers({
+      candidate: {
+        ...baseCandidate(),
+        status: "publishing",
+        renderOutputPath: "media/renders/candidate-1.mp4",
+      },
+      renderCalled,
+      onCandidateSave: (candidate) => {
+        candidateSaved = candidate;
+      },
+    });
+
+    let pauseAfterPrepare = false;
+    await expect(
+      handlers.publish_short(
+        makeCtx({
+          payload: { candidateId: "candidate-1" },
+          checkpoint: null,
+          throwIfPausedOrCancelled() {
+            if (pauseAfterPrepare) {
+              throw new JobPausedError();
+            }
+          },
+          async saveCheckpoint() {
+            pauseAfterPrepare = true;
+          },
+        }),
+      ),
+    ).rejects.toThrow(JobPausedError);
+
+    expect(candidateSaved?.status).not.toBe("failed");
+  });
+
+  it("fails the candidate and publish job when cancelled mid-upload", async () => {
+    const renderCalled = { value: false };
+    let candidateSaved: ShortCandidate | undefined;
+    const handlers = makeHandlers({
+      candidate: {
+        ...baseCandidate(),
+        status: "publishing",
+        renderOutputPath: "media/renders/candidate-1.mp4",
+      },
+      renderCalled,
+      onCandidateSave: (candidate) => {
+        candidateSaved = candidate;
+      },
+    });
+
+    let cancelAfterPrepare = false;
+    await expect(
+      handlers.publish_short(
+        makeCtx({
+          payload: { candidateId: "candidate-1" },
+          checkpoint: null,
+          throwIfPausedOrCancelled() {
+            if (cancelAfterPrepare) {
+              throw new JobCancelledError();
+            }
+          },
+          async saveCheckpoint() {
+            cancelAfterPrepare = true;
+          },
+        }),
+      ),
+    ).rejects.toThrow(JobCancelledError);
+
+    expect(candidateSaved?.status).toBe("failed");
   });
 });
 

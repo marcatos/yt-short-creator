@@ -173,12 +173,23 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
         durationMs: Math.round(performance.now() - startedAt),
       });
     } catch (error) {
-      if (isJobPausedError(error) || isJobCancelledError(error)) {
-        log.info("Publish interrupted", {
-          jobId: ctx.jobId,
-          candidateId,
-          reason: isJobPausedError(error) ? "paused" : "cancelled",
-        });
+      if (isJobPausedError(error)) {
+        // Pausing must not release the candidate: it stays in "publishing"
+        // so resume can continue the same in-flight upload.
+        log.info("Publish paused", { jobId: ctx.jobId, candidateId });
+        throw error;
+      }
+      if (isJobCancelledError(error)) {
+        // Cancellation is terminal, so the candidate and job row must both
+        // be marked failed: this lets retry work and keeps orphan repair
+        // (recoverQueue) from re-enqueuing work the user explicitly cancelled.
+        if (candidate.status === "publishing") {
+          await deps.candidates.save(
+            applyCandidateEvent(candidate, { type: "publish_failed" }),
+          );
+        }
+        await saveJob("failed", null, null);
+        log.info("Publish cancelled", { jobId: ctx.jobId, candidateId });
         throw error;
       }
       if (candidate.status === "publishing") {

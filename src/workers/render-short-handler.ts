@@ -208,12 +208,23 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         durationMs: Math.round(performance.now() - startedAt),
       });
     } catch (error) {
-      if (isJobPausedError(error) || isJobCancelledError(error)) {
-        log.info("render_short interrupted", {
-          jobId: ctx.jobId,
-          candidateId,
-          reason: isJobPausedError(error) ? "paused" : "cancelled",
-        });
+      if (isJobPausedError(error)) {
+        // Pausing must not release the candidate: it stays in "rendering"
+        // so resume can continue the same in-flight render.
+        log.info("render_short paused", { jobId: ctx.jobId, candidateId });
+        throw error;
+      }
+      if (isJobCancelledError(error)) {
+        // Cancellation is terminal, so the candidate and job row must both
+        // be marked failed: this lets retry work and keeps orphan repair
+        // (recoverQueue) from re-enqueuing work the user explicitly cancelled.
+        if (candidate.status === "rendering") {
+          await deps.candidates.save(
+            applyCandidateEvent(candidate, { type: "render_failed" }),
+          );
+        }
+        await saveJob("failed", null, 100, "Render cancelled");
+        log.info("render_short cancelled", { jobId: ctx.jobId, candidateId });
         throw error;
       }
       if (candidate.status === "rendering") {
