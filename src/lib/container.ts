@@ -7,6 +7,7 @@ import {
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
+import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
 import {
   createInProcessJobQueue,
   type InProcessJobQueue,
@@ -14,7 +15,9 @@ import {
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
+import { createFfprobeMediaDuration } from "@/src/adapters/media/ffprobe-media-duration";
 import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
+import { createFsReplayCapture } from "@/src/adapters/replay/fs-replay-capture";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
@@ -73,6 +76,28 @@ import {
   createUpdateSettings,
   type SettingsView,
 } from "@/src/application/settings";
+import {
+  createCreateReplaySession,
+  type CreateReplaySession,
+} from "@/src/application/create-replay-session";
+import {
+  createAttachReplayIbt,
+  createAttachReplayMedia,
+  type AttachReplayIbt,
+  type AttachReplayMedia,
+} from "@/src/application/attach-replay-media";
+import {
+  createRunReplayAnalysis,
+  type RunReplayAnalysis,
+} from "@/src/application/run-replay-analysis";
+import {
+  createAddManualReplayMoment,
+  type AddManualReplayMoment,
+} from "@/src/application/add-manual-replay-moment";
+import {
+  createRequestReplayCapture,
+  type RequestReplayCapture,
+} from "@/src/application/request-replay-capture";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -98,8 +123,14 @@ export type AppContainer = {
   connectChannel: ConnectChannel;
   syncChannel: SyncChannel;
   runClipAnalysis: RunClipAnalysis;
+  runReplayAnalysis: RunReplayAnalysis;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
+  createReplaySession: CreateReplaySession;
+  attachReplayMedia: AttachReplayMedia;
+  attachReplayIbt: AttachReplayIbt;
+  addManualReplayMoment: AddManualReplayMoment;
+  requestReplayCapture: RequestReplayCapture;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -143,6 +174,12 @@ export function createContainer(env: AppEnv): AppContainer {
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
   const render = createFfmpegRender({ logger, settings });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
+  const mediaDuration = createFfprobeMediaDuration();
+  const ibtTelemetry = createIbtFileTelemetry({ logger });
+  const replayCapture = createFsReplayCapture({
+    logger,
+    videosDir: env.IRACING_VIDEOS_DIR || undefined,
+  });
   const llm = createOpenAiCompatibleLlm({
     apiKey: env.LLM_API_KEY,
     baseUrl: env.LLM_BASE_URL,
@@ -189,6 +226,15 @@ export function createContainer(env: AppEnv): AppContainer {
     clock,
     logger,
   });
+  const runReplayAnalysis = createRunReplayAnalysis({
+    replaySessions: repositories.replaySessions,
+    candidates: repositories.candidates,
+    ibtTelemetry,
+    llm,
+    id,
+    clock,
+    logger,
+  });
   const container: AppContainer = {
     connection,
     repositories,
@@ -229,8 +275,40 @@ export function createContainer(env: AppEnv): AppContainer {
       clock,
       logger,
     }),
+    runReplayAnalysis,
     runIdeation,
     assembleGeneratePreview,
+    createReplaySession: createCreateReplaySession({
+      replaySessions: repositories.replaySessions,
+      id,
+      clock,
+      logger,
+    }),
+    attachReplayMedia: createAttachReplayMedia({
+      replaySessions: repositories.replaySessions,
+      mediaDuration,
+      clock,
+      logger,
+    }),
+    attachReplayIbt: createAttachReplayIbt({
+      replaySessions: repositories.replaySessions,
+      clock,
+      logger,
+    }),
+    addManualReplayMoment: createAddManualReplayMoment({
+      replaySessions: repositories.replaySessions,
+      candidates: repositories.candidates,
+      id,
+      clock,
+      logger,
+    }),
+    requestReplayCapture: createRequestReplayCapture({
+      replaySessions: repositories.replaySessions,
+      capture: replayCapture,
+      mediaDuration,
+      clock,
+      logger,
+    }),
     approveCandidate: createApproveCandidate({
       candidates: repositories.candidates,
       queue: jobQueue,
@@ -293,8 +371,11 @@ export function startWorkers(): void {
     handlers: createHandlers({
       logger,
       sourceVideos: container.repositories.sourceVideos,
+      replaySessions: container.repositories.replaySessions,
       videoDownload: container.videoDownload,
       runClipAnalysis: container.runClipAnalysis,
+      runReplayAnalysis: container.runReplayAnalysis,
+      requestReplayCapture: container.requestReplayCapture,
       runIdeation: container.runIdeation,
       assembleGeneratePreview: container.assembleGeneratePreview,
       candidates: container.repositories.candidates,

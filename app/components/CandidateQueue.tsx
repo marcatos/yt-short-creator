@@ -2,12 +2,18 @@ import Link from "next/link";
 
 export type CandidateQueueItem = {
   id: string;
-  origin: "clip" | "generate";
+  origin: "clip" | "generate" | "replay";
   status: string;
   title: string;
   score: number;
   sourceHint: string;
 };
+
+function originLabel(origin: CandidateQueueItem["origin"]): string {
+  if (origin === "clip") return "CLIP";
+  if (origin === "replay") return "REPLAY";
+  return "GEN";
+}
 
 export function CandidateQueue({
   candidates,
@@ -33,12 +39,12 @@ export function CandidateQueue({
           key={candidate.id}
         >
           <div className="candidate-poster" aria-hidden="true">
-            <span>{candidate.origin === "clip" ? "CLIP" : "GEN"}</span>
+            <span>{originLabel(candidate.origin)}</span>
           </div>
           <div className="candidate-copy">
             <div className="chip-row">
               <span className={`chip origin-${candidate.origin}`}>
-                {candidate.origin === "clip" ? "CLIP" : "GEN"}
+                {originLabel(candidate.origin)}
               </span>
               <span className={`chip status-${candidate.status}`}>
                 {candidate.status}

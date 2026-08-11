@@ -19,7 +19,7 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
   )
     ? query.status
     : undefined;
-  const origin = ["clip", "generate"].includes(query.origin ?? "")
+  const origin = ["clip", "generate", "replay"].includes(query.origin ?? "")
     ? query.origin
     : undefined;
   const candidates = await getContainer().listCandidates({ status, origin });
@@ -56,6 +56,7 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
             <option value="">All origins</option>
             <option value="clip">Clip</option>
             <option value="generate">Generate</option>
+            <option value="replay">Replay</option>
           </select>
         </label>
         <label>
@@ -79,7 +80,9 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
           sourceHint:
             candidate.origin === "clip"
               ? `Source ${"sourceVideoId" in candidate.provenance ? candidate.provenance.sourceVideoId : "video"}`
-              : `Brief ${"generationBriefId" in candidate.provenance ? candidate.provenance.generationBriefId : "generated"}`,
+              : candidate.origin === "replay"
+                ? `Replay ${"replaySessionId" in candidate.provenance ? candidate.provenance.replaySessionId : "session"} · ${"eventType" in candidate.provenance ? candidate.provenance.eventType : "moment"}`
+                : `Brief ${"generationBriefId" in candidate.provenance ? candidate.provenance.generationBriefId : "generated"}`,
         }))}
       />
     </main>

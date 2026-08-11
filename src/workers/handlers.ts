@@ -1,10 +1,17 @@
+import type { RequestReplayCapture } from "@/src/application/request-replay-capture";
 import type { RunClipAnalysis } from "@/src/application/run-clip-analysis";
 import type {
   AssembleGeneratePreview,
   RunIdeation,
 } from "@/src/application/run-ideation";
+import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
+import {
+  isClipProvenance,
+  isGenerateProvenance,
+  isReplayProvenance,
+} from "@/src/domain/replay";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
@@ -13,6 +20,7 @@ import type { JobQueuePort } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
@@ -34,8 +42,11 @@ export type JobHandlers = Record<string, JobHandler>;
 type HandlerDeps = {
   logger: Logger;
   sourceVideos: SourceVideoRepository;
+  replaySessions: ReplaySessionRepository;
   videoDownload: VideoDownloadPort;
   runClipAnalysis: RunClipAnalysis;
+  runReplayAnalysis: RunReplayAnalysis;
+  requestReplayCapture: RequestReplayCapture;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
   candidates: CandidateRepository;
@@ -90,7 +101,7 @@ async function renderInputForCandidate(
     accentColor: brand.accentHex,
   };
 
-  if ("sourceVideoId" in candidate.provenance) {
+  if (isClipProvenance(candidate.provenance)) {
     const source = await deps.sourceVideos.getById(
       candidate.provenance.sourceVideoId,
     );
@@ -107,6 +118,29 @@ async function renderInputForCandidate(
       endMs: candidate.provenance.endMs,
       crop: candidate.provenance.crop,
     };
+  }
+
+  if (isReplayProvenance(candidate.provenance)) {
+    const session = await deps.replaySessions.getById(
+      candidate.provenance.replaySessionId,
+    );
+    if (!session?.mediaPath) {
+      throw new Error(
+        `Replay media not found for candidate: ${candidate.id}`,
+      );
+    }
+    return {
+      ...common,
+      origin: "replay",
+      sourceMediaPath: session.mediaPath,
+      startMs: candidate.provenance.startMs,
+      endMs: candidate.provenance.endMs,
+      crop: candidate.provenance.crop,
+    };
+  }
+
+  if (!isGenerateProvenance(candidate.provenance)) {
+    throw new Error(`Unsupported provenance for candidate: ${candidate.id}`);
   }
 
   return {
@@ -165,6 +199,57 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         jobId: ctx.jobId,
         sourceVideoId,
         candidateCount: candidates.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
+    analyze_replay: async (ctx) => {
+      const sessionId = requireStringPayload(ctx.payload, "sessionId");
+      const startedAt = performance.now();
+      handlerLogger.info("analyze_replay started", {
+        jobId: ctx.jobId,
+        sessionId,
+      });
+      ctx.setProgress(10, "Analyzing iRacing replay");
+      const candidates = await deps.runReplayAnalysis({ sessionId });
+      ctx.setProgress(100, `Created ${candidates.length} replay candidates`);
+      handlerLogger.info("analyze_replay completed", {
+        jobId: ctx.jobId,
+        sessionId,
+        candidateCount: candidates.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
+    capture_replay: async (ctx) => {
+      const sessionId = requireStringPayload(ctx.payload, "sessionId");
+      const watchDir =
+        typeof ctx.payload.watchDir === "string"
+          ? ctx.payload.watchDir
+          : undefined;
+      const timeoutMs =
+        typeof ctx.payload.timeoutMs === "number"
+          ? ctx.payload.timeoutMs
+          : undefined;
+      const startedAt = performance.now();
+      handlerLogger.info("capture_replay started", {
+        jobId: ctx.jobId,
+        sessionId,
+        watchDir,
+        timeoutMs,
+      });
+      ctx.setProgress(
+        5,
+        "Waiting for new recording — open the .rpy in iRacing and start capture",
+      );
+      const session = await deps.requestReplayCapture({
+        sessionId,
+        watchDir,
+        timeoutMs,
+      });
+      ctx.setProgress(100, `Captured ${session.mediaPath}`);
+      handlerLogger.info("capture_replay completed", {
+        jobId: ctx.jobId,
+        sessionId,
+        mediaPath: session.mediaPath,
         durationMs: Math.round(performance.now() - startedAt),
       });
     },
@@ -326,6 +411,15 @@ export function createStubHandlers(): JobHandlers {
       },
       async upsertMany() {},
     },
+    replaySessions: {
+      async save() {},
+      async getById() {
+        return null;
+      },
+      async list() {
+        return [];
+      },
+    },
     videoDownload: {
       async download() {
         return "";
@@ -333,6 +427,12 @@ export function createStubHandlers(): JobHandlers {
     },
     async runClipAnalysis() {
       return [];
+    },
+    async runReplayAnalysis() {
+      return [];
+    },
+    async requestReplayCapture({ sessionId }) {
+      throw new Error(`Replay session not found: ${sessionId}`);
     },
     async runIdeation() {
       return [];

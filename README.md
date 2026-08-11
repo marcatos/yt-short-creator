@@ -59,6 +59,7 @@ Run this checklist against a test channel before accepting a release:
 - [ ] Confirm the render and publish jobs both finish successfully with no retries or logged secrets.
 - [ ] Open the returned video in YouTube Studio and confirm it is **Unlisted**, vertical, playable, and contains `#Shorts`.
 - [ ] Confirm subscribers were not notified, then delete the disposable upload if it is no longer needed.
+- [ ] (Optional) On **Replays**, create an iRacing session, attach an MP4 (+ optional `.ibt`), Analyze or mark a manual moment, then approve a `REPLAY` candidate.
 
 ## Scripts
 

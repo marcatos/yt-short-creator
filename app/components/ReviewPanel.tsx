@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 type CandidateReview = {
   id: string;
-  origin: "clip" | "generate";
+  origin: "clip" | "generate" | "replay";
   status: string;
   title: string;
   description: string;
@@ -84,14 +84,14 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
     }
   }
 
+  const timedOrigin =
+    candidate.origin === "clip" || candidate.origin === "replay";
   const clipStart =
-    candidate.origin === "clip" &&
-    typeof candidate.provenance.startMs === "number"
+    timedOrigin && typeof candidate.provenance.startMs === "number"
       ? candidate.provenance.startMs / 1000
       : null;
   const clipEnd =
-    candidate.origin === "clip" &&
-    typeof candidate.provenance.endMs === "number"
+    timedOrigin && typeof candidate.provenance.endMs === "number"
       ? candidate.provenance.endMs / 1000
       : null;
   const mediaFragment =
@@ -121,12 +121,19 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
         </div>
         <div className="provenance-panel">
           <p className="eyebrow">Provenance</p>
-          {candidate.origin === "clip" ? (
+          {candidate.origin === "clip" || candidate.origin === "replay" ? (
             <>
               <strong>
                 {clipStart?.toFixed(1)}s — {clipEnd?.toFixed(1)}s
               </strong>
               <p>{String(candidate.provenance.hookReason ?? "Selected moment")}</p>
+              {candidate.origin === "replay" ? (
+                <p>
+                  Event {String(candidate.provenance.eventType ?? "moment")} ·
+                  session{" "}
+                  {String(candidate.provenance.replaySessionId ?? "unknown")}
+                </p>
+              ) : null}
             </>
           ) : (
             <>

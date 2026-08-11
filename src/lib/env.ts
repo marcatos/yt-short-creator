@@ -18,6 +18,7 @@ const envSchema = z.object({
   TTS_MODEL: z.string().min(1),
   DATABASE_PATH: z.string().min(1),
   MEDIA_ROOT: z.string().min(1),
+  IRACING_VIDEOS_DIR: z.string().optional().default(""),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -37,6 +38,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     TTS_MODEL: source.TTS_MODEL,
     DATABASE_PATH: source.DATABASE_PATH,
     MEDIA_ROOT: source.MEDIA_ROOT,
+    IRACING_VIDEOS_DIR: source.IRACING_VIDEOS_DIR,
   });
 }
 

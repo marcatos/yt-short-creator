@@ -96,6 +96,11 @@
   color: #8ce0c1;
 }
 
+.origin-replay {
+  border-color: #5b7fd6;
+  color: #9db4ff;
+}
+
 .origin-generate,
 .status-running,
 .status-rendering,

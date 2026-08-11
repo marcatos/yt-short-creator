@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 
 import { NextRequest, NextResponse } from "next/server";
 
-import type { ClipProvenance } from "@/src/domain/entities";
+import type { ClipProvenance, ReplayProvenance } from "@/src/domain/entities";
 import { getContainer } from "@/src/lib/container";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -28,6 +28,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       mediaPath = (
         await container.repositories.sourceVideos.getById(provenance.sourceVideoId)
       )?.localMediaPath ?? null;
+    }
+    if (!mediaPath && candidate.origin === "replay") {
+      const provenance = candidate.provenance as ReplayProvenance;
+      mediaPath = (
+        await container.repositories.replaySessions.getById(
+          provenance.replaySessionId,
+        )
+      )?.mediaPath ?? null;
     }
     if (!mediaPath) {
       return NextResponse.json({ error: "Preview is not available" }, { status: 404 });
