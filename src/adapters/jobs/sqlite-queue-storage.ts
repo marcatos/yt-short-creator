@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 
 import type { AppDb } from "@/src/adapters/db/client";
 import { queueJobs } from "@/src/adapters/db/schema";
@@ -9,12 +9,23 @@ export type SqliteQueueDeps = InProcessQueueDeps & {
   db: AppDb;
 };
 
-export function loadJobs(db: AppDb): Map<string, JobRecord> {
+/**
+ * Accepts either the top-level AppDb or the transaction handle passed into
+ * `db.transaction(tx => ...)`. Both support the same select/insert/update
+ * query builder API used here; only their client-handle types differ.
+ */
+export type Queryable = Parameters<AppDb["transaction"]>[0] extends (
+  tx: infer Tx,
+) => unknown
+  ? Tx | AppDb
+  : never;
+
+export function loadJobs(db: Queryable): Map<string, JobRecord> {
   const rows = db.select().from(queueJobs).all();
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-export function readJob(db: AppDb, jobId: string): JobRecord | undefined {
+export function readJob(db: Queryable, jobId: string): JobRecord | undefined {
   return db
     .select()
     .from(queueJobs)
@@ -22,7 +33,7 @@ export function readJob(db: AppDb, jobId: string): JobRecord | undefined {
     .get();
 }
 
-export function readNextQueuedJob(db: AppDb): JobRecord | undefined {
+export function readNextQueuedJob(db: Queryable): JobRecord | undefined {
   return db
     .select()
     .from(queueJobs)
@@ -32,11 +43,11 @@ export function readNextQueuedJob(db: AppDb): JobRecord | undefined {
     .get();
 }
 
-export function insertJob(db: AppDb, job: JobRecord): void {
+export function insertJob(db: Queryable, job: JobRecord): void {
   db.insert(queueJobs).values(job).run();
 }
 
-export function persistJob(db: AppDb, job: JobRecord): void {
+export function persistJob(db: Queryable, job: JobRecord): void {
   db.update(queueJobs)
     .set({
       type: job.type,
@@ -56,9 +67,32 @@ export function persistJob(db: AppDb, job: JobRecord): void {
     .run();
 }
 
-export function listJobsByDisplayOrder(db: AppDb): JobRecord[] {
-  const jobs = Array.from(loadJobs(db).values());
-  return jobs.sort((left, right) => {
+const ACTIVE_STATUSES = ["running", "queued", "paused"] as const;
+const TERMINAL_STATUSES = ["succeeded", "failed", "cancelled"] as const;
+
+/**
+ * Caps how much terminal (finished) job history the queue keeps visible so
+ * that the jobs list stays bounded as the table grows without limit. Active
+ * jobs (queued/running/paused) are never truncated.
+ */
+export const TERMINAL_JOB_DISPLAY_LIMIT = 50;
+
+export function listJobsByDisplayOrder(db: Queryable): JobRecord[] {
+  const activeJobs = db
+    .select()
+    .from(queueJobs)
+    .where(inArray(queueJobs.status, ACTIVE_STATUSES))
+    .all();
+
+  const terminalJobs = db
+    .select()
+    .from(queueJobs)
+    .where(inArray(queueJobs.status, TERMINAL_STATUSES))
+    .orderBy(desc(queueJobs.updatedAt))
+    .limit(TERMINAL_JOB_DISPLAY_LIMIT)
+    .all();
+
+  return [...activeJobs, ...terminalJobs].sort((left, right) => {
     const leftGroup = statusGroup(left);
     const rightGroup = statusGroup(right);
     if (leftGroup !== rightGroup) {

@@ -1,0 +1,1 @@
+CREATE INDEX `queue_jobs_status_position_idx` ON `queue_jobs` (`status`,`position`);

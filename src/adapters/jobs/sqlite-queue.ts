@@ -247,15 +247,20 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
     },
 
     async reorder(orderedIds) {
-      const jobs = loadJobs(deps.db);
-      applyOrder(jobs, orderedIds, (job) => {
-        job.updatedAt = deps.clock.now();
-      });
-      for (const job of jobs.values()) {
-        if (job.status === "queued" || job.status === "paused") {
-          persistJobWithLogging(deps.db, queueLogger, job, "reorder");
+      // better-sqlite3 is synchronous, so wrapping the read-modify-write in a
+      // transaction makes the whole reorder atomic: either every touched job
+      // gets its new position persisted, or none do.
+      deps.db.transaction((tx) => {
+        const jobs = loadJobs(tx);
+        applyOrder(jobs, orderedIds, (job) => {
+          job.updatedAt = deps.clock.now();
+        });
+        for (const job of jobs.values()) {
+          if (job.status === "queued" || job.status === "paused") {
+            persistJobWithLogging(tx, queueLogger, job, "reorder");
+          }
         }
-      }
+      });
       queueLogger.info("Jobs reordered", { jobCount: orderedIds.length });
       notifyWaiter();
     },

@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { getContainer } from "@/src/lib/container";
 
 export async function GET() {
+  // listJobs() returns all active (queued/running/paused) jobs plus only the
+  // most recent terminal jobs (see TERMINAL_JOB_DISPLAY_LIMIT), so this
+  // response stays bounded regardless of how much job history accumulates.
   const jobs = getContainer()
     .jobQueue.listJobs()
     .map((job) => ({

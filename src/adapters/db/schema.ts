@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import type {
   AnalyticsSnapshot,
@@ -112,20 +112,28 @@ export const publishJobs = sqliteTable("publish_jobs", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
-export const queueJobs = sqliteTable("queue_jobs", {
-  id: text("id").primaryKey(),
-  type: text("type").notNull(),
-  payload: text("payload", { mode: "json" })
-    .$type<Record<string, unknown>>()
-    .notNull(),
-  status: text("status").$type<JobStatus>().notNull(),
-  position: integer("position").notNull(),
-  progressPct: integer("progress_pct").notNull(),
-  progressMessage: text("progress_message").notNull(),
-  checkpoint: text("checkpoint", { mode: "json" }).$type<JobCheckpoint | null>(),
-  error: text("error"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  startedAt: integer("started_at", { mode: "timestamp" }),
-  finishedAt: integer("finished_at", { mode: "timestamp" }),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+export const queueJobs = sqliteTable(
+  "queue_jobs",
+  {
+    id: text("id").primaryKey(),
+    type: text("type").notNull(),
+    payload: text("payload", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    status: text("status").$type<JobStatus>().notNull(),
+    position: integer("position").notNull(),
+    progressPct: integer("progress_pct").notNull(),
+    progressMessage: text("progress_message").notNull(),
+    checkpoint: text("checkpoint", { mode: "json" }).$type<JobCheckpoint | null>(),
+    error: text("error"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp" }),
+    finishedAt: integer("finished_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    // Speeds up claimNext (status = 'queued' ORDER BY position) and reorder
+    // scans, which run on every queue mutation.
+    index("queue_jobs_status_position_idx").on(table.status, table.position),
+  ],
+);

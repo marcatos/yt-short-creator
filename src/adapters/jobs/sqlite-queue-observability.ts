@@ -1,13 +1,13 @@
-import type { AppDb } from "@/src/adapters/db/client";
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import {
   persistJob,
   readNextQueuedJob,
+  type Queryable,
 } from "@/src/adapters/jobs/sqlite-queue-storage";
 import type { Logger } from "@/src/ports/logger";
 
 export function readQueuedForClaim(
-  db: AppDb,
+  db: Queryable,
   logger: Logger,
 ): JobRecord | undefined {
   const startedAt = Date.now();
@@ -22,7 +22,7 @@ export function readQueuedForClaim(
 }
 
 export function persistJobWithLogging(
-  db: AppDb,
+  db: Queryable,
   logger: Logger,
   job: JobRecord,
   operation: string,

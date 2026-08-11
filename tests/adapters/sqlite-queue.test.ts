@@ -171,6 +171,26 @@ describe("SqliteJobQueue", () => {
     connection.connection.close();
   });
 
+  it("bounds terminal job history while keeping all active jobs", async () => {
+    const connection = createQueue(createDbPath());
+    const queuedId = await connection.queue.enqueue({ type: "queued", payload: {} });
+
+    const terminalIds: string[] = [];
+    for (let i = 0; i < 55; i += 1) {
+      const id = await connection.queue.enqueue({ type: "done", payload: {} });
+      connection.queue.markSucceeded(id);
+      terminalIds.push(id);
+    }
+
+    const jobs = connection.queue.listJobs();
+    const listedIds = new Set(jobs.map(({ id }) => id));
+
+    expect(listedIds.has(queuedId)).toBe(true);
+    expect(jobs.filter((job) => job.status === "succeeded")).toHaveLength(50);
+    expect(jobs).toHaveLength(51);
+    connection.connection.close();
+  });
+
   it("claims with a bounded ordered SQL query", async () => {
     const dbPath = createDbPath();
     const sqlite = new Database(dbPath);
