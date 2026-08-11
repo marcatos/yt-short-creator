@@ -27,6 +27,16 @@ export function createFsMediaStore(deps: {
       return path.join(mediaRoot, "broll", path.basename(filename));
     },
 
+    async listBroll(): Promise<string[]> {
+      const brollRoot = path.join(mediaRoot, "broll");
+      await fs.mkdir(brollRoot, { recursive: true });
+      const entries = await fs.readdir(brollRoot, { withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .sort((left, right) => left.localeCompare(right));
+    },
+
     async ensureDirs(): Promise<void> {
       await Promise.all(
         SUBDIRS.map((dir) =>

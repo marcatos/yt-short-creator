@@ -1,4 +1,8 @@
 import type { RunClipAnalysis } from "@/src/application/run-clip-analysis";
+import type {
+  AssembleGeneratePreview,
+  RunIdeation,
+} from "@/src/application/run-ideation";
 import type { Logger } from "@/src/ports/logger";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
@@ -18,6 +22,8 @@ type HandlerDeps = {
   sourceVideos: SourceVideoRepository;
   videoDownload: VideoDownloadPort;
   runClipAnalysis: RunClipAnalysis;
+  runIdeation: RunIdeation;
+  assembleGeneratePreview: AssembleGeneratePreview;
 };
 
 const stub = (label: string): JobHandler => async (ctx) => {
@@ -32,6 +38,17 @@ function requireStringPayload(
   const value = payload[key];
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Job payload missing required string field: ${key}`);
+  }
+  return value;
+}
+
+function requireNumberPayload(
+  payload: Record<string, unknown>,
+  key: string,
+): number {
+  const value = payload[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Job payload missing required number field: ${key}`);
   }
   return value;
 }
@@ -86,8 +103,45 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         durationMs: Math.round(performance.now() - startedAt),
       });
     },
-    ideate: stub("Ideation"),
-    assemble_generate_preview: stub("Generate preview"),
+    ideate: async (ctx) => {
+      const channelId = requireStringPayload(ctx.payload, "channelId");
+      const count = requireNumberPayload(ctx.payload, "count");
+      const startedAt = performance.now();
+      handlerLogger.info("ideate started", {
+        jobId: ctx.jobId,
+        channelId,
+        requestedCount: count,
+      });
+      ctx.setProgress(10, "Generating Shorts ideas");
+      const candidates = await deps.runIdeation({ channelId, count });
+      ctx.setProgress(100, `Created ${candidates.length} generated candidates`);
+      handlerLogger.info("ideate completed", {
+        jobId: ctx.jobId,
+        channelId,
+        candidateCount: candidates.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
+    assemble_generate_preview: async (ctx) => {
+      const candidateId = requireStringPayload(ctx.payload, "candidateId");
+      const startedAt = performance.now();
+      handlerLogger.info("assemble_generate_preview started", {
+        jobId: ctx.jobId,
+        candidateId,
+      });
+      ctx.setProgress(10, "Synthesizing voice and assembling preview");
+      const candidate = await deps.assembleGeneratePreview({ candidateId });
+      const timeline = "timeline" in candidate.provenance
+        ? candidate.provenance.timeline
+        : [];
+      ctx.setProgress(100, `Preview assembled with ${timeline.length} B-roll assets`);
+      handlerLogger.info("assemble_generate_preview completed", {
+        jobId: ctx.jobId,
+        candidateId,
+        timelineAssetCount: timeline.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
     render_short: stub("Render"),
     publish_short: stub("Publish"),
   };
@@ -124,6 +178,12 @@ export function createStubHandlers(): JobHandlers {
     },
     async runClipAnalysis() {
       return [];
+    },
+    async runIdeation() {
+      return [];
+    },
+    async assembleGeneratePreview({ candidateId }) {
+      throw new Error(`Generate candidate not found: ${candidateId}`);
     },
   });
 }

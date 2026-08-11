@@ -13,6 +13,7 @@ import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
 import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
+import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
 import {
@@ -27,6 +28,12 @@ import {
   createRunClipAnalysis,
   type RunClipAnalysis,
 } from "@/src/application/run-clip-analysis";
+import {
+  createAssembleGeneratePreview,
+  createRunIdeation,
+  type AssembleGeneratePreview,
+  type RunIdeation,
+} from "@/src/application/run-ideation";
 import type { Logger } from "@/src/ports/logger";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import { createHandlers } from "@/src/workers/handlers";
@@ -44,6 +51,8 @@ export type AppContainer = {
   connectChannel: ConnectChannel;
   syncChannel: SyncChannel;
   runClipAnalysis: RunClipAnalysis;
+  runIdeation: RunIdeation;
+  assembleGeneratePreview: AssembleGeneratePreview;
   jobQueue: InProcessJobQueue;
   videoDownload: VideoDownloadPort;
   logger: Logger;
@@ -72,6 +81,12 @@ export function getContainer(): AppContainer {
     model: env.LLM_MODEL,
     logger,
   });
+  const tts = createOpenAiCompatibleTts({
+    apiKey: env.TTS_API_KEY,
+    baseUrl: env.TTS_BASE_URL,
+    model: env.TTS_MODEL,
+    logger,
+  });
   const jobQueue = createInProcessJobQueue({
     logger,
     idPort: id,
@@ -83,6 +98,24 @@ export function getContainer(): AppContainer {
     redirectUri: env.YOUTUBE_REDIRECT_URI,
   });
   const catalog = new GoogleYouTubeCatalogAdapter();
+  const runIdeation = createRunIdeation({
+    llm,
+    tts,
+    mediaStore,
+    briefs: repositories.generationBriefs,
+    candidates: repositories.candidates,
+    id,
+    clock,
+    logger,
+  });
+  const assembleGeneratePreview = createAssembleGeneratePreview({
+    tts,
+    mediaStore,
+    briefs: repositories.generationBriefs,
+    candidates: repositories.candidates,
+    clock,
+    logger,
+  });
   const container: AppContainer = {
     connection,
     repositories,
@@ -117,6 +150,8 @@ export function getContainer(): AppContainer {
       clock,
       logger,
     }),
+    runIdeation,
+    assembleGeneratePreview,
   };
 
   globalContainer.ytShortCreatorContainer = container;
@@ -139,6 +174,8 @@ export function startWorkers(): void {
       sourceVideos: container.repositories.sourceVideos,
       videoDownload: container.videoDownload,
       runClipAnalysis: container.runClipAnalysis,
+      runIdeation: container.runIdeation,
+      assembleGeneratePreview: container.assembleGeneratePreview,
     }),
     logger,
     clock,

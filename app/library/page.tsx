@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 
 import { getContainer } from "@/src/lib/container";
 
+import { GenerateIdeasButton } from "./generate-button";
+
 export const dynamic = "force-dynamic";
 
 async function syncChannelAction(formData: FormData): Promise<void> {
@@ -34,9 +36,19 @@ export default async function LibraryPage() {
   const { repositories } = getContainer();
   const channels = await repositories.channels.list();
   const channel = channels[0] ?? null;
-  const videos = channel
-    ? await repositories.sourceVideos.listByChannelId(channel.id)
-    : [];
+  const [videos, briefs, generatedCandidates] = channel
+    ? await Promise.all([
+        repositories.sourceVideos.listByChannelId(channel.id),
+        repositories.generationBriefs.listByChannelId(channel.id),
+        repositories.candidates.list({ origin: "generate" }),
+      ])
+    : [[], [], []];
+  const briefById = new Map(briefs.map((brief) => [brief.id, brief]));
+  const channelGeneratedCandidates = generatedCandidates.filter(
+    (candidate) =>
+      "generationBriefId" in candidate.provenance &&
+      briefById.has(candidate.provenance.generationBriefId),
+  );
 
   return (
     <main style={{ maxWidth: "72rem", margin: "0 auto", padding: "3rem 2rem" }}>
@@ -64,23 +76,26 @@ export default async function LibraryPage() {
           </h1>
         </div>
         {channel ? (
-          <form action={syncChannelAction}>
-            <input type="hidden" name="channelId" value={channel.id} />
-            <button
-              type="submit"
-              style={{
-                border: 0,
-                borderRadius: "4px",
-                padding: "0.7rem 1rem",
-                background: "var(--rosso)",
-                color: "var(--ice)",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              Sync now
-            </button>
-          </form>
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "start" }}>
+            <GenerateIdeasButton channelId={channel.id} />
+            <form action={syncChannelAction}>
+              <input type="hidden" name="channelId" value={channel.id} />
+              <button
+                type="submit"
+                style={{
+                  border: 0,
+                  borderRadius: "4px",
+                  padding: "0.7rem 1rem",
+                  background: "var(--rosso)",
+                  color: "var(--ice)",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Sync now
+              </button>
+            </form>
+          </div>
         ) : null}
       </header>
 
@@ -161,6 +176,37 @@ export default async function LibraryPage() {
           </table>
         </div>
       )}
+      {channelGeneratedCandidates.length > 0 ? (
+        <section style={{ marginTop: "3rem" }}>
+          <h2>Generated Shorts ideas</h2>
+          <div style={{ display: "grid", gap: "1rem" }}>
+            {channelGeneratedCandidates.map((candidate) => {
+              if (!("generationBriefId" in candidate.provenance)) return null;
+              const brief = briefById.get(candidate.provenance.generationBriefId);
+              if (!brief) return null;
+              return (
+                <article
+                  key={candidate.id}
+                  style={{ border: "1px solid #333", padding: "1rem" }}
+                >
+                  <h3>{candidate.title}</h3>
+                  <p><strong>Hook:</strong> {brief.hook}</p>
+                  <p>{brief.script}</p>
+                  {candidate.provenance.timeline.length === 0 ? (
+                    <p style={{ color: "var(--ice-dim)" }}>
+                      Script-only preview — add footage to media/broll to assemble visuals.
+                    </p>
+                  ) : (
+                    <p style={{ color: "var(--ice-dim)" }}>
+                      Preview uses {candidate.provenance.timeline.length} B-roll assets.
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
       <p style={{ marginTop: "2rem" }}>
         <Link href="/">Back home</Link>
       </p>
