@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 
 import type { AppDb } from "@/src/adapters/db/client";
 import { queueJobs } from "@/src/adapters/db/schema";
@@ -19,6 +19,16 @@ export function readJob(db: AppDb, jobId: string): JobRecord | undefined {
     .select()
     .from(queueJobs)
     .where(eq(queueJobs.id, jobId))
+    .get();
+}
+
+export function readNextQueuedJob(db: AppDb): JobRecord | undefined {
+  return db
+    .select()
+    .from(queueJobs)
+    .where(eq(queueJobs.status, "queued"))
+    .orderBy(asc(queueJobs.position))
+    .limit(1)
     .get();
 }
 

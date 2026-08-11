@@ -2,9 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createDb } from "@/src/adapters/db/client";
+import * as schema from "@/src/adapters/db/schema";
 import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
@@ -91,5 +95,111 @@ describe("SqliteJobQueue", () => {
       checkpoint: { step: "prepare", data: { frame: 42 } },
     });
     second.connection.close();
+  });
+
+  it("pauses a running job and resumes it as queued", async () => {
+    const connection = createQueue(createDbPath());
+    const jobId = await connection.queue.enqueue({ type: "render", payload: {} });
+    connection.queue.markRunning(jobId);
+
+    await expect(connection.queue.requestPause(jobId)).resolves.toEqual({ ok: true });
+    expect(connection.queue.isPauseRequested(jobId)).toBe(true);
+
+    connection.queue.markPaused(jobId);
+    expect(connection.queue.getJob(jobId)?.status).toBe("paused");
+    await expect(connection.queue.resume(jobId)).resolves.toEqual({ ok: true });
+    expect(connection.queue.getJob(jobId)?.status).toBe("queued");
+    connection.connection.close();
+  });
+
+  it("aborts a running job when cancellation is requested", async () => {
+    const connection = createQueue(createDbPath());
+    const jobId = await connection.queue.enqueue({ type: "render", payload: {} });
+    connection.queue.markRunning(jobId);
+    const controller = new AbortController();
+    connection.queue.attachAbortController(jobId, controller);
+
+    await expect(connection.queue.cancel(jobId)).resolves.toBe("aborting");
+    expect(controller.signal.aborted).toBe(true);
+    connection.connection.close();
+  });
+
+  it("claims jobs in reordered and moved order", async () => {
+    const connection = createQueue(createDbPath());
+    const firstId = await connection.queue.enqueue({ type: "first", payload: {} });
+    const secondId = await connection.queue.enqueue({ type: "second", payload: {} });
+    const thirdId = await connection.queue.enqueue({ type: "third", payload: {} });
+
+    await connection.queue.reorder([thirdId, firstId, secondId]);
+    await connection.queue.move(secondId, "top");
+    expect((await connection.queue.claimNext())?.id).toBe(secondId);
+    connection.queue.markRunning(secondId);
+
+    await connection.queue.move(thirdId, "bottom");
+    expect((await connection.queue.claimNext())?.id).toBe(firstId);
+    connection.connection.close();
+  });
+
+  it("persists progress across reopen", async () => {
+    const dbPath = createDbPath();
+    const first = createQueue(dbPath);
+    const jobId = await first.queue.enqueue({ type: "render", payload: {} });
+    first.queue.setProgress(jobId, 57, "Encoding");
+    first.connection.close();
+
+    const second = createQueue(dbPath);
+    await expect(second.queue.getProgress(jobId)).resolves.toMatchObject({
+      pct: 57,
+      message: "Encoding",
+    });
+    second.connection.close();
+  });
+
+  it("lists active jobs before terminal jobs", async () => {
+    const connection = createQueue(createDbPath());
+    const terminalId = await connection.queue.enqueue({ type: "done", payload: {} });
+    connection.queue.markSucceeded(terminalId);
+    const queuedId = await connection.queue.enqueue({ type: "queued", payload: {} });
+    const runningId = await connection.queue.enqueue({ type: "running", payload: {} });
+    connection.queue.markRunning(runningId);
+
+    expect(connection.queue.listJobs().map(({ id }) => id)).toEqual([
+      runningId,
+      queuedId,
+      terminalId,
+    ]);
+    connection.connection.close();
+  });
+
+  it("claims with a bounded ordered SQL query", async () => {
+    const dbPath = createDbPath();
+    const sqlite = new Database(dbPath);
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const db = drizzle(sqlite, {
+      schema,
+      logger: {
+        logQuery(sql, params) {
+          queries.push({ sql, params });
+        },
+      },
+    });
+    migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });
+    const queue = createSqliteJobQueue({
+      db,
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    await queue.enqueue({ type: "render", payload: {} });
+    queries.length = 0;
+
+    await queue.claimNext();
+
+    const claimQuery = queries.find(({ sql }) => /from [`"]queue_jobs[`"]/.test(sql));
+    sqlite.close();
+    expect(claimQuery?.sql.replace(/\s+/g, " ").toLowerCase()).toMatch(
+      /where .*status.* = \? order by .*position.* asc limit \?/,
+    );
+    expect(claimQuery?.params).toEqual(["queued", 1]);
   });
 });

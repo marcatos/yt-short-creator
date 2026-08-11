@@ -1,18 +1,19 @@
 import {
   applyOrder,
   createQueuedJobRecord,
-  findNextQueued,
-  hasQueuedJob,
   movedOrder,
   nextPosition,
   recoverRunningJobs,
 } from "@/src/adapters/jobs/in-process-queue-helpers";
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import {
+  persistJobWithLogging,
+  readQueuedForClaim,
+} from "@/src/adapters/jobs/sqlite-queue-observability";
+import {
   insertJob,
   listJobsByDisplayOrder,
   loadJobs,
-  persistJob,
   readJob,
   type SqliteQueueDeps,
 } from "@/src/adapters/jobs/sqlite-queue-storage";
@@ -32,7 +33,7 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
   }
 
   function waitForWork(): Promise<void> {
-    if (hasQueuedJob(loadJobs(deps.db))) {
+    if (readQueuedForClaim(deps.db, queueLogger)) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -47,7 +48,7 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
     }
     mutation(job);
     job.updatedAt = deps.clock.now();
-    persistJob(deps.db, job);
+    persistJobWithLogging(deps.db, queueLogger, job, "mutation");
     return job;
   }
 
@@ -81,15 +82,17 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
     },
 
     async claimNext() {
-      let next = findNextQueued(loadJobs(deps.db));
+      const startedAt = Date.now();
+      let next = readQueuedForClaim(deps.db, queueLogger);
       while (!next) {
         await waitForWork();
-        next = findNextQueued(loadJobs(deps.db));
+        next = readQueuedForClaim(deps.db, queueLogger);
       }
       queueLogger.info("Job claimed", {
         jobId: next.id,
         type: next.type,
         position: next.position,
+        durationMs: Date.now() - startedAt,
       });
       return next;
     },
@@ -250,7 +253,7 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
       });
       for (const job of jobs.values()) {
         if (job.status === "queued" || job.status === "paused") {
-          persistJob(deps.db, job);
+          persistJobWithLogging(deps.db, queueLogger, job, "reorder");
         }
       }
       queueLogger.info("Jobs reordered", { jobCount: orderedIds.length });
@@ -286,7 +289,12 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
         },
       );
       for (const jobId of runningIds) {
-        persistJob(deps.db, jobs.get(jobId)!);
+        persistJobWithLogging(
+          deps.db,
+          queueLogger,
+          jobs.get(jobId)!,
+          "recover",
+        );
       }
       if (requeuedRunning > 0) {
         queueLogger.info("Running jobs recovered", { requeuedRunning });
