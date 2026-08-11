@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 
+import { JobCancelledError } from "@/src/domain/queue-control";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
@@ -30,14 +32,46 @@ async function fileSizeIfExists(filePath: string): Promise<number | null> {
   }
 }
 
+function bindAbort(
+  signal: AbortSignal | undefined,
+  child: ChildProcess,
+  onAbort: () => void,
+): () => void {
+  if (!signal) return () => undefined;
+
+  const cleanup = () => signal.removeEventListener("abort", handleAbort);
+  const handleAbort = () => {
+    child.kill("SIGTERM");
+    onAbort();
+  };
+
+  if (signal.aborted) {
+    handleAbort();
+    return cleanup;
+  }
+
+  signal.addEventListener("abort", handleAbort, { once: true });
+  child.once("close", cleanup);
+  return cleanup;
+}
+
 function runYtdlp(
   ytdlpPath: string,
   args: string[],
   onStderrLine: (line: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ytdlpPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderrBuffer = "";
+    let settled = false;
+    let removeAbort: () => void = () => undefined;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      removeAbort();
+      callback();
+    };
 
     proc.stderr.on("data", (chunk: Buffer | string) => {
       stderrBuffer += chunk.toString();
@@ -49,18 +83,29 @@ function runYtdlp(
     });
 
     proc.on("error", (error) => {
-      reject(error);
+      settle(() =>
+        reject(signal?.aborted ? new JobCancelledError() : error),
+      );
     });
 
     proc.on("close", (code) => {
       if (stderrBuffer.trim()) {
         onStderrLine(stderrBuffer.trim());
       }
-      if (code === 0) {
-        resolve();
+      if (signal?.aborted) {
+        settle(() => reject(new JobCancelledError()));
         return;
       }
-      reject(new Error(`yt-dlp exited with code ${code ?? "unknown"}`));
+      if (code === 0) {
+        settle(resolve);
+        return;
+      }
+      settle(() =>
+        reject(new Error(`yt-dlp exited with code ${code ?? "unknown"}`)),
+      );
+    });
+    removeAbort = bindAbort(signal, proc, () => {
+      settle(() => reject(new JobCancelledError()));
     });
   });
 }
@@ -70,8 +115,11 @@ export function createYtdlpDownload(deps: YtdlpDownloadDeps): VideoDownloadPort 
   const downloadLogger = deps.logger.child({ component: "YtdlpDownload" });
 
   return {
-    async download(youtubeVideoId: string): Promise<string> {
+    async download(youtubeVideoId, options): Promise<string> {
       const startedAt = Date.now();
+      if (options?.signal?.aborted) {
+        throw new JobCancelledError();
+      }
       await deps.mediaStore.ensureDirs();
       const outputPath = deps.mediaStore.sourcePath(youtubeVideoId);
 
@@ -121,6 +169,7 @@ export function createYtdlpDownload(deps: YtdlpDownloadDeps): VideoDownloadPort 
             progressPct: pct,
           });
         },
+        options?.signal,
       );
 
       const finalSize = await fileSizeIfExists(outputPath);

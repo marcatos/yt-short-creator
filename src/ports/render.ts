@@ -19,6 +19,10 @@ export type RenderResult = {
   outputPath: string;
 };
 
+export type RenderOptions = {
+  signal?: AbortSignal;
+};
+
 export interface RenderPort {
-  render(input: RenderInput): Promise<RenderResult>;
+  render(input: RenderInput, options?: RenderOptions): Promise<RenderResult>;
 }

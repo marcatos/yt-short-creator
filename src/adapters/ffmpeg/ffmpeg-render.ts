@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 
+import { JobCancelledError } from "@/src/domain/queue-control";
 import type { Logger } from "@/src/ports/logger";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
 import type {
@@ -163,9 +165,33 @@ function generateArgs(input: RenderInput): string[] {
   ];
 }
 
+function bindAbort(
+  signal: AbortSignal | undefined,
+  child: ChildProcess,
+  onAbort: () => void,
+): () => void {
+  if (!signal) return () => undefined;
+
+  const cleanup = () => signal.removeEventListener("abort", handleAbort);
+  const handleAbort = () => {
+    child.kill("SIGTERM");
+    onAbort();
+  };
+
+  if (signal.aborted) {
+    handleAbort();
+    return cleanup;
+  }
+
+  signal.addEventListener("abort", handleAbort, { once: true });
+  child.once("close", cleanup);
+  return cleanup;
+}
+
 async function runFfmpeg(
   executable: string,
   args: string[],
+  signal?: AbortSignal,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(executable, args, {
@@ -173,17 +199,38 @@ async function runFfmpeg(
       windowsHide: true,
     });
     let stderr = "";
+    let settled = false;
+    let removeAbort: () => void = () => undefined;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      removeAbort();
+      callback();
+    };
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderr = `${stderr}${chunk}`.slice(-8_000);
     });
-    child.once("error", reject);
+    child.once("error", (error) => {
+      settle(() =>
+        reject(signal?.aborted ? new JobCancelledError() : error),
+      );
+    });
     child.once("close", (code) => {
-      if (code === 0) {
-        resolve();
+      if (signal?.aborted) {
+        settle(() => reject(new JobCancelledError()));
         return;
       }
-      reject(new Error(`FFmpeg exited with code ${code}: ${stderr.trim()}`));
+      if (code === 0) {
+        settle(resolve);
+        return;
+      }
+      settle(() =>
+        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.trim()}`)),
+      );
+    });
+    removeAbort = bindAbort(signal, child, () => {
+      settle(() => reject(new JobCancelledError()));
     });
   });
 }
@@ -193,8 +240,11 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
   const logger = deps.logger.child({ component: "FfmpegRender" });
 
   return {
-    async render(input) {
+    async render(input, options) {
       const startedAt = performance.now();
+      if (options?.signal?.aborted) {
+        throw new JobCancelledError();
+      }
       const preference = await resolvePreference(deps);
       const encoder = resolveVideoEncoder(ffmpegPath, preference);
       logger.info("FFmpeg render started", {
@@ -208,21 +258,28 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
 
       try {
         await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
+        if (options?.signal?.aborted) {
+          throw new JobCancelledError();
+        }
         const mediaArgs =
           input.origin === "generate" ? generateArgs(input) : clipArgs(input);
-        await runFfmpeg(ffmpegPath, [
-          "-y",
-          "-hide_banner",
-          ...mediaArgs,
-          ...encoder.args,
-          "-r",
-          "30",
-          "-c:a",
-          "aac",
-          "-movflags",
-          "+faststart",
-          input.outputPath,
-        ]);
+        await runFfmpeg(
+          ffmpegPath,
+          [
+            "-y",
+            "-hide_banner",
+            ...mediaArgs,
+            ...encoder.args,
+            "-r",
+            "30",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            input.outputPath,
+          ],
+          options?.signal,
+        );
 
         logger.info("FFmpeg render completed", {
           candidateId: input.candidateId,
