@@ -1,0 +1,50 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("createFsMediaStore", () => {
+  it("resolves paths under MEDIA_ROOT subdirectories", () => {
+    const mediaRoot = path.join(os.tmpdir(), "yt-short-creator-media-test");
+    const mediaStore = createFsMediaStore({ mediaRoot });
+
+    expect(mediaStore.sourcePath("abc123")).toBe(
+      path.join(mediaRoot, "sources", "abc123.mp4"),
+    );
+    expect(mediaStore.renderPath("cand-1")).toBe(
+      path.join(mediaRoot, "renders", "cand-1.mp4"),
+    );
+    expect(mediaStore.audioPath("cand-1")).toBe(
+      path.join(mediaRoot, "audio", "cand-1.mp3"),
+    );
+    expect(mediaStore.brollPath("../escape.mp4")).toBe(
+      path.join(mediaRoot, "broll", "escape.mp4"),
+    );
+  });
+
+  it("creates sources, renders, audio, and broll directories", async () => {
+    const mediaRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "yt-short-creator-media-"),
+    );
+    tempDirs.push(mediaRoot);
+
+    const mediaStore = createFsMediaStore({ mediaRoot });
+    await mediaStore.ensureDirs();
+
+    expect(fs.existsSync(path.join(mediaRoot, "sources"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaRoot, "renders"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaRoot, "audio"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaRoot, "broll"))).toBe(true);
+  });
+});

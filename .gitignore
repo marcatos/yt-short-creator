@@ -16,7 +16,7 @@ dist/
 
 # App data / media
 data/
-media/
+/media/
 *.db
 *.db-journal
 

@@ -5,6 +5,8 @@ import {
 } from "@/src/adapters/db/repositories";
 import { createInProcessJobQueue } from "@/src/adapters/jobs/in-process-queue";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
+import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
+import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
@@ -18,7 +20,7 @@ import {
   type SyncChannel,
 } from "@/src/application/sync-channel";
 import type { Logger } from "@/src/ports/logger";
-import { createStubHandlers } from "@/src/workers/handlers";
+import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
 
 import { loadEnv } from "./env";
@@ -91,8 +93,12 @@ export function startWorkers(): void {
   }
   workersStarted = true;
 
-  const logger = createLogger();
+  const env = loadEnv();
+  const logger = createLogger(env.LOG_LEVEL);
   const clock = new SystemClock();
+  const container = getContainer();
+  const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
+  const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const queue = createInProcessJobQueue({
     logger,
     idPort: new UuidIdPort(),
@@ -100,7 +106,11 @@ export function startWorkers(): void {
   });
   const runner = createWorkerRunner({
     queue,
-    handlers: createStubHandlers(),
+    handlers: createHandlers({
+      logger,
+      sourceVideos: container.repositories.sourceVideos,
+      videoDownload,
+    }),
     logger,
     clock,
   });
