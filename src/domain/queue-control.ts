@@ -35,10 +35,23 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   analyze_replay: ["run"],
   ideate: ["run"],
   capture_replay: ["capture"],
-  assemble_generate_preview: ["tts", "assemble"],
+  // The handler only checkpoints a single "assemble" step (TTS + assembly
+  // run atomically); this list must match handlers.ts exactly.
+  assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
   publish_short: ["prepare", "upload"],
 };
+
+function compareSteps(
+  steps: readonly string[],
+  doneStep: string,
+  step: string,
+): boolean {
+  const doneIdx = steps.indexOf(doneStep);
+  const needIdx = steps.indexOf(step);
+  if (doneIdx < 0 || needIdx < 0) return doneStep === step;
+  return doneIdx >= needIdx;
+}
 
 export function checkpointReached(
   checkpoint: JobCheckpoint | null | undefined,
@@ -46,14 +59,21 @@ export function checkpointReached(
   jobType?: string,
 ): boolean {
   if (!checkpoint?.step) return false;
-  const steps =
-    (jobType && QUEUE_JOB_STEPS[jobType]) ||
-    Object.values(QUEUE_JOB_STEPS).find((list) => list.includes(step));
+
+  if (jobType !== undefined) {
+    // jobType is explicit (the only way real handlers call this): never
+    // guess across unrelated job types' step lists. If jobType isn't a
+    // recognized key (config/typo bug), treat the step as not reached so an
+    // idempotent handler safely re-runs it instead of silently skipping it.
+    const steps = QUEUE_JOB_STEPS[jobType];
+    return steps ? compareSteps(steps, checkpoint.step, step) : false;
+  }
+
+  const steps = Object.values(QUEUE_JOB_STEPS).find((list) =>
+    list.includes(step),
+  );
   if (!steps) {
     return checkpoint.step === step;
   }
-  const doneIdx = steps.indexOf(checkpoint.step);
-  const needIdx = steps.indexOf(step);
-  if (doneIdx < 0 || needIdx < 0) return checkpoint.step === step;
-  return doneIdx >= needIdx;
+  return compareSteps(steps, checkpoint.step, step);
 }
