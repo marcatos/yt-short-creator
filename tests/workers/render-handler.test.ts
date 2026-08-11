@@ -141,6 +141,7 @@ describe("render_short handler", () => {
             brandRoot: "brand",
             logLevel: "INFO",
             defaultPrivacy: "unlisted",
+            videoEncoderPreference: "libx264",
           };
         },
         async save() {},

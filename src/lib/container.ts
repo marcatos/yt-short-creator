@@ -134,13 +134,14 @@ export function createContainer(env: AppEnv): AppContainer {
       brandRoot: env.BRAND_ROOT,
       logLevel: env.LOG_LEVEL,
       defaultPrivacy: "public",
+      videoEncoderPreference: "auto_igpu",
     },
   });
   const clock = new SystemClock();
   const id = new UuidIdPort();
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
-  const render = createFfmpegRender({ logger });
+  const render = createFfmpegRender({ logger, settings });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const llm = createOpenAiCompatibleLlm({
     apiKey: env.LLM_API_KEY,

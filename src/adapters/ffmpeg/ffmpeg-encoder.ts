@@ -1,15 +1,24 @@
 import { spawnSync } from "node:child_process";
 
+export type VideoEncoderPreference =
+  | "auto_igpu"
+  | "auto_dgpu"
+  | "h264_qsv"
+  | "h264_nvenc"
+  | "h264_amf"
+  | "h264_mf"
+  | "libx264";
+
 export type VideoEncoderChoice = {
   codec: string;
   args: string[];
   label: string;
 };
 
-const ENCODER_CANDIDATES: VideoEncoderChoice[] = [
-  {
+const BY_CODEC: Record<string, VideoEncoderChoice> = {
+  h264_nvenc: {
     codec: "h264_nvenc",
-    label: "NVIDIA NVENC",
+    label: "NVIDIA NVENC (discrete)",
     args: [
       "-c:v",
       "h264_nvenc",
@@ -25,9 +34,9 @@ const ENCODER_CANDIDATES: VideoEncoderChoice[] = [
       "yuv420p",
     ],
   },
-  {
+  h264_amf: {
     codec: "h264_amf",
-    label: "AMD AMF",
+    label: "AMD AMF (discrete)",
     args: [
       "-c:v",
       "h264_amf",
@@ -37,9 +46,9 @@ const ENCODER_CANDIDATES: VideoEncoderChoice[] = [
       "yuv420p",
     ],
   },
-  {
+  h264_qsv: {
     codec: "h264_qsv",
-    label: "Intel Quick Sync",
+    label: "Intel Quick Sync (iGPU)",
     args: [
       "-c:v",
       "h264_qsv",
@@ -49,19 +58,19 @@ const ENCODER_CANDIDATES: VideoEncoderChoice[] = [
       "yuv420p",
     ],
   },
-  {
+  h264_mf: {
     codec: "h264_mf",
     label: "Windows MediaFoundation",
     args: ["-c:v", "h264_mf", "-pix_fmt", "yuv420p"],
   },
-  {
+  libx264: {
     codec: "libx264",
     label: "CPU libx264",
     args: ["-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p"],
   },
-];
+};
 
-let cachedChoice: VideoEncoderChoice | null = null;
+const cache = new Map<string, VideoEncoderChoice>();
 
 function probeEncoder(ffmpegPath: string, codec: string): boolean {
   const result = spawnSync(
@@ -73,7 +82,6 @@ function probeEncoder(ffmpegPath: string, codec: string): boolean {
       "-f",
       "lavfi",
       "-i",
-      // NVENC rejects tiny frames; 256x256 is safely above minima.
       "color=c=black:s=256x256:d=0.1",
       "-frames:v",
       "1",
@@ -94,39 +102,64 @@ function probeEncoder(ffmpegPath: string, codec: string): boolean {
   return result.status === 0;
 }
 
+function orderedCodecs(
+  preference: VideoEncoderPreference,
+): VideoEncoderChoice[] {
+  switch (preference) {
+    case "auto_igpu":
+      return [
+        BY_CODEC.h264_qsv!,
+        BY_CODEC.h264_mf!,
+        BY_CODEC.h264_amf!,
+        BY_CODEC.h264_nvenc!,
+        BY_CODEC.libx264!,
+      ];
+    case "auto_dgpu":
+      return [
+        BY_CODEC.h264_nvenc!,
+        BY_CODEC.h264_amf!,
+        BY_CODEC.h264_qsv!,
+        BY_CODEC.h264_mf!,
+        BY_CODEC.libx264!,
+      ];
+    case "h264_qsv":
+    case "h264_nvenc":
+    case "h264_amf":
+    case "h264_mf":
+    case "libx264":
+      return [BY_CODEC[preference]!, BY_CODEC.libx264!].filter(
+        (value, index, all) =>
+          all.findIndex((item) => item.codec === value.codec) === index,
+      );
+    default:
+      return orderedCodecs("auto_igpu");
+  }
+}
+
 /**
- * Prefer GPU H.264 encoders when a probe encode succeeds; fall back to libx264.
- * Result is cached for the process lifetime.
+ * Resolve H.264 encoder from preference. Default auto_igpu prefers Intel QSV / MF
+ * before discrete NVENC/AMF. Results are cached per preference.
  */
 export function resolveVideoEncoder(
   ffmpegPath = "ffmpeg",
-  preferredCodec?: string,
+  preference: VideoEncoderPreference = "auto_igpu",
 ): VideoEncoderChoice {
-  if (cachedChoice && !preferredCodec) {
-    return cachedChoice;
-  }
+  const cacheKey = `${ffmpegPath}::${preference}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
 
-  if (preferredCodec) {
-    const preferred = ENCODER_CANDIDATES.find((c) => c.codec === preferredCodec);
-    if (preferred && probeEncoder(ffmpegPath, preferred.codec)) {
-      cachedChoice = preferred;
-      return preferred;
-    }
-  }
-
-  for (const candidate of ENCODER_CANDIDATES) {
+  for (const candidate of orderedCodecs(preference)) {
     if (probeEncoder(ffmpegPath, candidate.codec)) {
-      cachedChoice = candidate;
+      cache.set(cacheKey, candidate);
       return candidate;
     }
   }
 
-  const fallback = ENCODER_CANDIDATES[ENCODER_CANDIDATES.length - 1]!;
-  cachedChoice = fallback;
+  const fallback = BY_CODEC.libx264!;
+  cache.set(cacheKey, fallback);
   return fallback;
 }
 
-/** Test helper to clear encoder cache between cases. */
 export function resetVideoEncoderCache(): void {
-  cachedChoice = null;
+  cache.clear();
 }

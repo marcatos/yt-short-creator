@@ -415,6 +415,7 @@ export function createStubHandlers(): JobHandlers {
           brandRoot: "",
           logLevel: "INFO",
           defaultPrivacy: "unlisted",
+          videoEncoderPreference: "auto_igpu",
         };
       },
       async save() {},

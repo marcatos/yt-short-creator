@@ -4,7 +4,34 @@ import path from "node:path";
 import type {
   AppSettings,
   SettingsRepository,
+  VideoEncoderPreference,
 } from "@/src/ports/settings-repository";
+
+const VALID_ENCODERS = new Set<VideoEncoderPreference>([
+  "auto_igpu",
+  "auto_dgpu",
+  "h264_qsv",
+  "h264_nvenc",
+  "h264_amf",
+  "h264_mf",
+  "libx264",
+]);
+
+function normalizeSettings(
+  defaults: AppSettings,
+  stored: Partial<AppSettings>,
+): AppSettings {
+  const preference = stored.videoEncoderPreference;
+  return {
+    brandRoot: stored.brandRoot?.trim() || defaults.brandRoot,
+    logLevel: stored.logLevel ?? defaults.logLevel,
+    defaultPrivacy: stored.defaultPrivacy ?? defaults.defaultPrivacy,
+    videoEncoderPreference:
+      preference && VALID_ENCODERS.has(preference)
+        ? preference
+        : defaults.videoEncoderPreference,
+  };
+}
 
 export function createFileSettingsRepository(options: {
   settingsPath: string;
@@ -17,8 +44,8 @@ export function createFileSettingsRepository(options: {
     try {
       const stored = JSON.parse(
         await fs.readFile(options.settingsPath, "utf8"),
-      ) as AppSettings;
-      cached = stored;
+      ) as Partial<AppSettings>;
+      cached = normalizeSettings(options.defaults, stored);
     } catch (error) {
       const isMissing =
         error instanceof Error &&
@@ -33,9 +60,14 @@ export function createFileSettingsRepository(options: {
   async function save(settings: AppSettings): Promise<void> {
     await fs.mkdir(path.dirname(options.settingsPath), { recursive: true });
     const temporaryPath = `${options.settingsPath}.tmp`;
-    await fs.writeFile(temporaryPath, JSON.stringify(settings, null, 2), "utf8");
+    const normalized = normalizeSettings(options.defaults, settings);
+    await fs.writeFile(
+      temporaryPath,
+      JSON.stringify(normalized, null, 2),
+      "utf8",
+    );
     await fs.rename(temporaryPath, options.settingsPath);
-    cached = settings;
+    cached = normalized;
   }
 
   return { get, save };

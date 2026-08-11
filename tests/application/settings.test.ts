@@ -15,6 +15,7 @@ const defaults: AppSettings = {
   brandRoot: "C:/brands/smarcato42-racing",
   logLevel: "INFO",
   defaultPrivacy: "public",
+  videoEncoderPreference: "auto_igpu",
 };
 
 const noop = () => {};
@@ -66,12 +67,14 @@ describe("settings use cases", () => {
       brandRoot: "D:/brand",
       logLevel: "DEBUG",
       defaultPrivacy: "private",
+      videoEncoderPreference: "h264_nvenc",
     });
 
     await expect(settings.get()).resolves.toEqual({
       brandRoot: "D:/brand",
       logLevel: "DEBUG",
       defaultPrivacy: "private",
+      videoEncoderPreference: "h264_nvenc",
     });
   });
 

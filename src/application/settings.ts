@@ -69,12 +69,14 @@ export function createUpdateSettings(deps: {
         brandRoot: input.brandRoot.trim(),
         logLevel: input.logLevel,
         defaultPrivacy: input.defaultPrivacy,
+        videoEncoderPreference: input.videoEncoderPreference,
       };
       if (!updated.brandRoot) throw new Error("Brand path must not be empty");
       await deps.settings.save(updated);
       log.info("Settings update completed", {
         logLevel: updated.logLevel,
         defaultPrivacy: updated.defaultPrivacy,
+        videoEncoderPreference: updated.videoEncoderPreference,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return updated;

@@ -7,6 +7,15 @@ const settingsSchema = z.object({
   brandRoot: z.string().trim().min(1),
   logLevel: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
   defaultPrivacy: z.enum(["public", "unlisted", "private"]),
+  videoEncoderPreference: z.enum([
+    "auto_igpu",
+    "auto_dgpu",
+    "h264_qsv",
+    "h264_nvenc",
+    "h264_amf",
+    "h264_mf",
+    "libx264",
+  ]),
 });
 
 export async function GET() {

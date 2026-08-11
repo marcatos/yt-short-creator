@@ -4,15 +4,50 @@ import { spawn } from "node:child_process";
 
 import type { Logger } from "@/src/ports/logger";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
+import type {
+  SettingsRepository,
+  VideoEncoderPreference,
+} from "@/src/ports/settings-repository";
 
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
 
 type FfmpegRenderDeps = {
   logger: Logger;
   ffmpegPath?: string;
-  /** Override auto-detected encoder codec, e.g. h264_nvenc or libx264. */
-  videoCodec?: string;
+  settings?: SettingsRepository;
+  /** Override settings / env when set (mainly for tests). */
+  videoEncoderPreference?: VideoEncoderPreference;
 };
+
+function preferenceFromEnv(): VideoEncoderPreference | undefined {
+  const raw = process.env.FFMPEG_VIDEO_ENCODER?.trim();
+  if (!raw) return undefined;
+  if (
+    raw === "auto_igpu" ||
+    raw === "auto_dgpu" ||
+    raw === "h264_qsv" ||
+    raw === "h264_nvenc" ||
+    raw === "h264_amf" ||
+    raw === "h264_mf" ||
+    raw === "libx264"
+  ) {
+    return raw;
+  }
+  return undefined;
+}
+
+async function resolvePreference(
+  deps: FfmpegRenderDeps,
+): Promise<VideoEncoderPreference> {
+  if (deps.videoEncoderPreference) return deps.videoEncoderPreference;
+  const fromEnv = preferenceFromEnv();
+  if (fromEnv) return fromEnv;
+  if (deps.settings) {
+    const settings = await deps.settings.get();
+    return settings.videoEncoderPreference;
+  }
+  return "auto_igpu";
+}
 
 const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
@@ -156,17 +191,17 @@ async function runFfmpeg(
 export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
   const ffmpegPath = deps.ffmpegPath ?? "ffmpeg";
   const logger = deps.logger.child({ component: "FfmpegRender" });
-  const videoCodec =
-    deps.videoCodec ?? process.env.FFMPEG_VIDEO_ENCODER ?? undefined;
 
   return {
     async render(input) {
       const startedAt = performance.now();
-      const encoder = resolveVideoEncoder(ffmpegPath, videoCodec);
+      const preference = await resolvePreference(deps);
+      const encoder = resolveVideoEncoder(ffmpegPath, preference);
       logger.info("FFmpeg render started", {
         candidateId: input.candidateId,
         origin: input.origin,
         outputPath: input.outputPath,
+        videoEncoderPreference: preference,
         videoEncoder: encoder.codec,
         videoEncoderLabel: encoder.label,
       });
@@ -192,6 +227,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.info("FFmpeg render completed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
+          videoEncoderPreference: preference,
           videoEncoder: encoder.codec,
           durationMs: Math.round(performance.now() - startedAt),
         });
@@ -200,6 +236,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.error("FFmpeg render failed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
+          videoEncoderPreference: preference,
           videoEncoder: encoder.codec,
           durationMs: Math.round(performance.now() - startedAt),
           error: error instanceof Error ? error.stack : String(error),

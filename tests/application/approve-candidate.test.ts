@@ -159,6 +159,7 @@ describe("candidate approval publishing flow", () => {
             brandRoot: "brand",
             logLevel: "INFO",
             defaultPrivacy: "unlisted",
+            videoEncoderPreference: "libx264",
           };
         },
         async save() {},
