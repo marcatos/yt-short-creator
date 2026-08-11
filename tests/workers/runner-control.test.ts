@@ -101,6 +101,23 @@ describe("WorkerRunner control", () => {
     expect(queue.getJob(jobId)?.status).toBe("cancelled");
   });
 
+  it("marks cancelled when handler succeeds but signal was aborted", async () => {
+    const { queue, runner } = setup(
+      (ctx) =>
+        new Promise<void>((resolve) => {
+          ctx.signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+    );
+    const jobId = await queue.enqueue({ type: "controlled", payload: {} });
+    runner.start();
+
+    await waitFor(() => queue.getJob(jobId)?.status === "running");
+    expect(await queue.cancel(jobId)).toBe("aborting");
+
+    await waitFor(() => queue.getJob(jobId)?.status === "cancelled");
+    expect(queue.getJob(jobId)?.status).toBe("cancelled");
+  });
+
   it("passes prior checkpoint into handler on resume", async () => {
     let checkpointStep: string | null = null;
     const { queue, runner } = setup(async (ctx) => {

@@ -24,3 +24,10 @@ Completed.
 ## Concerns
 
 None. Pause remains cooperative by design: handlers must inspect `shouldPause()` or call `throwIfPausedOrCancelled()` at safe boundaries.
+
+## Follow-up fix (Important finding)
+
+- **Issue:** If a handler resolved successfully after cancel was requested but without throwing, the runner called `markSucceeded` instead of `markCancelled`.
+- **Fix:** Before `markSucceeded`, check `controller.signal.aborted` and route to `markCancelled` with cancelled log.
+- **Test:** Added `marks cancelled when handler succeeds but signal was aborted` in `tests/workers/runner-control.test.ts`.
+- **Verification:** `npm test -- tests/workers/runner-control.test.ts` — 4/4 passing.

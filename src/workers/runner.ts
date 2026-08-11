@@ -78,14 +78,24 @@ export function createWorkerRunner(deps: RunnerDeps): WorkerRunner {
             shouldPause: () => deps.queue.isPauseRequested(job.id),
             throwIfPausedOrCancelled,
           });
-          deps.queue.markSucceeded(job.id);
           const durationMs = deps.clock.now().getTime() - startedAt.getTime();
-          runnerLogger.info("Job finished", {
-            jobId: job.id,
-            type: job.type,
-            status: "succeeded",
-            durationMs,
-          });
+          if (controller.signal.aborted) {
+            deps.queue.markCancelled(job.id);
+            runnerLogger.info("Job finished", {
+              jobId: job.id,
+              type: job.type,
+              status: "cancelled",
+              durationMs,
+            });
+          } else {
+            deps.queue.markSucceeded(job.id);
+            runnerLogger.info("Job finished", {
+              jobId: job.id,
+              type: job.type,
+              status: "succeeded",
+              durationMs,
+            });
+          }
         } catch (error) {
           const durationMs = deps.clock.now().getTime() - startedAt.getTime();
           if (isJobPausedError(error)) {
