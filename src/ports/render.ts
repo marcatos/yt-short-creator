@@ -2,7 +2,7 @@ import type { ClipCrop, GenerateTimelineEntry } from "@/src/domain/entities";
 
 export type RenderInput = {
   candidateId: string;
-  origin: "clip" | "generate";
+  origin: "clip" | "generate" | "replay";
   sourceMediaPath: string;
   outputPath: string;
   startMs?: number;

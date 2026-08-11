@@ -5,6 +5,7 @@ import type {
   GenerationBrief,
   PublishJob,
   RenderJob,
+  ReplaySession,
   ShortCandidate,
   SourceVideo,
 } from "@/src/domain/entities";
@@ -12,6 +13,7 @@ import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ChannelRepository } from "@/src/ports/channel-repository";
 import type { GenerationBriefRepository } from "@/src/ports/generation-brief-repository";
 import type { JobRepository } from "@/src/ports/job-repository";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 
 import type { AppDb } from "./client";
@@ -20,6 +22,7 @@ import {
   generationBriefs,
   publishJobs,
   renderJobs,
+  replaySessions,
   shortCandidates,
   sourceVideos,
 } from "./schema";
@@ -30,6 +33,7 @@ type GenerationBriefRow = typeof generationBriefs.$inferSelect;
 type ShortCandidateRow = typeof shortCandidates.$inferSelect;
 type RenderJobRow = typeof renderJobs.$inferSelect;
 type PublishJobRow = typeof publishJobs.$inferSelect;
+type ReplaySessionRow = typeof replaySessions.$inferSelect;
 
 function toChannel(row: ChannelRow): Channel {
   return {
@@ -105,6 +109,23 @@ function toPublishJob(row: PublishJobRow): PublishJob {
     uploadSessionUrl: row.uploadSessionUrl,
     scheduledAt: row.scheduledAt,
     publishedAt: row.publishedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toReplaySession(row: ReplaySessionRow): ReplaySession {
+  return {
+    id: row.id,
+    rpyPath: row.rpyPath,
+    ibtPath: row.ibtPath,
+    mediaPath: row.mediaPath,
+    trackName: row.trackName,
+    focusCarIdx: row.focusCarIdx,
+    title: row.title,
+    durationSec: row.durationSec,
+    status: row.status,
+    events: row.events,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -473,12 +494,66 @@ export class DrizzleJobRepository implements JobRepository {
   }
 }
 
+export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
+  constructor(private readonly db: AppDb) {}
+
+  async save(session: ReplaySession): Promise<void> {
+    await this.db
+      .insert(replaySessions)
+      .values({
+        id: session.id,
+        rpyPath: session.rpyPath,
+        ibtPath: session.ibtPath,
+        mediaPath: session.mediaPath,
+        trackName: session.trackName,
+        focusCarIdx: session.focusCarIdx,
+        title: session.title,
+        durationSec: session.durationSec,
+        status: session.status,
+        events: session.events,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: replaySessions.id,
+        set: {
+          rpyPath: session.rpyPath,
+          ibtPath: session.ibtPath,
+          mediaPath: session.mediaPath,
+          trackName: session.trackName,
+          focusCarIdx: session.focusCarIdx,
+          title: session.title,
+          durationSec: session.durationSec,
+          status: session.status,
+          events: session.events,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+        },
+      });
+  }
+
+  async getById(id: string): Promise<ReplaySession | null> {
+    const rows = await this.db
+      .select()
+      .from(replaySessions)
+      .where(eq(replaySessions.id, id))
+      .limit(1);
+    return rows[0] ? toReplaySession(rows[0]) : null;
+  }
+
+  async list(): Promise<ReplaySession[]> {
+    const rows = await this.db.select().from(replaySessions);
+    return rows.map(toReplaySession);
+  }
+}
+
 export type DbRepositories = {
   channels: DrizzleChannelRepository;
   sourceVideos: DrizzleSourceVideoRepository;
   generationBriefs: DrizzleGenerationBriefRepository;
   candidates: DrizzleCandidateRepository;
   jobs: DrizzleJobRepository;
+  replaySessions: DrizzleReplaySessionRepository;
 };
 
 export function createRepositories(db: AppDb): DbRepositories {
@@ -488,5 +563,6 @@ export function createRepositories(db: AppDb): DbRepositories {
     generationBriefs: new DrizzleGenerationBriefRepository(db),
     candidates: new DrizzleCandidateRepository(db),
     jobs: new DrizzleJobRepository(db),
+    replaySessions: new DrizzleReplaySessionRepository(db),
   };
 }

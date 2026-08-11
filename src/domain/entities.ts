@@ -1,6 +1,6 @@
 import type { CandidateStatus } from "./status";
 
-export type CandidateOrigin = "clip" | "generate";
+export type CandidateOrigin = "clip" | "generate" | "replay";
 
 export type ClipCrop = {
   mode: "center_vertical" | "face_track";
@@ -28,6 +28,61 @@ export type GenerateProvenance = {
   timeline: GenerateTimelineEntry[];
 };
 
+export const REPLAY_SESSION_STATUSES = [
+  "draft",
+  "capturing",
+  "ready",
+  "analyzing",
+  "failed",
+] as const;
+
+export type ReplaySessionStatus = (typeof REPLAY_SESSION_STATUSES)[number];
+
+export const REPLAY_EVENT_TYPES = [
+  "incident",
+  "overtake",
+  "best_lap",
+  "manual",
+  "llm_moment",
+] as const;
+
+export type ReplayEventType = (typeof REPLAY_EVENT_TYPES)[number];
+
+export type ReplayEvent = {
+  id: string;
+  type: ReplayEventType;
+  startMs: number;
+  endMs: number;
+  score: number;
+  title?: string;
+  hookReason: string;
+  payload?: Record<string, unknown>;
+};
+
+export type ReplaySession = {
+  id: string;
+  rpyPath: string;
+  ibtPath: string | null;
+  mediaPath: string | null;
+  trackName: string | null;
+  focusCarIdx: number | null;
+  title: string;
+  durationSec: number | null;
+  status: ReplaySessionStatus;
+  events: ReplayEvent[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ReplayProvenance = {
+  replaySessionId: string;
+  startMs: number;
+  endMs: number;
+  hookReason: string;
+  eventType: ReplayEventType;
+  crop: ClipCrop;
+};
+
 export type ShortCandidate = {
   id: string;
   origin: CandidateOrigin;
@@ -36,7 +91,7 @@ export type ShortCandidate = {
   description: string;
   tags: string[];
   score: number;
-  provenance: ClipProvenance | GenerateProvenance;
+  provenance: ClipProvenance | GenerateProvenance | ReplayProvenance;
   /** Set when render succeeds; required to retry upload after publish failure. */
   renderOutputPath: string | null;
   scheduledAt: Date | null;

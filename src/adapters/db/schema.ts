@@ -7,6 +7,9 @@ import type {
   ClipProvenance,
   GenerateProvenance,
   JobStatus,
+  ReplayEvent,
+  ReplayProvenance,
+  ReplaySessionStatus,
 } from "@/src/domain/entities";
 import type { CandidateStatus } from "@/src/domain/status";
 
@@ -56,10 +59,25 @@ export const shortCandidates = sqliteTable("short_candidates", {
   tags: text("tags", { mode: "json" }).$type<string[]>().notNull(),
   score: real("score").notNull(),
   provenance: text("provenance", { mode: "json" })
-    .$type<ClipProvenance | GenerateProvenance>()
+    .$type<ClipProvenance | GenerateProvenance | ReplayProvenance>()
     .notNull(),
   renderOutputPath: text("render_output_path"),
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const replaySessions = sqliteTable("replay_sessions", {
+  id: text("id").primaryKey(),
+  rpyPath: text("rpy_path").notNull(),
+  ibtPath: text("ibt_path"),
+  mediaPath: text("media_path"),
+  trackName: text("track_name"),
+  focusCarIdx: integer("focus_car_idx"),
+  title: text("title").notNull(),
+  durationSec: integer("duration_sec"),
+  status: text("status").$type<ReplaySessionStatus>().notNull(),
+  events: text("events", { mode: "json" }).$type<ReplayEvent[]>().notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
