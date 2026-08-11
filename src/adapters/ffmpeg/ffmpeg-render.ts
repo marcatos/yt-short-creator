@@ -5,9 +5,13 @@ import { spawn } from "node:child_process";
 import type { Logger } from "@/src/ports/logger";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
 
+import { resolveVideoEncoder } from "./ffmpeg-encoder";
+
 type FfmpegRenderDeps = {
   logger: Logger;
   ffmpegPath?: string;
+  /** Override auto-detected encoder codec, e.g. h264_nvenc or libx264. */
+  videoCodec?: string;
 };
 
 const OUTPUT_WIDTH = 1080;
@@ -129,17 +133,17 @@ async function runFfmpeg(
   args: string[],
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const process = spawn(executable, args, {
+    const child = spawn(executable, args, {
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
     });
     let stderr = "";
-    process.stderr.setEncoding("utf8");
-    process.stderr.on("data", (chunk: string) => {
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
       stderr = `${stderr}${chunk}`.slice(-8_000);
     });
-    process.once("error", reject);
-    process.once("close", (code) => {
+    child.once("error", reject);
+    child.once("close", (code) => {
       if (code === 0) {
         resolve();
         return;
@@ -152,14 +156,19 @@ async function runFfmpeg(
 export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
   const ffmpegPath = deps.ffmpegPath ?? "ffmpeg";
   const logger = deps.logger.child({ component: "FfmpegRender" });
+  const videoCodec =
+    deps.videoCodec ?? process.env.FFMPEG_VIDEO_ENCODER ?? undefined;
 
   return {
     async render(input) {
       const startedAt = performance.now();
+      const encoder = resolveVideoEncoder(ffmpegPath, videoCodec);
       logger.info("FFmpeg render started", {
         candidateId: input.candidateId,
         origin: input.origin,
         outputPath: input.outputPath,
+        videoEncoder: encoder.codec,
+        videoEncoderLabel: encoder.label,
       });
 
       try {
@@ -170,12 +179,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
           "-y",
           "-hide_banner",
           ...mediaArgs,
-          "-c:v",
-          "libx264",
-          "-preset",
-          "fast",
-          "-pix_fmt",
-          "yuv420p",
+          ...encoder.args,
           "-r",
           "30",
           "-c:a",
@@ -188,6 +192,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.info("FFmpeg render completed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
+          videoEncoder: encoder.codec,
           durationMs: Math.round(performance.now() - startedAt),
         });
         return { outputPath: input.outputPath };
@@ -195,6 +200,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.error("FFmpeg render failed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
+          videoEncoder: encoder.codec,
           durationMs: Math.round(performance.now() - startedAt),
           error: error instanceof Error ? error.stack : String(error),
         });
