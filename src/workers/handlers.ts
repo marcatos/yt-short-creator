@@ -9,11 +9,16 @@ import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
+import type { JobQueuePort } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
+import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
+import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+
+import { createPublishShortHandler } from "./publish-short-handler";
 
 export type JobHandlerContext = {
   jobId: string;
@@ -37,6 +42,9 @@ type HandlerDeps = {
   render: RenderPort;
   brandPack: BrandPackPort;
   mediaStore: MediaStorePort;
+  queue: JobQueuePort;
+  auth: YouTubeAuthPort;
+  upload: YouTubeUploadPort;
   clock: ClockPort;
 };
 
@@ -200,11 +208,22 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     render_short: async (ctx) => {
       const candidateId = requireStringPayload(ctx.payload, "candidateId");
       const startedAt = performance.now();
-      const createdAt = deps.clock.now();
       let candidate = await deps.candidates.getById(candidateId);
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      if (candidate.status === "approved") {
+        candidate = applyCandidateEvent(candidate, { type: "enqueue_render" });
+        await deps.candidates.save(candidate);
+      } else if (candidate.status !== "rendering") {
+        throw new Error(
+          `Candidate cannot render in status "${candidate.status}"`,
+        );
+      }
+      const existingJob =
+        await deps.jobs.getRenderJobByCandidateId(candidateId);
+      const renderJobId = existingJob?.id ?? ctx.jobId;
+      const createdAt = existingJob?.createdAt ?? deps.clock.now();
 
       const saveJob = async (
         status: RenderJob["status"],
@@ -213,7 +232,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         message: string,
       ) => {
         await deps.jobs.saveRenderJob({
-          id: ctx.jobId,
+          id: renderJobId,
           candidateId,
           status,
           outputPath,
@@ -249,11 +268,16 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
           100,
           "Render complete",
         );
+        const publishJobId = await deps.queue.enqueue({
+          type: "publish_short",
+          payload: { candidateId },
+        });
         ctx.setProgress(100, `Rendered to ${result.outputPath}`);
         handlerLogger.info("render_short completed", {
           jobId: ctx.jobId,
           candidateId,
           outputPath: result.outputPath,
+          publishJobId,
           durationMs: Math.round(performance.now() - startedAt),
         });
       } catch (error) {
@@ -272,7 +296,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         throw error;
       }
     },
-    publish_short: stub("Publish"),
+    publish_short: createPublishShortHandler(deps),
   };
 }
 
@@ -374,6 +398,34 @@ export function createStubHandlers(): JobHandlers {
         return [];
       },
       async ensureDirs() {},
+    },
+    queue: {
+      async enqueue() {
+        return "";
+      },
+      async getProgress() {
+        return null;
+      },
+    },
+    auth: {
+      async getAuthorizationUrl() {
+        return "";
+      },
+      async exchangeCode() {
+        throw new Error("YouTube auth is unavailable");
+      },
+      async refreshAccessToken() {
+        throw new Error("YouTube auth is unavailable");
+      },
+      async getStoredTokens() {
+        return null;
+      },
+      async saveTokens() {},
+    },
+    upload: {
+      async upload() {
+        throw new Error("YouTube upload is unavailable");
+      },
     },
     clock: {
       now() {

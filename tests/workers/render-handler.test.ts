@@ -127,6 +127,34 @@ describe("render_short handler", () => {
         listBroll: async () => [],
         ensureDirs: async () => {},
       },
+      queue: {
+        async enqueue() {
+          return "publish-job-1";
+        },
+        async getProgress() {
+          return null;
+        },
+      },
+      auth: {
+        async getAuthorizationUrl() {
+          return "";
+        },
+        async exchangeCode() {
+          throw new Error("unused");
+        },
+        async refreshAccessToken() {
+          throw new Error("unused");
+        },
+        async getStoredTokens() {
+          return null;
+        },
+        async saveTokens() {},
+      },
+      upload: {
+        async upload() {
+          throw new Error("unused");
+        },
+      },
       clock: { now: () => now },
     });
 

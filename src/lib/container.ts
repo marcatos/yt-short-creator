@@ -18,6 +18,11 @@ import { UuidIdPort } from "@/src/adapters/system/id";
 import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
+import { createGoogleYouTubeUpload } from "@/src/adapters/youtube/upload";
+import {
+  createApproveCandidate,
+  type ApproveCandidate,
+} from "@/src/application/approve-candidate";
 import {
   createConnectChannel,
   type ConnectChannel,
@@ -36,11 +41,36 @@ import {
   type AssembleGeneratePreview,
   type RunIdeation,
 } from "@/src/application/run-ideation";
+import {
+  createRejectCandidate,
+  type RejectCandidate,
+} from "@/src/application/reject-candidate";
+import {
+  createRequestRevision,
+  type RequestRevision,
+} from "@/src/application/request-revision";
+import {
+  createRetryFailedJob,
+  type RetryFailedJob,
+} from "@/src/application/retry-failed-job";
+import {
+  createUpdateCandidateMetadata,
+  type UpdateCandidateMetadata,
+} from "@/src/application/update-candidate-metadata";
+import {
+  createGetCandidate,
+  type GetCandidate,
+} from "@/src/application/get-candidate";
+import {
+  createListCandidates,
+  type ListCandidates,
+} from "@/src/application/list-candidates";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderPort } from "@/src/ports/render";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
+import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
 
@@ -58,11 +88,19 @@ export type AppContainer = {
   runClipAnalysis: RunClipAnalysis;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
+  approveCandidate: ApproveCandidate;
+  rejectCandidate: RejectCandidate;
+  requestRevision: RequestRevision;
+  updateCandidateMetadata: UpdateCandidateMetadata;
+  retryFailedJob: RetryFailedJob;
+  getCandidate: GetCandidate;
+  listCandidates: ListCandidates;
   jobQueue: InProcessJobQueue;
   videoDownload: VideoDownloadPort;
   mediaStore: MediaStorePort;
   brandPack: BrandPackPort;
   render: RenderPort;
+  upload: YouTubeUploadPort;
   logger: Logger;
 };
 
@@ -108,6 +146,7 @@ export function getContainer(): AppContainer {
     redirectUri: env.YOUTUBE_REDIRECT_URI,
   });
   const catalog = new GoogleYouTubeCatalogAdapter();
+  const upload = createGoogleYouTubeUpload({ logger });
   const runIdeation = createRunIdeation({
     llm,
     tts,
@@ -137,6 +176,7 @@ export function getContainer(): AppContainer {
     mediaStore,
     brandPack,
     render,
+    upload,
     connectChannel: createConnectChannel({
       auth,
       catalog,
@@ -165,6 +205,33 @@ export function getContainer(): AppContainer {
     }),
     runIdeation,
     assembleGeneratePreview,
+    approveCandidate: createApproveCandidate({
+      candidates: repositories.candidates,
+      queue: jobQueue,
+      logger,
+    }),
+    rejectCandidate: createRejectCandidate({
+      candidates: repositories.candidates,
+      logger,
+    }),
+    requestRevision: createRequestRevision({
+      candidates: repositories.candidates,
+      logger,
+    }),
+    updateCandidateMetadata: createUpdateCandidateMetadata({
+      candidates: repositories.candidates,
+      clock,
+      logger,
+    }),
+    retryFailedJob: createRetryFailedJob({
+      candidates: repositories.candidates,
+      queue: jobQueue,
+      logger,
+    }),
+    getCandidate: createGetCandidate({ candidates: repositories.candidates }),
+    listCandidates: createListCandidates({
+      candidates: repositories.candidates,
+    }),
   };
 
   globalContainer.ytShortCreatorContainer = container;
@@ -194,6 +261,9 @@ export function startWorkers(): void {
       render: container.render,
       brandPack: container.brandPack,
       mediaStore: container.mediaStore,
+      queue: container.jobQueue,
+      auth: container.auth,
+      upload: container.upload,
       clock,
     }),
     logger,
