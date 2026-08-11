@@ -140,10 +140,14 @@ describe("job control API routes", () => {
 
     jobQueue.getJob.mockReturnValueOnce({ id: "done" });
     jobQueue.cancel.mockResolvedValueOnce("noop");
-    const conflict = await cancelJob(new Request("http://localhost"), {
+    const terminal = await cancelJob(new Request("http://localhost"), {
       params: Promise.resolve({ id: "done" }),
     });
-    expect(conflict.status).toBe(409);
+    expect(terminal.status).toBe(200);
+    await expect(terminal.json()).resolves.toEqual({
+      ok: true,
+      result: "noop",
+    });
   });
 
   it("validates and executes top or bottom moves", async () => {

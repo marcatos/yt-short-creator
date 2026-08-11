@@ -12,11 +12,5 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   const result = await queue.cancel(id);
-  if (result === "noop") {
-    return NextResponse.json(
-      { error: "Job cannot be cancelled in its current state" },
-      { status: 409 },
-    );
-  }
   return NextResponse.json({ ok: true, result });
 }

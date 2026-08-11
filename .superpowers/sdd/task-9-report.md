@@ -28,3 +28,10 @@ responses with durable queue state.
 ## Concerns
 
 - None.
+
+## Fix: terminal cancel no-op returns 200
+
+- Updated `POST /api/jobs/[id]/cancel` to return `{ ok: true, result: "noop" }` with status 200 when cancel is a no-op on terminal jobs (was 409).
+- Updated `tests/jobs-api-routes.test.ts` accordingly.
+- `npm test -- tests/jobs-api-routes.test.ts` — 7 tests passed.
+- Commit: `fix(jobs): return 200 for terminal job cancel no-op`
