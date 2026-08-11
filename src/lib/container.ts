@@ -6,6 +6,7 @@ import {
   createRepositories,
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
+import { createFfmpegConcat } from "@/src/adapters/ffmpeg/ffmpeg-concat";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
 import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
 import {
@@ -98,6 +99,10 @@ import {
   createRequestReplayCapture,
   type RequestReplayCapture,
 } from "@/src/application/request-replay-capture";
+import {
+  createRunReplayDirectorCapture,
+  type RunReplayDirectorCapture,
+} from "@/src/application/run-replay-director-capture";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -131,6 +136,7 @@ export type AppContainer = {
   attachReplayIbt: AttachReplayIbt;
   addManualReplayMoment: AddManualReplayMoment;
   requestReplayCapture: RequestReplayCapture;
+  runReplayDirectorCapture: RunReplayDirectorCapture;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -176,9 +182,11 @@ export function createContainer(env: AppEnv): AppContainer {
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const mediaDuration = createFfprobeMediaDuration();
   const ibtTelemetry = createIbtFileTelemetry({ logger });
+  const videoConcat = createFfmpegConcat({ logger });
   const replayCapture = createFsReplayCapture({
     logger,
     videosDir: env.IRACING_VIDEOS_DIR || undefined,
+    concat: videoConcat,
   });
   const llm = createOpenAiCompatibleLlm({
     apiKey: env.LLM_API_KEY,
@@ -309,6 +317,17 @@ export function createContainer(env: AppEnv): AppContainer {
       clock,
       logger,
     }),
+    runReplayDirectorCapture: createRunReplayDirectorCapture({
+      replaySessions: repositories.replaySessions,
+      candidates: repositories.candidates,
+      capture: replayCapture,
+      ibtTelemetry,
+      mediaDuration,
+      id,
+      clock,
+      logger,
+      mediaRoot: env.MEDIA_ROOT,
+    }),
     approveCandidate: createApproveCandidate({
       candidates: repositories.candidates,
       queue: jobQueue,
@@ -376,6 +395,7 @@ export function startWorkers(): void {
       runClipAnalysis: container.runClipAnalysis,
       runReplayAnalysis: container.runReplayAnalysis,
       requestReplayCapture: container.requestReplayCapture,
+      runReplayDirectorCapture: container.runReplayDirectorCapture,
       runIdeation: container.runIdeation,
       assembleGeneratePreview: container.assembleGeneratePreview,
       candidates: container.repositories.candidates,

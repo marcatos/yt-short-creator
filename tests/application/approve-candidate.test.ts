@@ -111,6 +111,9 @@ describe("candidate approval publishing flow", () => {
       requestReplayCapture: async ({ sessionId }) => {
         throw new Error(`unused capture ${sessionId}`);
       },
+      runReplayDirectorCapture: async ({ sessionId }) => {
+        throw new Error(`unused director ${sessionId}`);
+      },
       runIdeation: async () => [],
       assembleGeneratePreview: async () => candidate,
       candidates,

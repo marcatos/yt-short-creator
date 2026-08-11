@@ -4,10 +4,13 @@ import path from "node:path";
 
 import type {
   AutoCaptureInput,
+  DirectedCaptureInput,
+  DirectedCaptureResult,
   ReplayCapturePort,
   WaitForNewRecordingInput,
 } from "@/src/ports/replay-capture";
 import type { Logger } from "@/src/ports/logger";
+import type { VideoConcatPort } from "@/src/ports/video-concat";
 
 import {
   createPowershellIracingBroadcast,
@@ -63,10 +66,12 @@ export type FsReplayCaptureDeps = {
   pollIntervalMs?: number;
   broadcast?: IracingBroadcastPort;
   sim?: IracingSimControl;
+  concat?: VideoConcatPort;
   loadSettleMs?: number;
   stopSettleMs?: number;
   simWaitMs?: number;
   minRecordDurationMs?: number;
+  shotSettleMs?: number;
 };
 
 export function createFsReplayCapture(
@@ -81,6 +86,8 @@ export function createFsReplayCapture(
   const stopSettleMs = deps.stopSettleMs ?? STOP_SETTLE_MS;
   const simWaitMs = deps.simWaitMs ?? SIM_WAIT_MS;
   const minRecordDurationMs = deps.minRecordDurationMs ?? 15_000;
+  const shotSettleMs = deps.shotSettleMs ?? 1_000;
+  const concat = deps.concat;
 
   async function waitForNewRecording(
     input: WaitForNewRecordingInput,
@@ -223,6 +230,155 @@ export function createFsReplayCapture(
     return mediaPath;
   }
 
+  async function directedCapture(
+    input: DirectedCaptureInput,
+  ): Promise<DirectedCaptureResult> {
+    const startedAt = performance.now();
+    const playSpeed = Math.max(1, Math.min(4, Math.floor(input.playSpeed ?? 1)));
+    if (input.shots.length === 0) {
+      throw new Error("Director capture requires at least one shot");
+    }
+    if (!concat) {
+      throw new Error("Director capture requires a video concat adapter");
+    }
+
+    log.info("Directed capture started", {
+      rpyPath: input.rpyPath,
+      shotCount: input.shots.length,
+      watchDir: input.watchDir,
+      outputPath: input.outputPath,
+      playSpeed,
+    });
+
+    await fs.access(input.rpyPath);
+    await fs.mkdir(input.watchDir, { recursive: true });
+    await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
+
+    await sim.openReplay(input.rpyPath);
+    await sim.waitUntilRunning(Math.min(simWaitMs, input.timeoutMs));
+    await sim.sleep(loadSettleMs);
+
+    const segments: DirectedCaptureResult["segments"] = [];
+
+    try {
+      await broadcast.send(
+        IracingBroadcastMsg.VideoCapture,
+        IracingVideoCaptureMode.HideTimer,
+      );
+
+      for (let index = 0; index < input.shots.length; index += 1) {
+        const shot = input.shots[index]!;
+        const elapsed = Math.round(performance.now() - startedAt);
+        const remainingMs = input.timeoutMs - elapsed;
+        const neededMs = shot.recordMs + stopSettleMs + 8_000;
+        if (remainingMs < neededMs) {
+          log.warn("Directed capture stopping early due to timeout budget", {
+            completedShots: segments.length,
+            totalShots: input.shots.length,
+            remainingMs,
+            neededMs,
+          });
+          break;
+        }
+
+        log.info("Director shot starting", {
+          shotId: shot.id,
+          index,
+          seekMs: shot.seekMs,
+          recordMs: shot.recordMs,
+          carPosition: shot.carPosition,
+        });
+
+        if (shot.seekMs < 0) {
+          await broadcast.send(
+            IracingBroadcastMsg.ReplaySearch,
+            IracingReplaySearchMode.NextIncident,
+          );
+        } else {
+          await broadcast.sendWithVar2_32(
+            IracingBroadcastMsg.ReplaySearchSessionTime,
+            0,
+            Math.max(0, Math.floor(shot.seekMs)),
+          );
+        }
+        await sim.sleep(shotSettleMs);
+        await broadcast.send(
+          IracingBroadcastMsg.CamSwitchPos,
+          shot.carPosition,
+          shot.cameraGroup,
+          shot.cameraNumber,
+        );
+        await sim.sleep(400);
+
+        const since = new Date();
+        await broadcast.send(
+          IracingBroadcastMsg.VideoCapture,
+          IracingVideoCaptureMode.Start,
+        );
+        await sim.sleep(300);
+        await broadcast.send(
+          IracingBroadcastMsg.ReplaySetPlaySpeed,
+          playSpeed,
+          0,
+        );
+        await sim.sleep(Math.max(50, shot.recordMs));
+        await broadcast.send(
+          IracingBroadcastMsg.ReplaySetPlaySpeed,
+          0,
+          0,
+        );
+        await broadcast.send(
+          IracingBroadcastMsg.VideoCapture,
+          IracingVideoCaptureMode.End,
+        );
+        await sim.sleep(stopSettleMs);
+
+        const segmentPath = await waitForNewRecording({
+          watchDir: input.watchDir,
+          since,
+          timeoutMs: 45_000,
+        });
+        segments.push({
+          shotId: shot.id,
+          path: segmentPath,
+          durationMs: shot.recordMs,
+        });
+      }
+    } catch (error) {
+      log.error("Directed capture failed", {
+        rpyPath: input.rpyPath,
+        completedShots: segments.length,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error),
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw new Error(
+        `Director capture failed after ${segments.length} shot(s): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error },
+      );
+    }
+
+    if (segments.length === 0) {
+      throw new Error("Director capture produced no segments");
+    }
+
+    const mediaPath = await concat.concat({
+      segmentPaths: segments.map((segment) => segment.path),
+      outputPath: input.outputPath,
+    });
+
+    log.info("Directed capture completed", {
+      mediaPath,
+      segmentCount: segments.length,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    return { mediaPath, segments };
+  }
+
   return {
     defaultVideosDir() {
       if (deps.videosDir) return deps.videosDir;
@@ -230,5 +386,6 @@ export function createFsReplayCapture(
     },
     waitForNewRecording,
     autoCapture,
+    directedCapture,
   };
 }

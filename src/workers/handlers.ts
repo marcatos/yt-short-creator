@@ -5,6 +5,7 @@ import type {
   RunIdeation,
 } from "@/src/application/run-ideation";
 import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
+import type { RunReplayDirectorCapture } from "@/src/application/run-replay-director-capture";
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
 import {
@@ -47,6 +48,7 @@ type HandlerDeps = {
   runClipAnalysis: RunClipAnalysis;
   runReplayAnalysis: RunReplayAnalysis;
   requestReplayCapture: RequestReplayCapture;
+  runReplayDirectorCapture: RunReplayDirectorCapture;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
   candidates: CandidateRepository;
@@ -253,6 +255,30 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         durationMs: Math.round(performance.now() - startedAt),
       });
     },
+    director_capture_replay: async (ctx) => {
+      const sessionId = requireStringPayload(ctx.payload, "sessionId");
+      const startedAt = performance.now();
+      handlerLogger.info("director_capture_replay started", {
+        jobId: ctx.jobId,
+        sessionId,
+      });
+      ctx.setProgress(
+        5,
+        "Director mode: seeking incidents/events and recording highlight shots",
+      );
+      const result = await deps.runReplayDirectorCapture({ sessionId });
+      ctx.setProgress(
+        100,
+        `Directed ${result.candidates.length} highlight candidates from ${result.session.mediaPath}`,
+      );
+      handlerLogger.info("director_capture_replay completed", {
+        jobId: ctx.jobId,
+        sessionId,
+        mediaPath: result.session.mediaPath,
+        candidateCount: result.candidates.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    },
     ideate: async (ctx) => {
       const channelId = requireStringPayload(ctx.payload, "channelId");
       const count = requireNumberPayload(ctx.payload, "count");
@@ -432,6 +458,9 @@ export function createStubHandlers(): JobHandlers {
       return [];
     },
     async requestReplayCapture({ sessionId }) {
+      throw new Error(`Replay session not found: ${sessionId}`);
+    },
+    async runReplayDirectorCapture({ sessionId }) {
       throw new Error(`Replay session not found: ${sessionId}`);
     },
     async runIdeation() {
