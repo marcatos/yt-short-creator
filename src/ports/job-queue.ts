@@ -20,7 +20,11 @@ export interface JobQueuePort {
   getProgress(jobId: string): Promise<JobProgressView | null>;
 }
 
-export interface DurableJobQueue extends JobQueuePort {
+export interface InspectableJobQueue extends JobQueuePort {
+  listJobs(): JobRecord[];
+}
+
+export interface DurableJobQueue extends InspectableJobQueue {
   claimNext(): Promise<JobRecord | null>;
   setProgress(jobId: string, pct: number, message: string): void;
   saveCheckpoint(jobId: string, step: string, data?: unknown): Promise<void>;
@@ -40,6 +44,5 @@ export interface DurableJobQueue extends JobQueuePort {
   reorder(orderedIds: string[]): Promise<void>;
   move(jobId: string, to: "top" | "bottom"): Promise<void>;
   getJob(jobId: string): JobRecord | undefined;
-  listJobs(): JobRecord[];
   recoverOnBoot(): Promise<{ requeuedRunning: number }>;
 }

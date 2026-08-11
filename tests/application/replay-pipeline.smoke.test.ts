@@ -70,6 +70,9 @@ describe("replay pipeline smoke", () => {
       async getProgress() {
         return null;
       },
+      listJobs() {
+        return [];
+      },
     };
 
     const runReplayAnalysis = createRunReplayAnalysis({

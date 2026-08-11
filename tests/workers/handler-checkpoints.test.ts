@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { JobPausedError } from "@/src/domain/queue-control";
+import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type {
   RenderJob,
   ShortCandidate,
@@ -65,6 +66,8 @@ function makeHandlers(options: {
   onCandidateSave?: (candidate: ShortCandidate) => void;
   onRenderJobSave?: (job: RenderJob) => void;
   onEnqueue?: () => void;
+  queueJobs?: JobRecord[];
+  onUpload?: () => void;
   renderCalled: { value: boolean };
 }) {
   const { candidate: initialCandidate } = options;
@@ -182,6 +185,9 @@ function makeHandlers(options: {
       async getProgress() {
         return null;
       },
+      listJobs() {
+        return options.queueJobs ?? [];
+      },
     },
     settings: {
       async get() {
@@ -211,7 +217,8 @@ function makeHandlers(options: {
     },
     upload: {
       async upload() {
-        throw new Error("unused");
+        options.onUpload?.();
+        return { youtubeVideoId: "youtube-short-1" };
       },
     },
     clock: { now: () => now },
@@ -263,6 +270,92 @@ describe("render_short handler checkpoints", () => {
     expect(renderCalled.value).toBe(false);
   });
 
+  it("pauses after saving the render checkpoint and enqueues once on resume", async () => {
+    const renderCalled = { value: false };
+    let enqueued = 0;
+    let pauseRequested = false;
+    const handlers = makeHandlers({
+      candidate: baseCandidate(),
+      renderCalled,
+      onEnqueue: () => {
+        enqueued += 1;
+      },
+    });
+
+    await expect(
+      handlers.render_short(
+        makeCtx({
+          payload: { candidateId: "candidate-1" },
+          async saveCheckpoint(step) {
+            if (step === "render") {
+              pauseRequested = true;
+            }
+          },
+          throwIfPausedOrCancelled() {
+            if (pauseRequested) {
+              throw new JobPausedError();
+            }
+          },
+        }),
+      ),
+    ).rejects.toThrow(JobPausedError);
+
+    expect(renderCalled.value).toBe(true);
+    expect(enqueued).toBe(0);
+
+    await handlers.render_short(
+      makeCtx({
+        payload: { candidateId: "candidate-1" },
+        checkpoint: { step: "render" },
+      }),
+    );
+
+    expect(enqueued).toBe(1);
+  });
+
+  it("skips enqueue when a publish job already exists for the candidate", async () => {
+    const renderCalled = { value: false };
+    let enqueued = 0;
+    const savedCheckpoints: string[] = [];
+    const handlers = makeHandlers({
+      candidate: baseCandidate(),
+      renderCalled,
+      queueJobs: [
+        {
+          id: "publish-job-existing",
+          type: "publish_short",
+          payload: { candidateId: "candidate-1" },
+          status: "succeeded",
+          position: 1,
+          progressPct: 100,
+          progressMessage: "Published",
+          checkpoint: { step: "upload" },
+          error: null,
+          createdAt: now,
+          startedAt: now,
+          finishedAt: now,
+          updatedAt: now,
+        },
+      ],
+      onEnqueue: () => {
+        enqueued += 1;
+      },
+    });
+
+    await handlers.render_short(
+      makeCtx({
+        payload: { candidateId: "candidate-1" },
+        checkpoint: { step: "render" },
+        async saveCheckpoint(step) {
+          savedCheckpoints.push(step);
+        },
+      }),
+    );
+
+    expect(enqueued).toBe(0);
+    expect(savedCheckpoints).toEqual(["enqueue_publish"]);
+  });
+
   it("re-throws pause errors without marking the candidate or render job failed", async () => {
     const renderCalled = { value: false };
     let candidateSaved: ShortCandidate | undefined;
@@ -298,6 +391,33 @@ describe("render_short handler checkpoints", () => {
 
     expect(renderJobSaved?.status).not.toBe("failed");
     expect(candidateSaved?.status).not.toBe("failed");
+  });
+});
+
+describe("publish_short handler checkpoints", () => {
+  it("checkpoints upload without uploading an already published candidate", async () => {
+    const renderCalled = { value: false };
+    let uploads = 0;
+    const savedCheckpoints: string[] = [];
+    const handlers = makeHandlers({
+      candidate: { ...baseCandidate(), status: "published" },
+      renderCalled,
+      onUpload: () => {
+        uploads += 1;
+      },
+    });
+
+    await handlers.publish_short(
+      makeCtx({
+        payload: { candidateId: "candidate-1" },
+        async saveCheckpoint(step) {
+          savedCheckpoints.push(step);
+        },
+      }),
+    );
+
+    expect(uploads).toBe(0);
+    expect(savedCheckpoints).toEqual(["upload"]);
   });
 });
 
@@ -411,6 +531,9 @@ describe("download_source_video handler checkpoints", () => {
         },
         async getProgress() {
           return null;
+        },
+        listJobs() {
+          return [];
         },
       },
       settings: {
@@ -572,6 +695,9 @@ describe("download_source_video handler checkpoints", () => {
         },
         async getProgress() {
           return null;
+        },
+        listJobs() {
+          return [];
         },
       },
       settings: {

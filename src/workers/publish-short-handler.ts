@@ -86,6 +86,29 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
     let accessToken: string | undefined;
     let youtubeVideoId: string | undefined;
 
+    if (
+      candidate.status === "published" ||
+      (existingJob?.status === "succeeded" && existingJob.youtubeVideoId)
+    ) {
+      youtubeVideoId = existingJob?.youtubeVideoId ?? undefined;
+      await runStep(ctx, JOB_TYPE, "upload", async () => {});
+      ctx.setProgress(
+        100,
+        youtubeVideoId ? `Published as ${youtubeVideoId}` : "Already published",
+      );
+      log.info("Publish upload skipped", {
+        jobId: ctx.jobId,
+        candidateId,
+        youtubeVideoId,
+        reason:
+          candidate.status === "published"
+            ? "candidate_already_published"
+            : "publish_job_already_succeeded",
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      return;
+    }
+
     try {
       await runStep(ctx, JOB_TYPE, "prepare", async () => {
         if (candidate.status === "ready") {

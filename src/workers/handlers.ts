@@ -9,7 +9,7 @@ import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
-import type { JobQueuePort } from "@/src/ports/job-queue";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderPort } from "@/src/ports/render";
@@ -43,7 +43,7 @@ export type HandlerDeps = {
   render: RenderPort;
   brandPack: BrandPackPort;
   mediaStore: MediaStorePort;
-  queue: JobQueuePort;
+  queue: InspectableJobQueue;
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;

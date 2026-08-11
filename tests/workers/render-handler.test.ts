@@ -147,6 +147,9 @@ describe("render_short handler", () => {
         async getProgress() {
           return null;
         },
+        listJobs() {
+          return [];
+        },
       },
       settings: {
         async get() {

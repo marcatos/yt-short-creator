@@ -70,6 +70,9 @@ describe("candidate approval publishing flow", () => {
       async getProgress() {
         return null;
       },
+      listJobs() {
+        return [];
+      },
     };
 
     const approve = createApproveCandidate({ candidates, queue, logger });

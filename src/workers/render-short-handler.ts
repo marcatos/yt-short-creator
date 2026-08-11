@@ -10,7 +10,7 @@ import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
-import type { JobQueuePort } from "@/src/ports/job-queue";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderInput, RenderPort, RenderResult } from "@/src/ports/render";
@@ -30,7 +30,7 @@ type Dependencies = {
   render: RenderPort;
   brandPack: BrandPackPort;
   mediaStore: MediaStorePort;
-  queue: JobQueuePort;
+  queue: InspectableJobQueue;
   clock: ClockPort;
 };
 
@@ -178,6 +178,22 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
 
       let publishJobId: string | undefined;
       await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
+        const existingPublishJob = deps.queue.listJobs().find(
+          (job) =>
+            job.type === "publish_short" &&
+            job.payload.candidateId === candidateId &&
+            ["queued", "running", "paused", "succeeded"].includes(job.status),
+        );
+        if (existingPublishJob) {
+          publishJobId = existingPublishJob.id;
+          log.info("publish_short enqueue skipped", {
+            jobId: ctx.jobId,
+            candidateId,
+            existingPublishJobId: existingPublishJob.id,
+            existingPublishJobStatus: existingPublishJob.status,
+          });
+          return;
+        }
         publishJobId = await deps.queue.enqueue({
           type: "publish_short",
           payload: { candidateId },

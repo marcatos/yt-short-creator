@@ -121,6 +121,9 @@ const noopDeps: HandlerDeps = {
     async getProgress() {
       return null;
     },
+    listJobs() {
+      return [];
+    },
   },
   settings: {
     async get() {

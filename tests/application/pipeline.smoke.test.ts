@@ -62,6 +62,9 @@ describe("pipeline smoke path", () => {
       async getProgress() {
         return null;
       },
+      listJobs() {
+        return [];
+      },
     };
     const mediaStore = {
       sourcePath: () => "media/source.mp4",
