@@ -119,12 +119,91 @@ describe("InProcessJobQueue", () => {
     expect(jobs[0]).toMatchObject({
       type: "publish_short",
       status: "running",
-      position: 0,
+      position: 1,
       progressPct: 42,
       progressMessage: "Uploading",
       checkpoint: null,
       error: null,
       updatedAt: expect.any(Date),
     });
+  });
+
+  it("claims by ascending position and supports reorder + move", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const a = await queue.enqueue({ type: "t", payload: {} });
+    const b = await queue.enqueue({ type: "t", payload: {} });
+    const c = await queue.enqueue({ type: "t", payload: {} });
+    await queue.reorder([c, a, b]);
+    const first = await queue.claimNext();
+    expect(first?.id).toBe(c);
+  });
+
+  it("pause request + markPaused; resume returns to queued", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+    await queue.claimNext();
+    queue.markRunning(id);
+    const paused = await queue.requestPause(id);
+    expect(paused.ok).toBe(true);
+    expect(queue.isPauseRequested(id)).toBe(true);
+    queue.markPaused(id);
+    expect(queue.getJob(id)?.status).toBe("paused");
+    const resumed = await queue.resume(id);
+    expect(resumed.ok).toBe(true);
+    expect(queue.getJob(id)?.status).toBe("queued");
+  });
+
+  it("cancel aborts running via AbortController", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+    await queue.claimNext();
+    queue.markRunning(id);
+    const controller = new AbortController();
+    queue.attachAbortController(id, controller);
+    const result = await queue.cancel(id);
+    expect(result).toBe("aborting");
+    expect(controller.signal.aborted).toBe(true);
+  });
+
+  it("saveCheckpoint persists step", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+    await queue.saveCheckpoint(id, "prepare", { foo: 1 });
+    expect(queue.getJob(id)?.checkpoint).toEqual({
+      step: "prepare",
+      data: { foo: 1 },
+    });
+  });
+
+  it("recoverOnBoot requeues running jobs", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+    await queue.claimNext();
+    queue.markRunning(id);
+    await queue.saveCheckpoint(id, "prepare");
+    const { requeuedRunning } = await queue.recoverOnBoot();
+    expect(requeuedRunning).toBe(1);
+    expect(queue.getJob(id)?.status).toBe("queued");
+    expect(queue.getJob(id)?.checkpoint?.step).toBe("prepare");
   });
 });
