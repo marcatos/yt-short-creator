@@ -65,7 +65,7 @@ export function createAttachReplayMedia(deps: Dependencies): AttachReplayMedia {
   };
 }
 
-.createAttachReplayIbt(deps: {
+export function createAttachReplayIbt(deps: {
   replaySessions: ReplaySessionRepository;
   clock: ClockPort;
   logger: Logger;
