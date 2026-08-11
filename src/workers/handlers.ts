@@ -13,6 +13,7 @@ import type { JobQueuePort } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
+import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -43,6 +44,7 @@ type HandlerDeps = {
   brandPack: BrandPackPort;
   mediaStore: MediaStorePort;
   queue: JobQueuePort;
+  settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
   clock: ClockPort;
@@ -406,6 +408,16 @@ export function createStubHandlers(): JobHandlers {
       async getProgress() {
         return null;
       },
+    },
+    settings: {
+      async get() {
+        return {
+          brandRoot: "",
+          logLevel: "INFO",
+          defaultPrivacy: "unlisted",
+        };
+      },
+      async save() {},
     },
     auth: {
       async getAuthorizationUrl() {

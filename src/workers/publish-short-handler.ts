@@ -4,6 +4,7 @@ import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
 import type { Logger } from "@/src/ports/logger";
+import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 
@@ -13,6 +14,7 @@ type Dependencies = {
   logger: Logger;
   candidates: CandidateRepository;
   jobs: JobRepository;
+  settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
   clock: ClockPort;
@@ -89,6 +91,7 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
 
     try {
       const accessToken = await currentAccessToken(deps.auth, deps.clock.now());
+      const settings = await deps.settings.get();
       ctx.setProgress(20, "Uploading Short to YouTube");
       const result = await deps.upload.upload({
         accessToken,
@@ -97,7 +100,7 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
         description: candidate.description,
         tags: candidate.tags,
         scheduledAt,
-        privacy: scheduledAt ? "private" : "public",
+        privacy: scheduledAt ? "private" : settings.defaultPrivacy,
       });
       const publishedAt = deps.clock.now();
       candidate = applyCandidateEvent(candidate, { type: "publish_succeeded" });

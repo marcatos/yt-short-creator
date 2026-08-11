@@ -153,6 +153,16 @@ describe("candidate approval publishing flow", () => {
         ensureDirs: async () => {},
       },
       queue,
+      settings: {
+        async get() {
+          return {
+            brandRoot: "brand",
+            logLevel: "INFO",
+            defaultPrivacy: "unlisted",
+          };
+        },
+        async save() {},
+      },
       auth: {
         async getAuthorizationUrl() {
           return "";

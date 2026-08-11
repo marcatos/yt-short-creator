@@ -49,6 +49,17 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 4. Add authorized redirect URI: `http://localhost:3000/api/auth/youtube/callback`
 5. Copy **Client ID** and **Client secret** into `.env.local` as `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`.
 
+## Acceptance
+
+Run this checklist against a test channel before accepting a release:
+
+- [ ] Configure real OAuth credentials, start the app, and connect the intended YouTube channel.
+- [ ] In **Settings**, set **Default privacy** to **Unlisted** and save.
+- [ ] Generate or clip one disposable candidate, review its metadata, and approve it.
+- [ ] Confirm the render and publish jobs both finish successfully with no retries or logged secrets.
+- [ ] Open the returned video in YouTube Studio and confirm it is **Unlisted**, vertical, playable, and contains `#Shorts`.
+- [ ] Confirm subscribers were not notified, then delete the disposable upload if it is no longer needed.
+
 ## Scripts
 
 | Command | Description |

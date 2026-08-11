@@ -86,7 +86,7 @@ import type {
 import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
 
-import { loadEnv } from "./env";
+import { loadEnv, type AppEnv } from "./env";
 
 let workersStarted = false;
 
@@ -117,18 +117,14 @@ export type AppContainer = {
   render: RenderPort;
   upload: YouTubeUploadPort;
   logger: Logger;
+  clock: SystemClock;
 };
 
 const globalContainer = globalThis as typeof globalThis & {
   ytShortCreatorContainer?: AppContainer;
 };
 
-export function getContainer(): AppContainer {
-  if (globalContainer.ytShortCreatorContainer) {
-    return globalContainer.ytShortCreatorContainer;
-  }
-
-  const env = loadEnv();
+export function createContainer(env: AppEnv): AppContainer {
   const connection = createDb(env.DATABASE_PATH);
   const repositories = createRepositories(connection.db);
   const logger = createLogger(env.LOG_LEVEL);
@@ -167,6 +163,10 @@ export function getContainer(): AppContainer {
     clientId: env.YOUTUBE_CLIENT_ID,
     clientSecret: env.YOUTUBE_CLIENT_SECRET,
     redirectUri: env.YOUTUBE_REDIRECT_URI,
+    tokenPath: path.join(
+      path.dirname(env.DATABASE_PATH),
+      "youtube-tokens.json",
+    ),
   });
   const catalog = new GoogleYouTubeCatalogAdapter();
   const upload = createGoogleYouTubeUpload({ logger });
@@ -201,6 +201,7 @@ export function getContainer(): AppContainer {
     brandPack,
     render,
     upload,
+    clock,
     connectChannel: createConnectChannel({
       auth,
       catalog,
@@ -268,8 +269,14 @@ export function getContainer(): AppContainer {
     updateSettings: createUpdateSettings({ settings, logger }),
   };
 
-  globalContainer.ytShortCreatorContainer = container;
   return container;
+}
+
+export function getContainer(): AppContainer {
+  if (!globalContainer.ytShortCreatorContainer) {
+    globalContainer.ytShortCreatorContainer = createContainer(loadEnv());
+  }
+  return globalContainer.ytShortCreatorContainer;
 }
 
 export function startWorkers(): void {
@@ -280,7 +287,6 @@ export function startWorkers(): void {
 
   const container = getContainer();
   const logger = container.logger;
-  const clock = new SystemClock();
   const runner = createWorkerRunner({
     queue: container.jobQueue,
     handlers: createHandlers({
@@ -296,12 +302,13 @@ export function startWorkers(): void {
       brandPack: container.brandPack,
       mediaStore: container.mediaStore,
       queue: container.jobQueue,
+      settings: container.settings,
       auth: container.auth,
       upload: container.upload,
-      clock,
+      clock: container.clock,
     }),
     logger,
-    clock,
+    clock: container.clock,
   });
 
   runner.start();

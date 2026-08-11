@@ -135,6 +135,16 @@ describe("render_short handler", () => {
           return null;
         },
       },
+      settings: {
+        async get() {
+          return {
+            brandRoot: "brand",
+            logLevel: "INFO",
+            defaultPrivacy: "unlisted",
+          };
+        },
+        async save() {},
+      },
       auth: {
         async getAuthorizationUrl() {
           return "";
