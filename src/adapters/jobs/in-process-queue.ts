@@ -1,28 +1,24 @@
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
-import type { ClockPort } from "@/src/ports/clock";
-import type { IdPort } from "@/src/ports/id";
+import {
+  applyOrder,
+  createQueuedJobRecord,
+  findNextQueued,
+  hasQueuedJob,
+  type InProcessQueueDeps,
+  movedOrder,
+  nextPosition,
+  recoverRunningJobs,
+} from "@/src/adapters/jobs/in-process-queue-helpers";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
-import type { Logger } from "@/src/ports/logger";
 
 export type { JobRecord } from "@/src/adapters/jobs/job-record";
-
 export type InProcessJobQueue = DurableJobQueue;
 
-type QueueDeps = {
-  logger: Logger;
-  idPort: IdPort;
-  clock: ClockPort;
-};
-
-export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
+export function createInProcessJobQueue(deps: InProcessQueueDeps): InProcessJobQueue {
   const jobs = new Map<string, JobRecord>();
   const pauseRequests = new Set<string>();
   const abortControllers = new Map<string, AbortController>();
   let wake: (() => void) | null = null;
-
-  function hasQueuedJob(): boolean {
-    return Array.from(jobs.values()).some((job) => job.status === "queued");
-  }
 
   function notifyWaiter(): void {
     wake?.();
@@ -30,7 +26,7 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
   }
 
   function waitForWork(): Promise<void> {
-    if (hasQueuedJob()) {
+    if (hasQueuedJob(jobs)) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -42,51 +38,13 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
     job.updatedAt = deps.clock.now();
   }
 
-  function findNextQueued(): JobRecord | null {
-    let next: JobRecord | null = null;
-    for (const job of jobs.values()) {
-      if (
-        job.status === "queued" &&
-        (!next || job.position < next.position)
-      ) {
-        next = job;
-      }
-    }
-    return next;
-  }
-
-  function orderedControllableJobs(): JobRecord[] {
-    return Array.from(jobs.values())
-      .filter((job) => job.status === "queued" || job.status === "paused")
-      .sort((left, right) => left.position - right.position);
-  }
-
   const queueLogger = deps.logger.child({ component: "InProcessJobQueue" });
-
   const queue: InProcessJobQueue = {
     async enqueue(job) {
       const id = deps.idPort.generate();
       const now = deps.clock.now();
-      const position =
-        Array.from(jobs.values()).reduce(
-          (max, existing) => Math.max(max, existing.position),
-          -1,
-        ) + 1;
-      const record: JobRecord = {
-        id,
-        type: job.type,
-        payload: job.payload,
-        status: "queued",
-        position,
-        progressPct: 0,
-        progressMessage: "",
-        checkpoint: null,
-        error: null,
-        createdAt: now,
-        startedAt: null,
-        finishedAt: null,
-        updatedAt: now,
-      };
+      const position = nextPosition(jobs);
+      const record = createQueuedJobRecord(job, id, position, now);
       jobs.set(id, record);
       queueLogger.info("Job enqueued", {
         jobId: id,
@@ -111,11 +69,16 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
     },
 
     async claimNext() {
-      let next = findNextQueued();
+      let next = findNextQueued(jobs);
       while (!next) {
         await waitForWork();
-        next = findNextQueued();
+        next = findNextQueued(jobs);
       }
+      queueLogger.info("Job claimed", {
+        jobId: next.id,
+        type: next.type,
+        position: next.position,
+      });
       return next;
     },
 
@@ -127,6 +90,11 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       job.progressPct = pct;
       job.progressMessage = message;
       touch(job);
+      queueLogger.debug("Job progress updated", {
+        jobId,
+        type: job.type,
+        pct,
+      });
     },
 
     async saveCheckpoint(jobId, step, data) {
@@ -294,42 +262,15 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
     },
 
     async reorder(orderedIds) {
-      const controllableJobs = orderedControllableJobs();
-      const expectedIds = new Set(controllableJobs.map((job) => job.id));
-      const suppliedIds = new Set(orderedIds);
-      if (
-        suppliedIds.size !== orderedIds.length ||
-        suppliedIds.size !== expectedIds.size ||
-        orderedIds.some((id) => !expectedIds.has(id))
-      ) {
-        throw new Error(
-          "orderedIds must exactly match the current queued and paused jobs",
-        );
-      }
-      orderedIds.forEach((id, position) => {
-        const job = jobs.get(id);
-        if (job) {
-          job.position = position;
-          touch(job);
-        }
-      });
+      applyOrder(jobs, orderedIds, touch);
       queueLogger.info("Jobs reordered", { jobCount: orderedIds.length });
       notifyWaiter();
     },
 
     async move(jobId, to) {
-      const orderedIds = orderedControllableJobs().map((job) => job.id);
-      const currentIndex = orderedIds.indexOf(jobId);
-      if (currentIndex < 0) {
-        throw new Error("Only queued or paused jobs can be moved");
-      }
-      orderedIds.splice(currentIndex, 1);
-      if (to === "top") {
-        orderedIds.unshift(jobId);
-      } else {
-        orderedIds.push(jobId);
-      }
-      await queue.reorder(orderedIds);
+      const job = jobs.get(jobId);
+      await queue.reorder(movedOrder(jobs, jobId, to));
+      queueLogger.info("Job moved", { jobId, type: job?.type, to });
     },
 
     getJob(jobId) {
@@ -341,17 +282,12 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
     },
 
     async recoverOnBoot() {
-      let requeuedRunning = 0;
-      for (const job of jobs.values()) {
-        if (job.status !== "running") {
-          continue;
-        }
-        job.status = "queued";
-        pauseRequests.delete(job.id);
-        abortControllers.delete(job.id);
-        touch(job);
-        requeuedRunning += 1;
-      }
+      const requeuedRunning = recoverRunningJobs(
+        jobs,
+        pauseRequests,
+        abortControllers,
+        touch,
+      );
       if (requeuedRunning > 0) {
         queueLogger.info("Running jobs recovered", { requeuedRunning });
         notifyWaiter();
@@ -359,6 +295,5 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       return { requeuedRunning };
     },
   };
-
   return queue;
 }

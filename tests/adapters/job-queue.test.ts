@@ -3,9 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { createInProcessJobQueue } from "@/src/adapters/jobs/in-process-queue";
+import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
 import type { JobHandler } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
+
+type LogEvent = {
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  context: Record<string, unknown>;
+};
 
 function createTestLogger(): Logger {
   const noop = () => {};
@@ -17,6 +24,40 @@ function createTestLogger(): Logger {
     child: () => logger,
   };
   return logger;
+}
+
+function createRecordingLogger(events: LogEvent[]): Logger {
+  function withContext(baseContext: Record<string, unknown>): Logger {
+    const record =
+      (level: LogEvent["level"]) =>
+      (message: string, context: Record<string, unknown> = {}) => {
+        events.push({
+          level,
+          message,
+          context: { ...baseContext, ...context },
+        });
+      };
+    return {
+      debug: record("debug"),
+      info: record("info"),
+      warn: record("warn"),
+      error: record("error"),
+      child: (context) => withContext({ ...baseContext, ...context }),
+    };
+  }
+  return withContext({});
+}
+
+class TestClock implements ClockPort {
+  constructor(private current: Date) {}
+
+  now(): Date {
+    return this.current;
+  }
+
+  advance(milliseconds: number): void {
+    this.current = new Date(this.current.getTime() + milliseconds);
+  }
 }
 
 async function waitFor(
@@ -128,7 +169,7 @@ describe("InProcessJobQueue", () => {
     });
   });
 
-  it("claims by ascending position and supports reorder + move", async () => {
+  it("claims in the order produced by reorder and top/bottom moves", async () => {
     const queue = createInProcessJobQueue({
       logger: createTestLogger(),
       idPort: new UuidIdPort(),
@@ -138,8 +179,18 @@ describe("InProcessJobQueue", () => {
     const b = await queue.enqueue({ type: "t", payload: {} });
     const c = await queue.enqueue({ type: "t", payload: {} });
     await queue.reorder([c, a, b]);
+    await queue.move(b, "top");
     const first = await queue.claimNext();
-    expect(first?.id).toBe(c);
+    expect(first?.id).toBe(b);
+    queue.markRunning(b);
+
+    await queue.move(c, "bottom");
+    const second = await queue.claimNext();
+    expect(second?.id).toBe(a);
+    queue.markRunning(a);
+
+    const third = await queue.claimNext();
+    expect(third?.id).toBe(c);
   });
 
   it("pause request + markPaused; resume returns to queued", async () => {
@@ -189,6 +240,84 @@ describe("InProcessJobQueue", () => {
       step: "prepare",
       data: { foo: 1 },
     });
+  });
+
+  it("markFailed stores the failure message", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+
+    queue.markFailed(id, new Error("render failed"));
+
+    expect(queue.getJob(id)?.error).toBe("render failed");
+  });
+
+  it("setProgress bumps updatedAt", async () => {
+    const clock = new TestClock(new Date("2026-08-11T10:00:00.000Z"));
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock,
+    });
+    const id = await queue.enqueue({ type: "t", payload: {} });
+    const originalUpdatedAt = queue.getJob(id)?.updatedAt;
+
+    clock.advance(1000);
+    queue.setProgress(id, 50, "halfway");
+
+    expect(queue.getJob(id)?.updatedAt.getTime()).toBe(
+      originalUpdatedAt!.getTime() + 1000,
+    );
+  });
+
+  it("logs claims, progress updates, and moves with job context", async () => {
+    const events: LogEvent[] = [];
+    const queue = createInProcessJobQueue({
+      logger: createRecordingLogger(events),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+    const firstId = await queue.enqueue({ type: "render", payload: {} });
+    const secondId = await queue.enqueue({ type: "publish", payload: {} });
+
+    await queue.move(secondId, "top");
+    await queue.claimNext();
+    queue.setProgress(secondId, 25, "uploading");
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          message: "Job moved",
+          context: expect.objectContaining({
+            jobId: secondId,
+            type: "publish",
+            to: "top",
+          }),
+        }),
+        expect.objectContaining({
+          level: "info",
+          message: "Job claimed",
+          context: expect.objectContaining({
+            jobId: secondId,
+            type: "publish",
+          }),
+        }),
+        expect.objectContaining({
+          level: "debug",
+          message: "Job progress updated",
+          context: expect.objectContaining({
+            jobId: secondId,
+            type: "publish",
+            pct: 25,
+          }),
+        }),
+      ]),
+    );
+    expect(firstId).not.toBe(secondId);
   });
 
   it("recoverOnBoot requeues running jobs", async () => {
