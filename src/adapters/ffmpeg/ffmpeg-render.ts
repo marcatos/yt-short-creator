@@ -209,7 +209,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
       try {
         await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
         const mediaArgs =
-          input.origin === "clip" ? clipArgs(input) : generateArgs(input);
+          input.origin === "generate" ? generateArgs(input) : clipArgs(input);
         await runFfmpeg(ffmpegPath, [
           "-y",
           "-hide_banner",
