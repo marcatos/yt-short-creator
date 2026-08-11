@@ -23,6 +23,8 @@ export default function JobsPage() {
               ? job.payload.candidateId
               : null,
           status: job.status,
+          checkpointStep: job.checkpoint?.step ?? null,
+          position: job.position,
           progressPct: job.progressPct,
           message: job.progressMessage,
           createdAt: job.createdAt.toISOString(),

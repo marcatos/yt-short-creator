@@ -1,3 +1,35 @@
+# Task 10 Report: Jobs UI controls, reorder, and polling
+
+## Status
+
+Implemented the Jobs UI queue controls, full-list polling, checkpoint display,
+and queued/paused drag-and-drop reordering.
+
+## Implementation
+
+- Polls `GET /api/jobs` every two seconds while queued, running, or paused work exists.
+- Normalizes progress payloads that expose `pct` instead of `progressPct`.
+- Adds the required Pause, Resume, Cancel, Top, and Bottom controls by job state.
+- Posts HTML5 drag-and-drop ordering for queued and paused jobs to the reorder API.
+- Displays checkpoint context and adds compact styling consistent with existing controls.
+- Supplies `checkpointStep` and `position` in the server-rendered initial job data.
+
+## Verification
+
+- `npm test` — 33 files, 111 tests passed.
+- `npm test -- tests/job-progress-ui.test.ts` — 7 tests passed.
+- `npm run build` — passed.
+- IDE diagnostics and `git diff --check` — passed.
+- Manual diff review — no actionable findings.
+
+## Concerns
+
+- Interactive browser validation was unavailable because `agent-browser` is not installed.
+- The build retains the existing multiple-lockfile workspace-root warning.
+
+## Commit
+
+- `feat(jobs): add pause, reorder, and resume controls to Jobs UI`
 # Task 10 Report: Generate path
 
 ## Status
