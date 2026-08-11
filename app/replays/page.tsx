@@ -112,9 +112,11 @@ export default async function ReplaysPage() {
         </p>
         <h1 style={{ marginBottom: "0.5rem" }}>Replay sessions</h1>
         <p style={{ color: "var(--ice-dim)", maxWidth: "40rem" }}>
-          A <code>.rpy</code> is not a video. Attach a captured MP4 (or start
-          capture while iRacing plays the replay), optionally add an{" "}
-          <code>.ibt</code>, then analyze or mark moments.
+          A <code>.rpy</code> is not a video. Prefer{" "}
+          <strong>Auto-record</strong>: the app opens the replay in iRacing,
+          starts in-sim capture, plays it, then attaches the MP4. You can still
+          drop an existing capture or mark moments manually. Requires{" "}
+          <em>Options → Enable video and screen capture</em> in iRacing.
         </p>
       </header>
 
@@ -211,7 +213,7 @@ export default async function ReplaysPage() {
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                   <form action={captureReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
-                    <button type="submit">Start capture watch</button>
+                    <button type="submit">Auto-record replay</button>
                   </form>
                   <form action={analyzeReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />

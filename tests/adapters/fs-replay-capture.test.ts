@@ -59,4 +59,57 @@ describe("FsReplayCapture", () => {
       }),
     ).rejects.toThrow(/videos folder not found/i);
   });
+
+  it("autoCapture opens the replay, drives capture, and returns the new MP4", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "yt-replay-auto-"));
+    dirs.push(dir);
+    const rpyPath = path.join(dir, "race.rpy");
+    await fs.writeFile(rpyPath, "fake-rpy");
+    const videosDir = path.join(dir, "videos");
+    await fs.mkdir(videosDir);
+    const calls: string[] = [];
+
+    const capture = createFsReplayCapture({
+      logger: createLogger(),
+      pollIntervalMs: 40,
+      loadSettleMs: 10,
+      stopSettleMs: 10,
+      simWaitMs: 1_000,
+      minRecordDurationMs: 50,
+      broadcast: {
+        async send(msg, var1 = 0) {
+          calls.push(`broadcast:${msg}:${var1}`);
+        },
+      },
+      sim: {
+        async openReplay(pathArg) {
+          calls.push(`open:${pathArg}`);
+        },
+        async waitUntilRunning() {
+          calls.push("sim-running");
+        },
+        async sleep(ms) {
+          calls.push(`sleep:${ms}`);
+          if (ms >= 100) {
+            await fs.writeFile(path.join(videosDir, "auto.mp4"), "recorded");
+          }
+        },
+      },
+    });
+
+    const mediaPath = await capture.autoCapture({
+      rpyPath,
+      watchDir: videosDir,
+      timeoutMs: 5_000,
+      recordDurationMs: 120,
+      playSpeed: 2,
+    });
+
+    expect(mediaPath).toBe(path.join(videosDir, "auto.mp4"));
+    expect(calls[0]).toBe(`open:${rpyPath}`);
+    expect(calls).toContain("sim-running");
+    expect(calls.some((call) => call.startsWith("broadcast:13:1"))).toBe(true);
+    expect(calls.some((call) => call.startsWith("broadcast:13:2"))).toBe(true);
+    expect(calls.some((call) => call.startsWith("broadcast:3:2"))).toBe(true);
+  });
 });

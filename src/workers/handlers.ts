@@ -238,7 +238,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
       });
       ctx.setProgress(
         5,
-        "Waiting for new recording — open the .rpy in iRacing and start capture",
+        "Opening .rpy in iRacing and starting automatic video capture",
       );
       const session = await deps.requestReplayCapture({
         sessionId,

@@ -12,19 +12,23 @@ type Dependencies = {
   clock: ClockPort;
   logger: Logger;
   defaultTimeoutMs?: number;
+  defaultPlaySpeed?: number;
 };
 
 export type RequestReplayCapture = (input: {
   sessionId: string;
   watchDir?: string;
   timeoutMs?: number;
+  playSpeed?: number;
+  recordDurationMs?: number;
 }) => Promise<ReplaySession>;
 
 export function createRequestReplayCapture(
   deps: Dependencies,
 ): RequestReplayCapture {
   const log = deps.logger.child({ operation: "requestReplayCapture" });
-  const defaultTimeoutMs = deps.defaultTimeoutMs ?? 15 * 60_000;
+  const defaultTimeoutMs = deps.defaultTimeoutMs ?? 45 * 60_000;
+  const defaultPlaySpeed = deps.defaultPlaySpeed ?? 1;
 
   return async (input) => {
     const startedAt = performance.now();
@@ -35,14 +39,21 @@ export function createRequestReplayCapture(
 
     const watchDir = input.watchDir?.trim() || deps.capture.defaultVideosDir();
     const timeoutMs = input.timeoutMs ?? defaultTimeoutMs;
+    const playSpeed = input.playSpeed ?? defaultPlaySpeed;
+    const recordDurationMs =
+      input.recordDurationMs ??
+      (session.durationSec !== null && session.durationSec > 0
+        ? Math.ceil((session.durationSec * 1_000) / playSpeed) + 5_000
+        : undefined);
     const since = deps.clock.now();
 
-    log.info("Replay capture waiting for new recording", {
+    log.info("Replay auto-capture started", {
       sessionId: session.id,
       rpyPath: session.rpyPath,
       watchDir,
       timeoutMs,
-      hint: "Open the .rpy in iRacing and start in-sim capture (Ctrl+Alt+Shift+V) or OBS hotkey",
+      playSpeed,
+      recordDurationMs: recordDurationMs ?? null,
     });
 
     await deps.replaySessions.save({
@@ -52,10 +63,12 @@ export function createRequestReplayCapture(
     });
 
     try {
-      const mediaPath = await deps.capture.waitForNewRecording({
+      const mediaPath = await deps.capture.autoCapture({
+        rpyPath: session.rpyPath,
         watchDir,
-        since,
         timeoutMs,
+        playSpeed,
+        recordDurationMs,
       });
       const durationSec = await deps.mediaDuration.probeDurationSec(mediaPath);
       const updated: ReplaySession = {
@@ -66,7 +79,7 @@ export function createRequestReplayCapture(
         updatedAt: deps.clock.now(),
       };
       await deps.replaySessions.save(updated);
-      log.info("Replay capture attached media", {
+      log.info("Replay auto-capture attached media", {
         sessionId: session.id,
         mediaPath,
         durationSec: updated.durationSec,
@@ -79,9 +92,10 @@ export function createRequestReplayCapture(
         status: "failed",
         updatedAt: deps.clock.now(),
       });
-      log.error("Replay capture failed", {
+      log.error("Replay auto-capture failed", {
         sessionId: session.id,
         watchDir,
+        rpyPath: session.rpyPath,
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
