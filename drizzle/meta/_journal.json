@@ -15,6 +15,13 @@
       "when": 1786434000000,
       "tag": "0001_replay_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786449332949,
+      "tag": "0002_normal_meltdown",
+      "breakpoints": true
     }
   ]
 }

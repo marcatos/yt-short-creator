@@ -11,6 +11,7 @@ import type {
   ReplayProvenance,
   ReplaySessionStatus,
 } from "@/src/domain/entities";
+import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { CandidateStatus } from "@/src/domain/status";
 
 export const channels = sqliteTable("channels", {
@@ -108,5 +109,23 @@ export const publishJobs = sqliteTable("publish_jobs", {
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
   publishedAt: integer("published_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const queueJobs = sqliteTable("queue_jobs", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  payload: text("payload", { mode: "json" })
+    .$type<Record<string, unknown>>()
+    .notNull(),
+  status: text("status").$type<JobStatus>().notNull(),
+  position: integer("position").notNull(),
+  progressPct: integer("progress_pct").notNull(),
+  progressMessage: text("progress_message").notNull(),
+  checkpoint: text("checkpoint", { mode: "json" }).$type<JobCheckpoint | null>(),
+  error: text("error"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  finishedAt: integer("finished_at", { mode: "timestamp" }),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
