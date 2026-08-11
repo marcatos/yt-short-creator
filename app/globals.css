@@ -1,0 +1,36 @@
+:root {
+  --carbon: #08080a;
+  --ice: #f8f8fa;
+  --rosso: #e10600;
+  --ice-dim: #c8c8d0;
+  --carbon-mid: #121216;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--carbon);
+  color: var(--ice);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--rosso);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
