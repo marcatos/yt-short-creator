@@ -1,6 +1,13 @@
 import Link from "next/link";
 
-export default function HomePage() {
+import { getContainer } from "@/src/lib/container";
+
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const channels = await getContainer().repositories.channels.list();
+  const connectedChannel = channels[0] ?? null;
+
   return (
     <main
       style={{
@@ -43,24 +50,35 @@ export default function HomePage() {
           fontSize: "1.125rem",
         }}
       >
-        Analyze your channel, propose branded Shorts from clips and generation,
-        approve locally, and upload to YouTube.
+        {connectedChannel
+          ? `${connectedChannel.title} is connected and ready to sync.`
+          : "Analyze your channel, propose branded Shorts from clips and generation, approve locally, and upload to YouTube."}
       </p>
-      <Link
-        href="/candidates"
-        style={{
-          display: "inline-block",
-          marginTop: "0.5rem",
-          padding: "0.75rem 1.5rem",
-          backgroundColor: "var(--rosso)",
-          color: "var(--ice)",
-          borderRadius: "4px",
-          fontWeight: 600,
-          textDecoration: "none",
-        }}
-      >
-        View candidates
-      </Link>
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <Link
+          href={connectedChannel ? "/library" : "/connect"}
+          style={{
+            display: "inline-block",
+            marginTop: "0.5rem",
+            padding: "0.75rem 1.5rem",
+            backgroundColor: "var(--rosso)",
+            color: "var(--ice)",
+            borderRadius: "4px",
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          {connectedChannel ? "View library" : "Connect YouTube"}
+        </Link>
+        {connectedChannel ? (
+          <Link
+            href="/connect"
+            style={{ alignSelf: "center", marginTop: "0.5rem" }}
+          >
+            Connection settings
+          </Link>
+        ) : null}
+      </div>
     </main>
   );
 }
