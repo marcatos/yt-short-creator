@@ -13,8 +13,10 @@ export async function GET() {
           ? job.payload.candidateId
           : null,
       status: job.status,
+      position: job.position,
       progressPct: job.progressPct,
       message: job.progressMessage,
+      checkpointStep: job.checkpoint?.step ?? null,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
