@@ -3,7 +3,15 @@ import type {
   AssembleGeneratePreview,
   RunIdeation,
 } from "@/src/application/run-ideation";
+import { applyCandidateEvent } from "@/src/domain/approval";
+import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
+import type { BrandPackPort } from "@/src/ports/brand-pack";
+import type { CandidateRepository } from "@/src/ports/candidate-repository";
+import type { ClockPort } from "@/src/ports/clock";
+import type { JobRepository } from "@/src/ports/job-repository";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaStorePort } from "@/src/ports/media-store";
+import type { RenderInput, RenderPort } from "@/src/ports/render";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 
@@ -24,6 +32,12 @@ type HandlerDeps = {
   runClipAnalysis: RunClipAnalysis;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
+  candidates: CandidateRepository;
+  jobs: JobRepository;
+  render: RenderPort;
+  brandPack: BrandPackPort;
+  mediaStore: MediaStorePort;
+  clock: ClockPort;
 };
 
 const stub = (label: string): JobHandler => async (ctx) => {
@@ -51,6 +65,47 @@ function requireNumberPayload(
     throw new Error(`Job payload missing required number field: ${key}`);
   }
   return value;
+}
+
+async function renderInputForCandidate(
+  candidate: ShortCandidate,
+  deps: HandlerDeps,
+): Promise<RenderInput> {
+  const brand = await deps.brandPack.resolve();
+  const common = {
+    candidateId: candidate.id,
+    origin: candidate.origin,
+    outputPath: deps.mediaStore.renderPath(candidate.id),
+    logoPath: brand.logoStackedPath,
+    accentColor: brand.accentHex,
+  };
+
+  if ("sourceVideoId" in candidate.provenance) {
+    const source = await deps.sourceVideos.getById(
+      candidate.provenance.sourceVideoId,
+    );
+    if (!source?.localMediaPath) {
+      throw new Error(
+        `Local source media not found for candidate: ${candidate.id}`,
+      );
+    }
+    return {
+      ...common,
+      origin: "clip",
+      sourceMediaPath: source.localMediaPath,
+      startMs: candidate.provenance.startMs,
+      endMs: candidate.provenance.endMs,
+      crop: candidate.provenance.crop,
+    };
+  }
+
+  return {
+    ...common,
+    origin: "generate",
+    sourceMediaPath: candidate.provenance.timeline[0]?.asset ?? "",
+    voiceAssetPath: candidate.provenance.voiceAssetPath,
+    timeline: candidate.provenance.timeline,
+  };
 }
 
 export function createHandlers(deps: HandlerDeps): JobHandlers {
@@ -142,7 +197,81 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         durationMs: Math.round(performance.now() - startedAt),
       });
     },
-    render_short: stub("Render"),
+    render_short: async (ctx) => {
+      const candidateId = requireStringPayload(ctx.payload, "candidateId");
+      const startedAt = performance.now();
+      const createdAt = deps.clock.now();
+      let candidate = await deps.candidates.getById(candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+
+      const saveJob = async (
+        status: RenderJob["status"],
+        outputPath: string | null,
+        progressPct: number,
+        message: string,
+      ) => {
+        await deps.jobs.saveRenderJob({
+          id: ctx.jobId,
+          candidateId,
+          status,
+          outputPath,
+          progressPct,
+          message,
+          createdAt,
+          updatedAt: deps.clock.now(),
+        });
+      };
+
+      handlerLogger.info("render_short started", {
+        jobId: ctx.jobId,
+        candidateId,
+        origin: candidate.origin,
+      });
+      ctx.setProgress(5, "Preparing brand assets");
+      await saveJob("running", null, 5, "Preparing brand assets");
+
+      try {
+        const input = await renderInputForCandidate(candidate, deps);
+        ctx.setProgress(20, "Rendering 9:16 video");
+        await saveJob("running", null, 20, "Rendering 9:16 video");
+        const result = await deps.render.render(input);
+
+        candidate = {
+          ...applyCandidateEvent(candidate, { type: "render_succeeded" }),
+          renderOutputPath: result.outputPath,
+        };
+        await deps.candidates.save(candidate);
+        await saveJob(
+          "succeeded",
+          result.outputPath,
+          100,
+          "Render complete",
+        );
+        ctx.setProgress(100, `Rendered to ${result.outputPath}`);
+        handlerLogger.info("render_short completed", {
+          jobId: ctx.jobId,
+          candidateId,
+          outputPath: result.outputPath,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      } catch (error) {
+        if (candidate.status === "rendering") {
+          await deps.candidates.save(
+            applyCandidateEvent(candidate, { type: "render_failed" }),
+          );
+        }
+        await saveJob("failed", null, 100, "Render failed");
+        handlerLogger.error("render_short failed", {
+          jobId: ctx.jobId,
+          candidateId,
+          durationMs: Math.round(performance.now() - startedAt),
+          error: error instanceof Error ? error.stack : String(error),
+        });
+        throw error;
+      }
+    },
     publish_short: stub("Publish"),
   };
 }
@@ -184,6 +313,72 @@ export function createStubHandlers(): JobHandlers {
     },
     async assembleGeneratePreview({ candidateId }) {
       throw new Error(`Generate candidate not found: ${candidateId}`);
+    },
+    candidates: {
+      async save() {},
+      async getById() {
+        return null;
+      },
+      async list() {
+        return [];
+      },
+    },
+    jobs: {
+      async saveRenderJob() {},
+      async savePublishJob() {},
+      async getRenderJobById() {
+        return null;
+      },
+      async getPublishJobById() {
+        return null;
+      },
+      async getRenderJobByCandidateId() {
+        return null;
+      },
+      async getPublishJobByCandidateId() {
+        return null;
+      },
+    },
+    render: {
+      async render(input) {
+        return { outputPath: input.outputPath };
+      },
+    },
+    brandPack: {
+      async resolve() {
+        return {
+          tokens: {
+            colors: { carbon: "#08080A", ice: "#F4F7FA" },
+            racingColors: { rossoCorsa: "#E10600" },
+          },
+          logoStackedPath: "",
+          storyTemplatePath: "",
+          accentHex: "#E10600",
+        };
+      },
+    },
+    mediaStore: {
+      sourcePath() {
+        return "";
+      },
+      renderPath() {
+        return "";
+      },
+      audioPath() {
+        return "";
+      },
+      brollPath() {
+        return "";
+      },
+      async listBroll() {
+        return [];
+      },
+      async ensureDirs() {},
+    },
+    clock: {
+      now() {
+        return new Date();
+      },
     },
   });
 }

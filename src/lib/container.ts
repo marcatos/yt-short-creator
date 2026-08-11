@@ -1,8 +1,10 @@
 import { createDb, type DbConnection } from "@/src/adapters/db/client";
+import { createFsBrandPack } from "@/src/adapters/brand/fs-brand-pack";
 import {
   createRepositories,
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
+import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
 import {
   createInProcessJobQueue,
   type InProcessJobQueue,
@@ -35,6 +37,9 @@ import {
   type RunIdeation,
 } from "@/src/application/run-ideation";
 import type { Logger } from "@/src/ports/logger";
+import type { BrandPackPort } from "@/src/ports/brand-pack";
+import type { MediaStorePort } from "@/src/ports/media-store";
+import type { RenderPort } from "@/src/ports/render";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
@@ -55,6 +60,9 @@ export type AppContainer = {
   assembleGeneratePreview: AssembleGeneratePreview;
   jobQueue: InProcessJobQueue;
   videoDownload: VideoDownloadPort;
+  mediaStore: MediaStorePort;
+  brandPack: BrandPackPort;
+  render: RenderPort;
   logger: Logger;
 };
 
@@ -74,6 +82,8 @@ export function getContainer(): AppContainer {
   const clock = new SystemClock();
   const id = new UuidIdPort();
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
+  const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
+  const render = createFfmpegRender({ logger });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const llm = createOpenAiCompatibleLlm({
     apiKey: env.LLM_API_KEY,
@@ -124,6 +134,9 @@ export function getContainer(): AppContainer {
     logger,
     jobQueue,
     videoDownload,
+    mediaStore,
+    brandPack,
+    render,
     connectChannel: createConnectChannel({
       auth,
       catalog,
@@ -176,6 +189,12 @@ export function startWorkers(): void {
       runClipAnalysis: container.runClipAnalysis,
       runIdeation: container.runIdeation,
       assembleGeneratePreview: container.assembleGeneratePreview,
+      candidates: container.repositories.candidates,
+      jobs: container.repositories.jobs,
+      render: container.render,
+      brandPack: container.brandPack,
+      mediaStore: container.mediaStore,
+      clock,
     }),
     logger,
     clock,
