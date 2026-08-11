@@ -1,0 +1,165 @@
+import { createHandlers, type HandlerDeps } from "./handlers";
+import type { JobHandlers } from "./job-handler-context";
+
+const noopDeps: HandlerDeps = {
+  logger: {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    child() {
+      return this;
+    },
+  },
+  sourceVideos: {
+    async save() {},
+    async getById() {
+      return null;
+    },
+    async getByYoutubeVideoId() {
+      return null;
+    },
+    async listByChannelId() {
+      return [];
+    },
+    async upsertMany() {},
+  },
+  replaySessions: {
+    async save() {},
+    async getById() {
+      return null;
+    },
+    async list() {
+      return [];
+    },
+  },
+  videoDownload: {
+    async download() {
+      return "";
+    },
+  },
+  async runClipAnalysis() {
+    return [];
+  },
+  async runReplayAnalysis() {
+    return [];
+  },
+  async requestReplayCapture({ sessionId }) {
+    throw new Error(`Replay session not found: ${sessionId}`);
+  },
+  async runIdeation() {
+    return [];
+  },
+  async assembleGeneratePreview({ candidateId }) {
+    throw new Error(`Generate candidate not found: ${candidateId}`);
+  },
+  candidates: {
+    async save() {},
+    async getById() {
+      return null;
+    },
+    async list() {
+      return [];
+    },
+  },
+  jobs: {
+    async saveRenderJob() {},
+    async savePublishJob() {},
+    async getRenderJobById() {
+      return null;
+    },
+    async getPublishJobById() {
+      return null;
+    },
+    async getRenderJobByCandidateId() {
+      return null;
+    },
+    async getPublishJobByCandidateId() {
+      return null;
+    },
+  },
+  render: {
+    async render(input) {
+      return { outputPath: input.outputPath };
+    },
+  },
+  brandPack: {
+    async resolve() {
+      return {
+        tokens: {
+          colors: { carbon: "#08080A", ice: "#F4F7FA" },
+          racingColors: { rossoCorsa: "#E10600" },
+        },
+        logoStackedPath: "",
+        storyTemplatePath: "",
+        accentHex: "#E10600",
+      };
+    },
+  },
+  mediaStore: {
+    sourcePath() {
+      return "";
+    },
+    renderPath() {
+      return "";
+    },
+    audioPath() {
+      return "";
+    },
+    brollPath() {
+      return "";
+    },
+    async listBroll() {
+      return [];
+    },
+    async ensureDirs() {},
+  },
+  queue: {
+    async enqueue() {
+      return "";
+    },
+    async getProgress() {
+      return null;
+    },
+  },
+  settings: {
+    async get() {
+      return {
+        brandRoot: "",
+        logLevel: "INFO",
+        defaultPrivacy: "unlisted",
+        videoEncoderPreference: "auto_igpu",
+      };
+    },
+    async save() {},
+  },
+  auth: {
+    async getAuthorizationUrl() {
+      return "";
+    },
+    async exchangeCode() {
+      throw new Error("YouTube auth is unavailable");
+    },
+    async refreshAccessToken() {
+      throw new Error("YouTube auth is unavailable");
+    },
+    async getStoredTokens() {
+      return null;
+    },
+    async saveTokens() {},
+  },
+  upload: {
+    async upload() {
+      throw new Error("YouTube upload is unavailable");
+    },
+  },
+  clock: {
+    now() {
+      return new Date();
+    },
+  },
+};
+
+export function createStubHandlers(): JobHandlers {
+  return createHandlers(noopDeps);
+}
