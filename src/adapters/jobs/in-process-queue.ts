@@ -24,6 +24,7 @@ export type InProcessJobQueue = JobQueuePort & {
   markFailed(jobId: string, error: unknown): void;
   markCancelled(jobId: string): void;
   getJob(jobId: string): JobRecord | undefined;
+  listJobs(): JobRecord[];
 };
 
 type QueueDeps = {
@@ -145,6 +146,10 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
 
     getJob(jobId) {
       return jobs.get(jobId);
+    },
+
+    listJobs() {
+      return Array.from(jobs.values()).reverse();
     },
   };
 

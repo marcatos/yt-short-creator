@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { createDb, type DbConnection } from "@/src/adapters/db/client";
 import { createFsBrandPack } from "@/src/adapters/brand/fs-brand-pack";
 import {
@@ -16,6 +18,7 @@ import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
+import { createFileSettingsRepository } from "@/src/adapters/settings/file-settings";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
 import { createGoogleYouTubeUpload } from "@/src/adapters/youtube/upload";
@@ -65,12 +68,21 @@ import {
   createListCandidates,
   type ListCandidates,
 } from "@/src/application/list-candidates";
+import {
+  createGetSettings,
+  createUpdateSettings,
+  type SettingsView,
+} from "@/src/application/settings";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderPort } from "@/src/ports/render";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import type {
+  AppSettings,
+  SettingsRepository,
+} from "@/src/ports/settings-repository";
 import { createHandlers } from "@/src/workers/handlers";
 import { createWorkerRunner } from "@/src/workers/runner";
 
@@ -95,6 +107,9 @@ export type AppContainer = {
   retryFailedJob: RetryFailedJob;
   getCandidate: GetCandidate;
   listCandidates: ListCandidates;
+  settings: SettingsRepository;
+  getSettings: () => Promise<SettingsView>;
+  updateSettings: (input: AppSettings) => Promise<AppSettings>;
   jobQueue: InProcessJobQueue;
   videoDownload: VideoDownloadPort;
   mediaStore: MediaStorePort;
@@ -117,6 +132,14 @@ export function getContainer(): AppContainer {
   const connection = createDb(env.DATABASE_PATH);
   const repositories = createRepositories(connection.db);
   const logger = createLogger(env.LOG_LEVEL);
+  const settings = createFileSettingsRepository({
+    settingsPath: path.join(path.dirname(env.DATABASE_PATH), "settings.json"),
+    defaults: {
+      brandRoot: env.BRAND_ROOT,
+      logLevel: env.LOG_LEVEL,
+      defaultPrivacy: "public",
+    },
+  });
   const clock = new SystemClock();
   const id = new UuidIdPort();
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
@@ -171,6 +194,7 @@ export function getContainer(): AppContainer {
     auth,
     catalog,
     logger,
+    settings,
     jobQueue,
     videoDownload,
     mediaStore,
@@ -232,6 +256,16 @@ export function getContainer(): AppContainer {
     listCandidates: createListCandidates({
       candidates: repositories.candidates,
     }),
+    getSettings: createGetSettings({
+      settings,
+      secrets: {
+        youtubeClientSecret: env.YOUTUBE_CLIENT_SECRET,
+        llmApiKey: env.LLM_API_KEY,
+        ttsApiKey: env.TTS_API_KEY,
+      },
+      logger,
+    }),
+    updateSettings: createUpdateSettings({ settings, logger }),
   };
 
   globalContainer.ytShortCreatorContainer = container;

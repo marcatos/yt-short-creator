@@ -84,4 +84,33 @@ describe("InProcessJobQueue", () => {
     const final = await queue.getProgress(jobId);
     expect(final).toEqual({ pct: 100, message: "done" });
   });
+
+  it("lists newest jobs with status and progress", async () => {
+    const queue = createInProcessJobQueue({
+      logger: createTestLogger(),
+      idPort: new UuidIdPort(),
+      clock: new SystemClock(),
+    });
+
+    const firstId = await queue.enqueue({
+      type: "render_short",
+      payload: { candidateId: "candidate-1" },
+    });
+    const secondId = await queue.enqueue({
+      type: "publish_short",
+      payload: { candidateId: "candidate-1" },
+    });
+    queue.markRunning(secondId);
+    queue.setProgress(secondId, 42, "Uploading");
+
+    const jobs = queue.listJobs();
+
+    expect(jobs.map((job) => job.id)).toEqual([secondId, firstId]);
+    expect(jobs[0]).toMatchObject({
+      type: "publish_short",
+      status: "running",
+      progressPct: 42,
+      progressMessage: "Uploading",
+    });
+  });
 });

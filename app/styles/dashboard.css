@@ -1,0 +1,223 @@
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--carbon-mid);
+  border-left: 3px solid var(--rosso);
+}
+
+.queue-list,
+.jobs-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.candidate-row {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) auto;
+  gap: 1.25rem;
+  align-items: center;
+  min-height: 7rem;
+  padding: 0.85rem 1.2rem 0.85rem 0.85rem;
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+  color: var(--ice);
+  text-decoration: none;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.candidate-row:hover {
+  transform: translateX(4px);
+  border-color: #575760;
+  text-decoration: none;
+}
+
+.candidate-poster {
+  aspect-ratio: 9 / 16;
+  height: 5.2rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    linear-gradient(162deg, transparent 30%, rgba(225, 6, 0, 0.85) 31% 42%, transparent 43%),
+    #25252b;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.candidate-copy {
+  min-width: 0;
+}
+
+.candidate-copy h2,
+.job-card h2,
+.settings-card h2 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.candidate-copy p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--silver);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-row,
+.action-row,
+.job-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  padding: 0.2rem 0.48rem;
+  border: 1px solid #45454e;
+  color: var(--ice-dim);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.origin-clip,
+.status-approved,
+.status-succeeded,
+.status-published {
+  border-color: #3f8f75;
+  color: #8ce0c1;
+}
+
+.origin-generate,
+.status-running,
+.status-rendering,
+.status-publishing {
+  border-color: #bb893d;
+  color: #f2bd69;
+}
+
+.status-failed,
+.status-rejected {
+  border-color: var(--rosso);
+  color: #ff7772;
+}
+
+.score-block {
+  display: grid;
+  justify-items: end;
+  color: var(--silver);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.score-block strong {
+  color: var(--ice);
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.empty-panel {
+  position: relative;
+  overflow: hidden;
+  min-height: 18rem;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+  text-align: center;
+}
+
+.empty-panel h2 {
+  margin: 1rem 0 0;
+  text-transform: uppercase;
+}
+
+.empty-panel p {
+  margin: 0.4rem;
+  color: var(--silver);
+}
+
+.stripe-mark {
+  width: 4rem;
+  height: 0.65rem;
+  display: block;
+  background: var(--rosso);
+  transform: skewX(-18deg);
+  box-shadow: 1.15rem 0 0 rgba(225, 6, 0, 0.4);
+}
+
+.job-card,
+.settings-card {
+  padding: clamp(1rem, 3vw, 1.6rem);
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+}
+
+.job-card h2 {
+  margin-top: 0;
+}
+
+.progress-track {
+  height: 0.62rem;
+  margin: 1.4rem 0 0.8rem;
+  overflow: hidden;
+  background: #292930;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--rosso);
+  transition: width 500ms ease;
+}
+
+.job-meta {
+  color: var(--silver);
+  font-size: 0.8rem;
+}
+
+.job-meta strong {
+  color: var(--ice);
+}
+
+.job-meta a {
+  margin-left: auto;
+}
+
+.live-indicator {
+  color: #8ce0c1;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-indicator::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  display: inline-block;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: #54c99e;
+  box-shadow: 0 0 0.8rem #54c99e;
+}
+
+@media (max-width: 760px) {
+  .candidate-row {
+    grid-template-columns: 4rem minmax(0, 1fr);
+  }
+
+  .score-block {
+    display: none;
+  }
+}
