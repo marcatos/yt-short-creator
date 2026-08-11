@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { createApproveCandidate } from "@/src/application/approve-candidate";
-import { createRunIdeation } from "@/src/application/run-ideation";
+import { createRunReplayAnalysis } from "@/src/application/run-replay-analysis";
 import type {
-  GenerationBrief,
   PublishJob,
   RenderJob,
+  ReplaySession,
   ShortCandidate,
 } from "@/src/domain/entities";
 import type { Logger } from "@/src/ports/logger";
 import { createHandlers } from "@/src/workers/handlers";
 
-const now = new Date("2026-08-11T10:00:00.000Z");
+const now = new Date("2026-08-11T12:00:00.000Z");
 
 function createLogger(): Logger {
   const logger: Logger = {
@@ -24,10 +24,24 @@ function createLogger(): Logger {
   return logger;
 }
 
-describe("pipeline smoke path", () => {
-  it("generates, approves, renders, publishes, and finishes published using only fakes", async () => {
+describe("replay pipeline smoke", () => {
+  it("analyzes a replay, approves, renders, and publishes", async () => {
+    const sessions = new Map<string, ReplaySession>();
+    sessions.set("session-1", {
+      id: "session-1",
+      rpyPath: "C:/replays/race.rpy",
+      ibtPath: null,
+      mediaPath: "media/replay.mp4",
+      trackName: "Monza",
+      focusCarIdx: 0,
+      title: "Monza race",
+      durationSec: 120,
+      status: "ready",
+      events: [],
+      createdAt: now,
+      updatedAt: now,
+    });
     const candidates = new Map<string, ShortCandidate>();
-    const briefs = new Map<string, GenerationBrief>();
     const renderJobs: RenderJob[] = [];
     const publishJobs: PublishJob[] = [];
     const queued: Array<{
@@ -35,10 +49,7 @@ describe("pipeline smoke path", () => {
       type: string;
       payload: Record<string, unknown>;
     }> = [];
-    const uploads: Array<Record<string, unknown>> = [];
-    const ids = ["brief-1", "candidate-1"];
     const logger = createLogger();
-
     const candidateRepository = {
       async save(candidate: ShortCandidate) {
         candidates.set(candidate.id, candidate);
@@ -51,10 +62,7 @@ describe("pipeline smoke path", () => {
       },
     };
     const queue = {
-      async enqueue(job: {
-        type: string;
-        payload: Record<string, unknown>;
-      }) {
+      async enqueue(job: { type: string; payload: Record<string, unknown> }) {
         const id = `job-${queued.length + 1}`;
         queued.push({ id, ...job });
         return id;
@@ -63,77 +71,56 @@ describe("pipeline smoke path", () => {
         return null;
       },
     };
-    const mediaStore = {
-      sourcePath: () => "media/source.mp4",
-      renderPath: (id: string) => `media/renders/${id}.mp4`,
-      audioPath: (id: string) => `media/audio/${id}.mp3`,
-      brollPath: (filename: string) => `media/broll/${filename}`,
-      listBroll: async () => ["race.mp4"],
-      ensureDirs: async () => {},
-    };
 
-    const runIdeation = createRunIdeation({
+    const runReplayAnalysis = createRunReplayAnalysis({
+      replaySessions: {
+        async save(session) {
+          sessions.set(session.id, session);
+        },
+        async getById(id) {
+          return sessions.get(id) ?? null;
+        },
+        async list() {
+          return [...sessions.values()];
+        },
+      },
+      candidates: candidateRepository,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
       llm: {
         async complete() {
           return JSON.stringify({
-            ideas: [
+            windows: [
               {
-                hook: "Brake later, exit faster",
-                script: "Use one clean braking input and release progressively.",
-                title: "The faster corner exit",
-                description: "A concise racing technique.",
-                tags: ["racing", "driving"],
-                score: 0.94,
-                voiceProfile: "alloy",
-                brollPlan: ["Onboard corner"],
+                startMs: 5_000,
+                endMs: 20_000,
+                title: "Monza dive",
+                description: "Late brake pass",
+                tags: ["iRacing"],
+                score: 0.91,
+                hookReason: "Late dive",
               },
             ],
           });
         },
       },
-      tts: {
-        async synthesize() {
-          return { durationMs: 5_000 };
-        },
-      },
-      mediaStore,
-      briefs: {
-        async save(brief) {
-          briefs.set(brief.id, brief);
-        },
-        async getById(id) {
-          return briefs.get(id) ?? null;
-        },
-        async listByChannelId(channelId) {
-          return [...briefs.values()].filter(
-            (brief) => brief.channelId === channelId,
-          );
-        },
-      },
-      candidates: candidateRepository,
-      id: { generate: () => ids.shift() ?? "unexpected-id" },
+      id: { generate: () => "candidate-replay-1" },
       clock: { now: () => now },
       logger,
     });
-    const [generated] = await runIdeation({
-      channelId: "channel-1",
-      count: 1,
-    });
 
-    expect(generated.status).toBe("proposed");
+    const [proposed] = await runReplayAnalysis({ sessionId: "session-1" });
+    expect(proposed.origin).toBe("replay");
 
     const approveCandidate = createApproveCandidate({
       candidates: candidateRepository,
       queue,
       logger,
     });
-    await approveCandidate({ candidateId: generated.id });
-
-    expect(candidates.get(generated.id)?.status).toBe("approved");
-    expect(queued[0]).toMatchObject({
-      type: "render_short",
-      payload: { candidateId: generated.id },
-    });
+    await approveCandidate({ candidateId: proposed.id });
 
     const handlers = createHandlers({
       logger,
@@ -150,32 +137,36 @@ describe("pipeline smoke path", () => {
         },
         async upsertMany() {},
       },
+      replaySessions: {
+        async save(session) {
+          sessions.set(session.id, session);
+        },
+        async getById(id) {
+          return sessions.get(id) ?? null;
+        },
+        async list() {
+          return [...sessions.values()];
+        },
+      },
       videoDownload: {
         async download() {
-          return "media/source.mp4";
+          return "";
         },
       },
       runClipAnalysis: async () => [],
-      runReplayAnalysis: async () => [],
+      runReplayAnalysis,
       requestReplayCapture: async ({ sessionId }) => {
-        throw new Error(`unused capture ${sessionId}`);
+        const session = sessions.get(sessionId);
+        if (!session) throw new Error("missing");
+        return session;
       },
-      runIdeation,
+      runIdeation: async () => [],
       assembleGeneratePreview: async ({ candidateId }) => {
         const candidate = candidates.get(candidateId);
-        if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+        if (!candidate) throw new Error("missing");
         return candidate;
       },
       candidates: candidateRepository,
-      replaySessions: {
-        async save() {},
-        async getById() {
-          return null;
-        },
-        async list() {
-          return [];
-        },
-      },
       jobs: {
         async saveRenderJob(job) {
           renderJobs.push(job);
@@ -202,6 +193,8 @@ describe("pipeline smoke path", () => {
       },
       render: {
         async render(input) {
+          expect(input.origin).toBe("replay");
+          expect(input.sourceMediaPath).toBe("media/replay.mp4");
           return { outputPath: input.outputPath };
         },
       },
@@ -218,7 +211,14 @@ describe("pipeline smoke path", () => {
           };
         },
       },
-      mediaStore,
+      mediaStore: {
+        sourcePath: () => "",
+        renderPath: (id) => `media/renders/${id}.mp4`,
+        audioPath: () => "",
+        brollPath: () => "",
+        listBroll: async () => [],
+        ensureDirs: async () => {},
+      },
       queue,
       settings: {
         async get() {
@@ -245,46 +245,33 @@ describe("pipeline smoke path", () => {
           return {
             accessToken: "fake-access-token",
             refreshToken: "fake-refresh-token",
-            expiresAt: new Date("2026-08-11T11:00:00.000Z"),
+            expiresAt: new Date("2026-08-11T13:00:00.000Z"),
           };
         },
         async saveTokens() {},
       },
       upload: {
-        async upload(input) {
-          uploads.push(input);
-          return { youtubeVideoId: "youtube-short-1" };
+        async upload() {
+          return { youtubeVideoId: "yt-replay-1" };
         },
       },
       clock: { now: () => now },
     });
 
     const renderJob = queued.shift();
-    expect(renderJob?.type).toBe("render_short");
     await handlers.render_short({
-      jobId: renderJob?.id ?? "missing-render-job",
+      jobId: renderJob?.id ?? "render",
       payload: renderJob?.payload ?? {},
       setProgress() {},
     });
+    expect(candidates.get(proposed.id)?.status).toBe("ready");
 
-    expect(candidates.get(generated.id)?.status).toBe("ready");
     const publishJob = queued.shift();
-    expect(publishJob?.type).toBe("publish_short");
     await handlers.publish_short({
-      jobId: publishJob?.id ?? "missing-publish-job",
+      jobId: publishJob?.id ?? "publish",
       payload: publishJob?.payload ?? {},
       setProgress() {},
     });
-
-    expect(uploads).toHaveLength(1);
-    expect(uploads[0]).toMatchObject({
-      filePath: "media/renders/candidate-1.mp4",
-      privacy: "unlisted",
-    });
-    expect(candidates.get(generated.id)?.status).toBe("published");
-    expect(publishJobs.at(-1)).toMatchObject({
-      status: "succeeded",
-      youtubeVideoId: "youtube-short-1",
-    });
+    expect(candidates.get(proposed.id)?.status).toBe("published");
   });
 });

@@ -69,6 +69,10 @@ describe("render_short handler", () => {
       },
       videoDownload: { async download() { return ""; } },
       runClipAnalysis: async () => [],
+      runReplayAnalysis: async () => [],
+      requestReplayCapture: async ({ sessionId }) => {
+        throw new Error(`unused capture ${sessionId}`);
+      },
       runIdeation: async () => [],
       assembleGeneratePreview: async () => candidate,
       candidates: {
@@ -80,6 +84,15 @@ describe("render_short handler", () => {
         },
         async list() {
           return [candidate];
+        },
+      },
+      replaySessions: {
+        async save() {},
+        async getById() {
+          return null;
+        },
+        async list() {
+          return [];
         },
       },
       jobs: {

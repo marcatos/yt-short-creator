@@ -107,9 +107,22 @@ describe("candidate approval publishing flow", () => {
       },
       videoDownload: { async download() { return ""; } },
       runClipAnalysis: async () => [],
+      runReplayAnalysis: async () => [],
+      requestReplayCapture: async ({ sessionId }) => {
+        throw new Error(`unused capture ${sessionId}`);
+      },
       runIdeation: async () => [],
       assembleGeneratePreview: async () => candidate,
       candidates,
+      replaySessions: {
+        async save() {},
+        async getById() {
+          return null;
+        },
+        async list() {
+          return [];
+        },
+      },
       jobs: {
         async saveRenderJob() {},
         async savePublishJob() {},
