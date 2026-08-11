@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    env:
+      LOG_LEVEL: INFO
+      BRAND_ROOT: ${{ github.workspace }}/tests/fixtures/smarcato42-racing
+      YOUTUBE_CLIENT_ID: ""
+      YOUTUBE_CLIENT_SECRET: ""
+      YOUTUBE_REDIRECT_URI: http://localhost:3000/api/auth/youtube/callback
+      LLM_API_KEY: ""
+      LLM_BASE_URL: https://api.openai.com/v1
+      LLM_MODEL: gpt-4.1-mini
+      TTS_API_KEY: ""
+      TTS_BASE_URL: https://api.openai.com/v1
+      TTS_MODEL: gpt-4o-mini-tts
+      DATABASE_PATH: ./data/app.db
+      MEDIA_ROOT: ./media
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Prepare brand fixtures for tests
+        run: |
+          root="tests/fixtures/smarcato42-racing/brand-identity"
+          mkdir -p "$root/01-primary-stacked" "$root/07-social"
+          cat > "$root/brand-tokens.json" <<'EOF'
+          {
+            "colors": {
+              "carbon": "#08080A",
+              "ice": "#F8F8FA"
+            },
+            "racing_colors": {
+              "rosso_corsa": {
+                "hex": "#E10600"
+              }
+            }
+          }
+          EOF
+          png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+          echo "$png" | base64 -d > "$root/01-primary-stacked/primary_stacked_mono_white.png"
+          echo "$png" | base64 -d > "$root/07-social/story_1080x1920.png"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build
