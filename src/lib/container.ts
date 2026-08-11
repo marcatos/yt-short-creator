@@ -8,10 +8,7 @@ import {
 } from "@/src/adapters/db/repositories";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
 import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
-import {
-  createInProcessJobQueue,
-  type InProcessJobQueue,
-} from "@/src/adapters/jobs/in-process-queue";
+import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
@@ -98,12 +95,14 @@ import {
   createRequestReplayCapture,
   type RequestReplayCapture,
 } from "@/src/application/request-replay-capture";
+import { createRecoverQueue } from "@/src/application/recover-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderPort } from "@/src/ports/render";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type {
   AppSettings,
   SettingsRepository,
@@ -141,7 +140,7 @@ export type AppContainer = {
   settings: SettingsRepository;
   getSettings: () => Promise<SettingsView>;
   updateSettings: (input: AppSettings) => Promise<AppSettings>;
-  jobQueue: InProcessJobQueue;
+  jobQueue: DurableJobQueue;
   videoDownload: VideoDownloadPort;
   mediaStore: MediaStorePort;
   brandPack: BrandPackPort;
@@ -192,7 +191,8 @@ export function createContainer(env: AppEnv): AppContainer {
     model: env.TTS_MODEL,
     logger,
   });
-  const jobQueue = createInProcessJobQueue({
+  const jobQueue = createSqliteJobQueue({
+    db: connection.db,
     logger,
     idPort: id,
     clock,
@@ -392,7 +392,20 @@ export function startWorkers(): void {
     logger,
     clock: container.clock,
   });
+  const recoverQueue = createRecoverQueue({
+    queue: container.jobQueue,
+    candidates: container.repositories.candidates,
+    logger,
+  });
 
-  runner.start();
-  logger.info("Workers started");
+  void (async () => {
+    await recoverQueue();
+    runner.start();
+    logger.info("Workers started");
+  })().catch((error: unknown) => {
+    logger.error("Workers failed to start", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  });
 }
