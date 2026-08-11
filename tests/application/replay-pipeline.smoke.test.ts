@@ -160,6 +160,11 @@ describe("replay pipeline smoke", () => {
         if (!session) throw new Error("missing");
         return session;
       },
+      runReplayDirectorCapture: async ({ sessionId }) => {
+        const session = sessions.get(sessionId);
+        if (!session) throw new Error("missing");
+        return { session, candidates: [] };
+      },
       runIdeation: async () => [],
       assembleGeneratePreview: async ({ candidateId }) => {
         const candidate = candidates.get(candidateId);

@@ -56,6 +56,9 @@ describe("requestReplayCapture", () => {
           autoCalls.push(input);
           return "C:/videos/race.mp4";
         },
+        async directedCapture() {
+          throw new Error("should use autoCapture");
+        },
       },
       mediaDuration: {
         async probeDurationSec() {

@@ -4,8 +4,10 @@ import type { Logger } from "@/src/ports/logger";
 
 /** Matches irsdk BroadcastMsg / VideoCaptureMode / RpySrchMode. */
 export const IracingBroadcastMsg = {
+  CamSwitchPos: 0,
   ReplaySetPlaySpeed: 3,
   ReplaySearch: 5,
+  ReplaySearchSessionTime: 12,
   VideoCapture: 13,
 } as const;
 
@@ -18,10 +20,13 @@ export const IracingVideoCaptureMode = {
 export const IracingReplaySearchMode = {
   ToStart: 0,
   ToEnd: 1,
+  NextIncident: 8,
 } as const;
 
 export type IracingBroadcastPort = {
   send(msg: number, var1?: number, var2?: number, var3?: number): Promise<void>;
+  /** Pack a 32-bit var2 across the low/high 16-bit slots (session time, frames). */
+  sendWithVar2_32(msg: number, var1: number, var2_32: number): Promise<void>;
 };
 
 /**
@@ -87,6 +92,12 @@ if (-not $ok) { throw 'SendNotifyMessage failed' }
           );
         });
       });
+    },
+
+    async sendWithVar2_32(msg, var1, var2_32) {
+      const low = var2_32 & 0xffff;
+      const high = (var2_32 >>> 16) & 0xffff;
+      await this.send(msg, var1, low, high);
     },
   };
 }

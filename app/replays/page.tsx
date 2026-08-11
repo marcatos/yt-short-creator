@@ -78,6 +78,18 @@ async function captureReplayAction(formData: FormData): Promise<void> {
   revalidatePath("/jobs");
 }
 
+async function directorCaptureAction(formData: FormData): Promise<void> {
+  "use server";
+  const sessionId = String(formData.get("sessionId") ?? "");
+  await getContainer().jobQueue.enqueue({
+    type: "director_capture_replay",
+    payload: { sessionId },
+  });
+  revalidatePath("/replays");
+  revalidatePath("/candidates");
+  revalidatePath("/jobs");
+}
+
 async function manualMomentAction(formData: FormData): Promise<void> {
   "use server";
   const sessionId = String(formData.get("sessionId") ?? "");
@@ -112,10 +124,10 @@ export default async function ReplaysPage() {
         </p>
         <h1 style={{ marginBottom: "0.5rem" }}>Replay sessions</h1>
         <p style={{ color: "var(--ice-dim)", maxWidth: "40rem" }}>
-          A <code>.rpy</code> is not a video. Prefer{" "}
-          <strong>Auto-record</strong>: the app opens the replay in iRacing,
-          starts in-sim capture, plays it, then attaches the MP4. You can still
-          drop an existing capture or mark moments manually. Requires{" "}
+          A <code>.rpy</code> is not a video. Use{" "}
+          <strong>Director capture</strong> for ReplayDirector-style highlight
+          shots (seek events, switch cameras, stitch a reel), or{" "}
+          <strong>Auto-record</strong> for a continuous take. Requires{" "}
           <em>Options → Enable video and screen capture</em> in iRacing.
         </p>
       </header>
@@ -211,6 +223,10 @@ export default async function ReplaysPage() {
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <form action={directorCaptureAction}>
+                    <input type="hidden" name="sessionId" value={session.id} />
+                    <button type="submit">Director capture</button>
+                  </form>
                   <form action={captureReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
                     <button type="submit">Auto-record replay</button>
