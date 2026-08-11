@@ -138,6 +138,7 @@ export type GenerationBrief = {
 export const JOB_STATUSES = [
   "queued",
   "running",
+  "paused",
   "succeeded",
   "failed",
   "cancelled",
