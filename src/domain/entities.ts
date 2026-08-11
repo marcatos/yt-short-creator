@@ -37,6 +37,8 @@ export type ShortCandidate = {
   tags: string[];
   score: number;
   provenance: ClipProvenance | GenerateProvenance;
+  /** Set when render succeeds; required to retry upload after publish failure. */
+  renderOutputPath: string | null;
   scheduledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

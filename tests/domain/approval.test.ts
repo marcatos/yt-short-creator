@@ -18,6 +18,7 @@ function base(): ShortCandidate {
       hookReason: "x",
       crop: { mode: "center_vertical", focusX: 0.5 },
     },
+    renderOutputPath: null,
     scheduledAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -46,5 +47,26 @@ describe("assertCanPublish", () => {
 
   it("throws when status is not ready", () => {
     expect(() => assertCanPublish(base())).toThrow();
+  });
+
+  it("blocks retry_upload without render artifact", () => {
+    expect(() =>
+      applyCandidateEvent(
+        { ...base(), status: "failed", renderOutputPath: null },
+        { type: "retry_upload" },
+      ),
+    ).toThrow();
+  });
+
+  it("allows retry_upload when failed with render artifact", () => {
+    const next = applyCandidateEvent(
+      {
+        ...base(),
+        status: "failed",
+        renderOutputPath: "media/renders/c1.mp4",
+      },
+      { type: "retry_upload" },
+    );
+    expect(next.status).toBe("publishing");
   });
 });

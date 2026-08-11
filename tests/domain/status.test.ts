@@ -19,6 +19,10 @@ function candidate(status: CandidateStatus): ShortCandidate {
       hookReason: "x",
       crop: { mode: "center_vertical", focusX: 0.5 },
     },
+    renderOutputPath:
+      status === "failed" || status === "ready" || status === "publishing"
+        ? "media/renders/c1.mp4"
+        : null,
     scheduledAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
