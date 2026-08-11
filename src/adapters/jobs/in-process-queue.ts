@@ -1,31 +1,12 @@
-import type { JobStatus } from "@/src/domain/entities";
+import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type { ClockPort } from "@/src/ports/clock";
 import type { IdPort } from "@/src/ports/id";
-import type { JobQueuePort } from "@/src/ports/job-queue";
+import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 
-export type JobRecord = {
-  id: string;
-  type: string;
-  payload: Record<string, unknown>;
-  status: JobStatus;
-  progressPct: number;
-  progressMessage: string;
-  createdAt: Date;
-  startedAt: Date | null;
-  finishedAt: Date | null;
-};
+export type { JobRecord } from "@/src/adapters/jobs/job-record";
 
-export type InProcessJobQueue = JobQueuePort & {
-  claimNext(): Promise<JobRecord | null>;
-  setProgress(jobId: string, pct: number, message: string): void;
-  markRunning(jobId: string): void;
-  markSucceeded(jobId: string): void;
-  markFailed(jobId: string, error: unknown): void;
-  markCancelled(jobId: string): void;
-  getJob(jobId: string): JobRecord | undefined;
-  listJobs(): JobRecord[];
-};
+export type InProcessJobQueue = DurableJobQueue;
 
 type QueueDeps = {
   logger: Logger;
@@ -57,16 +38,21 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
   const queue: InProcessJobQueue = {
     async enqueue(job) {
       const id = deps.idPort.generate();
+      const now = deps.clock.now();
       const record: JobRecord = {
         id,
         type: job.type,
         payload: job.payload,
         status: "queued",
+        position: 0,
         progressPct: 0,
         progressMessage: "",
-        createdAt: deps.clock.now(),
+        checkpoint: null,
+        error: null,
+        createdAt: now,
         startedAt: null,
         finishedAt: null,
+        updatedAt: now,
       };
       jobs.set(id, record);
       pending.push(id);
@@ -80,7 +66,12 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       if (!job) {
         return null;
       }
-      return { pct: job.progressPct, message: job.progressMessage };
+      return {
+        pct: job.progressPct,
+        message: job.progressMessage,
+        status: job.status,
+        checkpointStep: job.checkpoint?.step ?? null,
+      };
     },
 
     async claimNext() {
@@ -101,6 +92,10 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       }
       job.progressPct = pct;
       job.progressMessage = message;
+    },
+
+    async saveCheckpoint() {
+      throw new Error("Not implemented");
     },
 
     markRunning(jobId) {
@@ -135,6 +130,10 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       });
     },
 
+    markPaused() {
+      throw new Error("Not implemented");
+    },
+
     markCancelled(jobId) {
       const job = jobs.get(jobId);
       if (!job) {
@@ -144,12 +143,56 @@ export function createInProcessJobQueue(deps: QueueDeps): InProcessJobQueue {
       job.finishedAt = deps.clock.now();
     },
 
+    async requestPause() {
+      throw new Error("Not implemented");
+    },
+
+    async resume() {
+      throw new Error("Not implemented");
+    },
+
+    async cancel() {
+      throw new Error("Not implemented");
+    },
+
+    isPauseRequested() {
+      throw new Error("Not implemented");
+    },
+
+    clearPauseRequest() {
+      throw new Error("Not implemented");
+    },
+
+    attachAbortController() {
+      throw new Error("Not implemented");
+    },
+
+    getAbortSignal() {
+      throw new Error("Not implemented");
+    },
+
+    clearAbortController() {
+      throw new Error("Not implemented");
+    },
+
+    async reorder() {
+      throw new Error("Not implemented");
+    },
+
+    async move() {
+      throw new Error("Not implemented");
+    },
+
     getJob(jobId) {
       return jobs.get(jobId);
     },
 
     listJobs() {
       return Array.from(jobs.values()).reverse();
+    },
+
+    async recoverOnBoot() {
+      throw new Error("Not implemented");
     },
   };
 

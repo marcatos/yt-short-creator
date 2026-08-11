@@ -74,7 +74,12 @@ describe("InProcessJobQueue", () => {
     });
 
     const mid = await queue.getProgress(jobId);
-    expect(mid).toEqual({ pct: 50, message: "halfway" });
+    expect(mid).toEqual({
+      pct: 50,
+      message: "halfway",
+      status: "running",
+      checkpointStep: null,
+    });
 
     await waitFor(async () => {
       const progress = await queue.getProgress(jobId);
@@ -82,7 +87,12 @@ describe("InProcessJobQueue", () => {
     });
 
     const final = await queue.getProgress(jobId);
-    expect(final).toEqual({ pct: 100, message: "done" });
+    expect(final).toEqual({
+      pct: 100,
+      message: "done",
+      status: "succeeded",
+      checkpointStep: null,
+    });
   });
 
   it("lists newest jobs with status and progress", async () => {
@@ -109,8 +119,12 @@ describe("InProcessJobQueue", () => {
     expect(jobs[0]).toMatchObject({
       type: "publish_short",
       status: "running",
+      position: 0,
       progressPct: 42,
       progressMessage: "Uploading",
+      checkpoint: null,
+      error: null,
+      updatedAt: expect.any(Date),
     });
   });
 });
