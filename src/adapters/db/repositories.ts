@@ -117,7 +117,7 @@ function toPublishJob(row: PublishJobRow): PublishJob {
 function toReplaySession(row: ReplaySessionRow): ReplaySession {
   return {
     id: row.id,
-    rpyPath: row.rpyPath,
+    rpyPath: row.rpyPath?.trim() ? row.rpyPath : null,
     ibtPath: row.ibtPath,
     mediaPath: row.mediaPath,
     trackName: row.trackName,
@@ -126,6 +126,7 @@ function toReplaySession(row: ReplaySessionRow): ReplaySession {
     durationSec: row.durationSec,
     status: row.status,
     events: row.events,
+    racePackage: row.racePackage ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -502,7 +503,7 @@ export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
       .insert(replaySessions)
       .values({
         id: session.id,
-        rpyPath: session.rpyPath,
+        rpyPath: session.rpyPath ?? "",
         ibtPath: session.ibtPath,
         mediaPath: session.mediaPath,
         trackName: session.trackName,
@@ -511,13 +512,14 @@ export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
         durationSec: session.durationSec,
         status: session.status,
         events: session.events,
+        racePackage: session.racePackage,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
       })
       .onConflictDoUpdate({
         target: replaySessions.id,
         set: {
-          rpyPath: session.rpyPath,
+          rpyPath: session.rpyPath ?? "",
           ibtPath: session.ibtPath,
           mediaPath: session.mediaPath,
           trackName: session.trackName,
@@ -526,6 +528,7 @@ export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
           durationSec: session.durationSec,
           status: session.status,
           events: session.events,
+          racePackage: session.racePackage,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
         },

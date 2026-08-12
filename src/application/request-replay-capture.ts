@@ -37,6 +37,12 @@ export function createRequestReplayCapture(
       throw new Error(`Replay session not found: ${input.sessionId}`);
     }
 
+    if (!session.rpyPath) {
+      throw new Error(
+        "Replay session has no .rpy path. Auto-capture requires an iRacing replay file; use OBS media-only analyze instead.",
+      );
+    }
+
     const watchDir = input.watchDir?.trim() || deps.capture.defaultVideosDir();
     const timeoutMs = input.timeoutMs ?? defaultTimeoutMs;
     const playSpeed = input.playSpeed ?? defaultPlaySpeed;

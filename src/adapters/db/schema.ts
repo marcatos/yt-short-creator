@@ -7,6 +7,7 @@ import type {
   ClipProvenance,
   GenerateProvenance,
   JobStatus,
+  RacePackage,
   ReplayEvent,
   ReplayProvenance,
   ReplaySessionStatus,
@@ -70,7 +71,7 @@ export const shortCandidates = sqliteTable("short_candidates", {
 
 export const replaySessions = sqliteTable("replay_sessions", {
   id: text("id").primaryKey(),
-  rpyPath: text("rpy_path").notNull(),
+  rpyPath: text("rpy_path"),
   ibtPath: text("ibt_path"),
   mediaPath: text("media_path"),
   trackName: text("track_name"),
@@ -79,6 +80,7 @@ export const replaySessions = sqliteTable("replay_sessions", {
   durationSec: integer("duration_sec"),
   status: text("status").$type<ReplaySessionStatus>().notNull(),
   events: text("events", { mode: "json" }).$type<ReplayEvent[]>().notNull(),
+  racePackage: text("race_package", { mode: "json" }).$type<RacePackage | null>(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

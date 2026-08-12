@@ -11,6 +11,12 @@ export function defaultTitleFromRpyPath(rpyPath: string): string {
   return base.replace(/\.rpy$/i, "") || "iRacing replay";
 }
 
+export function defaultTitleFromMediaPath(mediaPath: string): string {
+  const base =
+    mediaPath.replace(/\\/g, "/").split("/").pop() ?? "Race capture";
+  return base.replace(/\.[^.]+$/i, "") || "Race capture";
+}
+
 export function isReplayProvenance(
   provenance: ShortCandidate["provenance"],
 ): provenance is ReplayProvenance {

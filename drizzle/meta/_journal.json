@@ -29,6 +29,13 @@
       "when": 1786454808169,
       "tag": "0003_add_queue_jobs_status_position_index",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786550000000,
+      "tag": "0004_replay_race_package",
+      "breakpoints": true
     }
   ]
 }

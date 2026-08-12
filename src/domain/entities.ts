@@ -59,9 +59,34 @@ export type ReplayEvent = {
   payload?: Record<string, unknown>;
 };
 
+export type RaceTimelineEntry = {
+  startMs: number;
+  endMs: number;
+  summary: string;
+  involvingFocusCar: boolean;
+};
+
+export type RaceFullVideoMetadata = {
+  title: string;
+  description: string;
+  tags: string[];
+};
+
+export type RacePackage = {
+  focusCarHint: string;
+  transcript: string;
+  timeline: RaceTimelineEntry[];
+  fullVideo: RaceFullVideoMetadata;
+  audioTranscript: string;
+};
+
+export const DEFAULT_FOCUS_CAR_HINT =
+  "White/black/green livery with pi / π mark (S.Marcato 42 Racing); hero car for all moments";
+
 export type ReplaySession = {
   id: string;
-  rpyPath: string;
+  /** Null for OBS / media-only sessions. */
+  rpyPath: string | null;
   ibtPath: string | null;
   mediaPath: string | null;
   trackName: string | null;
@@ -70,8 +95,14 @@ export type ReplaySession = {
   durationSec: number | null;
   status: ReplaySessionStatus;
   events: ReplayEvent[];
+  racePackage: RacePackage | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type ReplaySegment = {
+  startMs: number;
+  endMs: number;
 };
 
 export type ReplayProvenance = {
@@ -81,6 +112,8 @@ export type ReplayProvenance = {
   hookReason: string;
   eventType: ReplayEventType;
   crop: ClipCrop;
+  /** Optional multi-scene montage windows (total 8–60s). */
+  segments?: ReplaySegment[];
 };
 
 export type ShortCandidate = {
