@@ -83,6 +83,18 @@ const sampleCandidate: ShortCandidate = {
     crop: { mode: "center_vertical", focusX: 0.5 },
   },
   renderOutputPath: null,
+  voiceOvers: [
+    {
+      language: "it",
+      script: "Guarda questo sorpasso!",
+      voiceProfile: "coral",
+      audioPath: "media/voice-overs/cand-1/vo-it.mp3",
+      words: [{ text: "Guarda", startMs: 0, endMs: 350 }],
+      srtPath: "media/voice-overs/cand-1/vo-it.srt",
+      assPath: "media/voice-overs/cand-1/vo-it.ass",
+      scriptHash: "hash-it",
+    },
+  ],
   scheduledAt: null,
   createdAt: now,
   updatedAt: now,

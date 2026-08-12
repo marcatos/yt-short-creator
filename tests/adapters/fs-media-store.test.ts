@@ -28,6 +28,9 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.audioPath("cand-1")).toBe(
       path.join(mediaRoot, "audio", "cand-1.mp3"),
     );
+    expect(mediaStore.voPath("cand-1", "it")).toBe(
+      path.join(mediaRoot, "voice-overs", "cand-1", "vo-it.mp3"),
+    );
     expect(mediaStore.brollPath("../escape.mp4")).toBe(
       path.join(mediaRoot, "broll", "escape.mp4"),
     );
@@ -51,6 +54,7 @@ describe("createFsMediaStore", () => {
     expect(fs.existsSync(path.join(mediaRoot, "sources"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "renders"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "audio"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaRoot, "voice-overs"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "broll"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "replays"))).toBe(true);
   });

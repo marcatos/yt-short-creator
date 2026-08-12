@@ -15,6 +15,7 @@ import type {
 } from "@/src/domain/entities";
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { CandidateStatus } from "@/src/domain/status";
+import type { VoiceOverPackage } from "@/src/domain/voice-over";
 
 export const channels = sqliteTable("channels", {
   id: text("id").primaryKey(),
@@ -65,6 +66,9 @@ export const shortCandidates = sqliteTable("short_candidates", {
     .$type<ClipProvenance | GenerateProvenance | ReplayProvenance>()
     .notNull(),
   renderOutputPath: text("render_output_path"),
+  voiceOvers: text("voice_overs", { mode: "json" }).$type<
+    VoiceOverPackage[] | null
+  >(),
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

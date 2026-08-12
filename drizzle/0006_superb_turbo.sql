@@ -1,0 +1,1 @@
+ALTER TABLE `short_candidates` ADD `voice_overs` text;

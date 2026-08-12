@@ -3,7 +3,14 @@ import path from "node:path";
 
 import type { MediaStorePort } from "@/src/ports/media-store";
 
-const SUBDIRS = ["sources", "renders", "audio", "broll", "replays"] as const;
+const SUBDIRS = [
+  "sources",
+  "renders",
+  "audio",
+  "voice-overs",
+  "broll",
+  "replays",
+] as const;
 
 export function createFsMediaStore(deps: {
   mediaRoot: string;
@@ -21,6 +28,20 @@ export function createFsMediaStore(deps: {
 
     audioPath(candidateId: string): string {
       return path.join(mediaRoot, "audio", `${candidateId}.mp3`);
+    },
+
+    voPath(candidateId: string, language: "it" | "en"): string {
+      return path.join(
+        mediaRoot,
+        "voice-overs",
+        path.basename(candidateId),
+        `vo-${language}.mp3`,
+      );
+    },
+
+    async writeText(filePath: string, content: string): Promise<void> {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, "utf8");
     },
 
     brollPath(filename: string): string {

@@ -102,6 +102,10 @@ import {
   createRequestFullReplayPublish,
   type RequestFullReplayPublish,
 } from "@/src/application/request-full-replay-publish";
+import {
+  createGenerateShortVoiceOvers,
+  type GenerateShortVoiceOvers,
+} from "@/src/application/generate-short-voice-overs";
 import { createRecoverQueue } from "@/src/application/recover-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
@@ -139,6 +143,7 @@ export type AppContainer = {
   addManualReplayMoment: AddManualReplayMoment;
   requestReplayCapture: RequestReplayCapture;
   requestFullReplayPublish: RequestFullReplayPublish;
+  generateShortVoiceOvers: GenerateShortVoiceOvers;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -339,6 +344,15 @@ export function createContainer(env: AppEnv): AppContainer {
     requestFullReplayPublish: createRequestFullReplayPublish({
       replaySessions: repositories.replaySessions,
       queue: jobQueue,
+      logger,
+    }),
+    generateShortVoiceOvers: createGenerateShortVoiceOvers({
+      llm,
+      tts,
+      transcription,
+      mediaStore,
+      candidates: repositories.candidates,
+      settings,
       logger,
     }),
     approveCandidate: createApproveCandidate({
