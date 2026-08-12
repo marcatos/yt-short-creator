@@ -75,6 +75,51 @@ function scaleAndCrop(label: string, focusX = 0.5): string {
   );
 }
 
+function assFilenameForFilter(filePath: string): string {
+  return filePath
+    .replaceAll("\\", "/")
+    .replaceAll(":", "\\:")
+    .replaceAll("'", "\\'");
+}
+
+function voiceDuckVolume(db: number | undefined): string {
+  const normalizedDb = db !== undefined && Number.isFinite(db) ? db : -12;
+  return Math.pow(10, normalizedDb / 20).toFixed(6);
+}
+
+function brandedVideoFilter(
+  input: RenderInput,
+  baseLabel: string,
+  logoLabel: string,
+): string[] {
+  const outputLabel =
+    input.burnInCaptions && input.assPath ? "branded" : "outv";
+  const filters = [
+    `[${baseLabel}]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent]`,
+    `[${logoLabel}]scale=240:-2[logo]`,
+    `[accent][logo]overlay=W-w-48:48:format=auto[${outputLabel}]`,
+  ];
+  if (input.burnInCaptions && input.assPath) {
+    filters.push(
+      `[branded]ass=filename='${assFilenameForFilter(input.assPath)}'[outv]`,
+    );
+  }
+  return filters;
+}
+
+function voiceMixFilter(
+  input: RenderInput,
+  gameAudioLabel: string,
+  voiceInputIndex: number,
+): string[] {
+  if (!input.voiceAssetPath) return [];
+  return [
+    `[${gameAudioLabel}]volume=${voiceDuckVolume(input.voiceDuckDb)}[ga]`,
+    `[${voiceInputIndex}:a]volume=1[va]`,
+    "[ga][va]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+  ];
+}
+
 function clipArgs(input: RenderInput): string[] {
   if (input.segments && input.segments.length >= 2) {
     return multiSegmentClipArgs(input);
@@ -88,11 +133,13 @@ function clipArgs(input: RenderInput): string[] {
   }
 
   const durationMs = input.endMs - input.startMs;
-  const filter =
-    `${scaleAndCrop("0:v", input.crop?.focusX)}[base];` +
-    `[base]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent];` +
-    "[1:v]scale=240:-2[logo];" +
-    "[accent][logo]overlay=W-w-48:48:format=auto[outv]";
+  const filterParts = [
+    `${scaleAndCrop("0:v", input.crop?.focusX)}[base]`,
+    ...brandedVideoFilter(input, "base", "1:v"),
+  ];
+  if (input.voiceAssetPath) {
+    filterParts.push(...voiceMixFilter(input, "0:a", 2));
+  }
 
   return [
     "-ss",
@@ -105,12 +152,13 @@ function clipArgs(input: RenderInput): string[] {
     "1",
     "-i",
     input.logoPath,
+    ...(input.voiceAssetPath ? ["-i", input.voiceAssetPath] : []),
     "-filter_complex",
-    filter,
+    filterParts.join(";"),
     "-map",
     "[outv]",
     "-map",
-    "0:a?",
+    input.voiceAssetPath ? "[aout]" : "0:a?",
     "-t",
     seconds(durationMs),
   ];
@@ -153,6 +201,10 @@ function multiSegmentClipArgs(input: RenderInput): string[] {
 
   const logoIndex = segments.length;
   args.push("-loop", "1", "-i", input.logoPath);
+  const voiceIndex = logoIndex + 1;
+  if (input.voiceAssetPath) {
+    args.push("-i", input.voiceAssetPath);
+  }
 
   filterParts.push(
     `${videoConcat.join("")}concat=n=${segments.length}:v=1:a=0[vcat]`,
@@ -161,10 +213,9 @@ function multiSegmentClipArgs(input: RenderInput): string[] {
     `${audioConcat.join("")}concat=n=${segments.length}:v=0:a=1[acat]`,
   );
   filterParts.push(
-    `[vcat]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent]`,
+    ...brandedVideoFilter(input, "vcat", `${logoIndex}:v`),
+    ...voiceMixFilter(input, "acat", voiceIndex),
   );
-  filterParts.push(`[${logoIndex}:v]scale=240:-2[logo]`);
-  filterParts.push("[accent][logo]overlay=W-w-48:48:format=auto[outv]");
 
   return [
     ...args,
@@ -173,7 +224,7 @@ function multiSegmentClipArgs(input: RenderInput): string[] {
     "-map",
     "[outv]",
     "-map",
-    "[acat]",
+    input.voiceAssetPath ? "[aout]" : "[acat]",
   ];
 }
 
@@ -213,9 +264,7 @@ function generateArgs(input: RenderInput): string[] {
   args.push("-loop", "1", "-i", input.logoPath, "-i", input.voiceAssetPath);
   segments.push(
     `${concatInputs.join("")}concat=n=${timeline.length}:v=1:a=0[base]`,
-    `[base]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent]`,
-    `[${logoIndex}:v]scale=240:-2[logo]`,
-    "[accent][logo]overlay=W-w-48:48:format=auto[outv]",
+    ...brandedVideoFilter(input, "base", `${logoIndex}:v`),
   );
 
   return [
@@ -319,6 +368,8 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         videoEncoderPreference: preference,
         videoEncoder: encoder.codec,
         videoEncoderLabel: encoder.label,
+        hasVoiceOver: Boolean(input.voiceAssetPath),
+        burnsAssCaptions: Boolean(input.burnInCaptions && input.assPath),
       });
 
       try {
@@ -351,6 +402,8 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
           outputPath: input.outputPath,
           videoEncoderPreference: preference,
           videoEncoder: encoder.codec,
+          hasVoiceOver: Boolean(input.voiceAssetPath),
+          burnsAssCaptions: Boolean(input.burnInCaptions && input.assPath),
           durationMs: Math.round(performance.now() - startedAt),
         });
         return { outputPath: input.outputPath };

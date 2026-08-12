@@ -1,6 +1,7 @@
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
+import type { VoiceOverLanguage, VoiceOverPackage } from "@/src/domain/voice-over";
 import {
   isClipProvenance,
   isGenerateProvenance,
@@ -15,6 +16,7 @@ import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderInput, RenderPort, RenderResult } from "@/src/ports/render";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
+import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 
 import { requireStringPayload } from "./handler-utils";
@@ -31,6 +33,7 @@ type Dependencies = {
   brandPack: BrandPackPort;
   mediaStore: MediaStorePort;
   queue: InspectableJobQueue;
+  settings: SettingsRepository;
   clock: ClockPort;
 };
 
@@ -39,14 +42,25 @@ const JOB_TYPE = "render_short";
 async function renderInputForCandidate(
   candidate: ShortCandidate,
   deps: Dependencies,
+  language?: VoiceOverLanguage,
 ): Promise<RenderInput> {
-  const brand = await deps.brandPack.resolve();
+  const [brand, settings] = await Promise.all([
+    deps.brandPack.resolve(),
+    deps.settings.get(),
+  ]);
+  const voiceOver = selectVoiceOver(candidate, language);
   const common = {
     candidateId: candidate.id,
     origin: candidate.origin,
     outputPath: deps.mediaStore.renderPath(candidate.id),
     logoPath: brand.logoStackedPath,
     accentColor: brand.accentHex,
+    voiceAssetPath: voiceOver?.audioPath,
+    assPath: settings.shortsBurnInCaptions
+      ? (voiceOver?.assPath ?? undefined)
+      : undefined,
+    burnInCaptions: settings.shortsBurnInCaptions,
+    voiceDuckDb: settings.voiceDuckDb,
   };
 
   if (isClipProvenance(candidate.provenance)) {
@@ -96,9 +110,35 @@ async function renderInputForCandidate(
     ...common,
     origin: "generate",
     sourceMediaPath: candidate.provenance.timeline[0]?.asset ?? "",
-    voiceAssetPath: candidate.provenance.voiceAssetPath,
+    voiceAssetPath: voiceOver?.audioPath ?? candidate.provenance.voiceAssetPath,
     timeline: candidate.provenance.timeline,
   };
+}
+
+function selectVoiceOver(
+  candidate: ShortCandidate,
+  language?: VoiceOverLanguage,
+): VoiceOverPackage | undefined {
+  const packages = candidate.voiceOvers ?? [];
+  if (!language) return packages[0];
+  const voiceOver = packages.find((item) => item.language === language);
+  if (!voiceOver) {
+    throw new Error(
+      `Voice-over package "${language}" not found for candidate: ${candidate.id}`,
+    );
+  }
+  return voiceOver;
+}
+
+function optionalVoiceOverLanguage(
+  payload: Record<string, unknown>,
+): VoiceOverLanguage | undefined {
+  const language = payload.language;
+  if (language === undefined) return undefined;
+  if (language !== "it" && language !== "en") {
+    throw new Error('Job payload "language" must be "it" or "en"');
+  }
+  return language;
 }
 
 export function createRenderShortHandler(deps: Dependencies): JobHandler {
@@ -106,6 +146,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
 
   return async (ctx) => {
     const candidateId = requireStringPayload(ctx.payload, "candidateId");
+    const language = optionalVoiceOverLanguage(ctx.payload);
     const startedAt = performance.now();
 
     const found = await deps.candidates.getById(candidateId);
@@ -140,6 +181,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
       jobId: ctx.jobId,
       candidateId,
       origin: candidate.origin,
+      voiceOverLanguage: language ?? candidate.voiceOvers?.[0]?.language,
     });
 
     let input: RenderInput | undefined;
@@ -157,12 +199,12 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         }
         ctx.setProgress(5, "Preparing brand assets");
         await saveJob("running", null, 5, "Preparing brand assets");
-        input = await renderInputForCandidate(candidate, deps);
+        input = await renderInputForCandidate(candidate, deps, language);
       });
 
       await runStep(ctx, JOB_TYPE, "render", async () => {
         if (!input) {
-          input = await renderInputForCandidate(candidate, deps);
+          input = await renderInputForCandidate(candidate, deps, language);
         }
         ctx.setProgress(20, "Rendering 9:16 video");
         await saveJob("running", null, 20, "Rendering 9:16 video");
@@ -206,6 +248,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         candidateId,
         outputPath: candidate.renderOutputPath,
         publishJobId,
+        voiceOverLanguage: language ?? candidate.voiceOvers?.[0]?.language,
         durationMs: Math.round(performance.now() - startedAt),
       });
     } catch (error) {

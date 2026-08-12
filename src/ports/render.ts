@@ -15,6 +15,8 @@ export type RenderInput = {
   segments?: ReplaySegment[];
   crop?: ClipCrop;
   voiceAssetPath?: string;
+  assPath?: string;
+  voiceDuckDb?: number;
   timeline?: GenerateTimelineEntry[];
   logoPath: string;
   accentColor: string;

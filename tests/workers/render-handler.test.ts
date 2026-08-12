@@ -35,6 +35,20 @@ describe("render_short handler", () => {
         crop: { mode: "center_vertical", focusX: 0.4 },
       },
       renderOutputPath: null,
+      voiceOvers: [
+        {
+          language: "en",
+          script: "Push to the finish.",
+          title: "Final-lap push",
+          description: "The decisive final lap.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/candidate-1-en.mp3",
+          words: [{ text: "Push", startMs: 0, endMs: 400 }],
+          srtPath: "media/voice/candidate-1-en.srt",
+          assPath: "media/voice/candidate-1-en.ass",
+          scriptHash: "script-hash",
+        },
+      ],
       scheduledAt: null,
       createdAt: now,
       updatedAt: now,
@@ -174,6 +188,11 @@ describe("render_short handler", () => {
             logLevel: "INFO",
             defaultPrivacy: "unlisted",
             videoEncoderPreference: "libx264",
+            brandVoiceProfile: "coral",
+            shortsBurnInCaptions: true,
+            fullBurnInCaptions: false,
+            voiceDuckDb: -12,
+            enableVoiceOverPipeline: true,
           };
         },
         async save() {},
@@ -204,7 +223,7 @@ describe("render_short handler", () => {
     const progress: number[] = [];
     await handlers.render_short({
       jobId: "render-job-1",
-      payload: { candidateId: candidate.id },
+      payload: { candidateId: candidate.id, language: "en" },
       checkpoint: null,
       setProgress(pct) {
         progress.push(pct);
@@ -223,6 +242,10 @@ describe("render_short handler", () => {
       accentColor: "#E10600",
       startMs: 1_000,
       endMs: 2_000,
+      voiceAssetPath: "media/voice/candidate-1-en.mp3",
+      assPath: "media/voice/candidate-1-en.ass",
+      burnInCaptions: true,
+      voiceDuckDb: -12,
     });
     expect(candidate.status).toBe("ready");
     expect(candidate.renderOutputPath).toBe("media/renders/candidate-1.mp4");
