@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGenerateShortVoiceOvers } from "@/src/application/generate-short-voice-overs";
 import type { ShortCandidate } from "@/src/domain/entities";
 import {
-  BRAND_TTS_INSTRUCTIONS,
   hashVoiceScript,
+  ttsInstructionsFor,
   type VoiceOverPackage,
 } from "@/src/domain/voice-over";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
@@ -63,6 +63,7 @@ function settings(): AppSettings {
     defaultPrivacy: "public",
     videoEncoderPreference: "auto_igpu",
     brandVoiceProfile: "coral",
+    italianVoiceProfile: "ash",
     shortsBurnInCaptions: true,
     fullBurnInCaptions: false,
     voiceDuckDb: -12,
@@ -173,11 +174,14 @@ describe("generateShortVoiceOvers", () => {
       expect.stringContaining("Final lap"),
     ]);
     expect(
-      synthesized.every(
-        ({ voiceProfile, instructions }) =>
-          voiceProfile === "coral" && instructions === BRAND_TTS_INSTRUCTIONS,
-      ),
-    ).toBe(true);
+      synthesized.map(({ voiceProfile, instructions }) => ({
+        voiceProfile,
+        instructions,
+      })),
+    ).toEqual([
+      { voiceProfile: "ash", instructions: ttsInstructionsFor("it") },
+      { voiceProfile: "coral", instructions: ttsInstructionsFor("en") },
+    ]);
     expect(transcribed).toEqual([
       { path: expect.stringContaining("vo-it.mp3"), words: true },
       { path: expect.stringContaining("vo-en.mp3"), words: true },
@@ -215,12 +219,12 @@ describe("generateShortVoiceOvers", () => {
       script: scriptIt,
       title: "Cached title",
       description: "Cached description",
-      voiceProfile: "coral",
+      voiceProfile: "ash",
       audioPath: "cached-it.mp3",
       words: [],
       srtPath: "cached-it.srt",
       assPath: "cached-it.ass",
-      scriptHash: hashVoiceScript(scriptIt, "coral", "it"),
+      scriptHash: hashVoiceScript(scriptIt, "ash", "it"),
     };
     const synthesized: string[] = [];
     const generate = createGenerateShortVoiceOvers({

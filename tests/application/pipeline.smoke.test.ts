@@ -247,6 +247,7 @@ describe("pipeline smoke path", () => {
             defaultPrivacy: "unlisted",
             videoEncoderPreference: "libx264",
             brandVoiceProfile: "coral",
+    italianVoiceProfile: "ash",
             shortsBurnInCaptions: true,
             fullBurnInCaptions: false,
             voiceDuckDb: -12,

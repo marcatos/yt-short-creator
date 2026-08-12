@@ -8,12 +8,12 @@ import {
   RACE_VOICE_OVER_STYLE,
 } from "@/src/domain/race-copy-style";
 import {
-  BRAND_TTS_INSTRUCTIONS,
   buildSrt,
   chunkNarration,
   hashVoiceScript,
   offsetWords,
   TTS_CHUNK_LIMITS,
+  ttsInstructionsFor,
   type TimedWord,
   type VoiceOverLanguage,
   type VoiceOverPackage,
@@ -25,7 +25,10 @@ import type { Logger } from "@/src/ports/logger";
 import type { MediaDurationPort } from "@/src/ports/media-duration";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
-import type { SettingsRepository } from "@/src/ports/settings-repository";
+import type {
+  AppSettings,
+  SettingsRepository,
+} from "@/src/ports/settings-repository";
 import type { TranscriptionPort } from "@/src/ports/transcription";
 import type { TtsPort } from "@/src/ports/tts";
 
@@ -83,6 +86,15 @@ Follow the supplied race timeline: one chapter per timeline beat, chronological,
 Also return localized titles and YouTube descriptions for the two uploads (${RACE_METADATA_STYLE}).
 Spoken chapters = race story only; put CTA mid + end in the spoken text.
 Written description may add chapters/timestamps, rig block, and hashtags after the race story.`;
+
+function voiceProfileForLanguage(
+  settings: Pick<AppSettings, "brandVoiceProfile" | "italianVoiceProfile">,
+  language: VoiceOverLanguage,
+): string {
+  return language === "it"
+    ? settings.italianVoiceProfile
+    : settings.brandVoiceProfile;
+}
 
 type Dependencies = {
   llm: LlmPort;
@@ -213,7 +225,7 @@ export function createGenerateFullVoiceOvers(
       text: input.text,
       voiceProfile: input.voiceProfile,
       outputPath: input.outputPath,
-      instructions: BRAND_TTS_INSTRUCTIONS,
+      instructions: ttsInstructionsFor(input.language),
     });
     const transcription = await deps.transcription.transcribe(
       input.outputPath,
@@ -375,9 +387,13 @@ export function createGenerateFullVoiceOvers(
 
       for (const languageScript of languageScripts(scripts)) {
         const languageStartedAt = performance.now();
+        const voiceProfile = voiceProfileForLanguage(
+          appSettings,
+          languageScript.language,
+        );
         const scriptHash = hashVoiceScript(
           languageScript.script,
-          appSettings.brandVoiceProfile,
+          voiceProfile,
           languageScript.language,
         );
         const cached = existingByLanguage.get(languageScript.language);
@@ -415,7 +431,7 @@ export function createGenerateFullVoiceOvers(
           await buildPackage({
             sessionId,
             languageScript,
-            voiceProfile: appSettings.brandVoiceProfile,
+            voiceProfile,
             scriptHash,
             voPath,
             writeText,

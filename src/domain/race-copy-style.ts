@@ -41,5 +41,22 @@ mid and/or end). Do not speak chapter timestamps, PC/rig specs, or hashtag lists
 Do not repeatedly say the driver/team name — viewers already know who is driving.
 `.trim();
 
+/** @deprecated Prefer ttsInstructionsFor(language). Kept for EN default / tests. */
 export const BRAND_TTS_INSTRUCTIONS =
-  "First-person simracing driver (Simone Marcato, #42). Energetic, clear, concrete about the race. Punchy YouTube energy, not robotic, not third-person commentator fluff. Do not keep repeating a team brand name.";
+  "Young adult male simracing YouTuber. Energetic, clear, concrete about the race. Natural pace — not slow, not robotic, not a mature woman narrator.";
+
+const TTS_INSTRUCTIONS_IT = `
+Speak Italian as a young adult man in his mid-20s (Simone Marcato, race driver).
+Bright, youthful, slightly street-smart YouTube energy — NOT a mature woman, NOT a
+formal newsreader, NOT slow or sleepy. Brisk natural pace, punchy rhythm, clear
+consonants. Sound excited about overtakes without shouting. Keep it first-person.
+`.trim();
+
+const TTS_INSTRUCTIONS_EN = `
+Speak English as a young adult male simracing YouTuber. Energetic and clear, natural
+pace, concrete about the race. Not robotic, not a mature newsreader voice.
+`.trim();
+
+export function ttsInstructionsFor(language: "it" | "en"): string {
+  return language === "it" ? TTS_INSTRUCTIONS_IT : TTS_INSTRUCTIONS_EN;
+}

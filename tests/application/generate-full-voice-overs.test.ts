@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
 import type { ReplaySession } from "@/src/domain/entities";
 import {
-  BRAND_TTS_INSTRUCTIONS,
   hashVoiceScript,
   TTS_CHUNK_LIMITS,
+  ttsInstructionsFor,
   type VoiceOverPackage,
 } from "@/src/domain/voice-over";
 import type { AudioConcatInput } from "@/src/ports/full-vo-mix";
@@ -88,6 +88,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultPrivacy: "unlisted",
     videoEncoderPreference: "auto_igpu",
     brandVoiceProfile: "coral",
+    italianVoiceProfile: "ash",
     shortsBurnInCaptions: true,
     fullBurnInCaptions: false,
     voiceDuckDb: -12,
@@ -265,11 +266,16 @@ describe("generateFullVoiceOvers", () => {
       "vo-en-part-2.mp3",
     ]);
     expect(
-      synthesized.every(
-        ({ voiceProfile, instructions }) =>
-          voiceProfile === "coral" && instructions === BRAND_TTS_INSTRUCTIONS,
-      ),
-    ).toBe(true);
+      synthesized.map(({ voiceProfile, instructions }) => ({
+        voiceProfile,
+        instructions,
+      })),
+    ).toEqual([
+      { voiceProfile: "ash", instructions: ttsInstructionsFor("it") },
+      { voiceProfile: "ash", instructions: ttsInstructionsFor("it") },
+      { voiceProfile: "coral", instructions: ttsInstructionsFor("en") },
+      { voiceProfile: "coral", instructions: ttsInstructionsFor("en") },
+    ]);
     expect(concatenated.map(({ inputPaths }) => inputPaths.length)).toEqual([2, 2]);
     expect(transcribed.every(({ words }) => words === true)).toBe(true);
     expect(transcribed.map(({ path: chunkPath }) => path.basename(chunkPath))).toEqual([
@@ -311,12 +317,12 @@ describe("generateFullVoiceOvers", () => {
       script,
       title: "Vecchio titolo",
       description: "Vecchia descrizione",
-      voiceProfile: "coral",
+      voiceProfile: "ash",
       audioPath: "cached-it.mp3",
       words: [{ text: "cache", startMs: 0, endMs: 100 }],
       srtPath: "cached-it.srt",
       assPath: null,
-      scriptHash: hashVoiceScript(script, "coral", "it"),
+      scriptHash: hashVoiceScript(script, "ash", "it"),
       renderOutputPath: "cached-it.mp4",
       youtubeVideoId: "yt-cached-it",
       youtubeCaptionId: "caption-cached-it",

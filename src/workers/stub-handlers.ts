@@ -153,6 +153,7 @@ const noopDeps: HandlerDeps = {
         defaultPrivacy: "unlisted",
         videoEncoderPreference: "auto_igpu",
         brandVoiceProfile: "coral",
+    italianVoiceProfile: "ash",
         shortsBurnInCaptions: true,
         fullBurnInCaptions: false,
         voiceDuckDb: -12,

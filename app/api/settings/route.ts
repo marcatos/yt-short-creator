@@ -18,6 +18,7 @@ const settingsSchema = z.object({
     "libx264",
   ]),
   brandVoiceProfile: z.enum(BRAND_VOICE_PROFILES),
+  italianVoiceProfile: z.enum(BRAND_VOICE_PROFILES),
   shortsBurnInCaptions: z.boolean(),
   fullBurnInCaptions: z.boolean(),
   voiceDuckDb: z.number().finite(),

@@ -41,6 +41,11 @@ function normalizeSettings(
       VALID_VOICE_PROFILES.has(stored.brandVoiceProfile)
         ? stored.brandVoiceProfile
         : defaults.brandVoiceProfile,
+    italianVoiceProfile:
+      stored.italianVoiceProfile &&
+      VALID_VOICE_PROFILES.has(stored.italianVoiceProfile)
+        ? stored.italianVoiceProfile
+        : defaults.italianVoiceProfile,
     shortsBurnInCaptions:
       stored.shortsBurnInCaptions ?? defaults.shortsBurnInCaptions,
     fullBurnInCaptions:

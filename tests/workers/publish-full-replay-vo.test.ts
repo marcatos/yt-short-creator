@@ -85,6 +85,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultPrivacy: "unlisted",
     videoEncoderPreference: "auto_igpu",
     brandVoiceProfile: "coral",
+    italianVoiceProfile: "ash",
     shortsBurnInCaptions: true,
     fullBurnInCaptions: false,
     voiceDuckDb: -12,

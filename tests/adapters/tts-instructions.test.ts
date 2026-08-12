@@ -39,6 +39,6 @@ describe("OpenAI-compatible TTS instructions", () => {
     });
 
     expect(requestBody?.instructions).toBe(BRAND_TTS_INSTRUCTIONS);
-    expect(String(requestBody?.instructions)).toMatch(/First-person simracing driver/);
+    expect(String(requestBody?.instructions)).toMatch(/Young adult male/i);
   });
 });

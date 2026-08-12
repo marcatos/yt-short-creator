@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export type VoiceOverLanguage = "it" | "en";
 
-export { BRAND_TTS_INSTRUCTIONS } from "./race-copy-style";
+export { BRAND_TTS_INSTRUCTIONS, ttsInstructionsFor } from "./race-copy-style";
 
 export type TimedWord = {
   text: string;

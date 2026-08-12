@@ -8,13 +8,14 @@ import {
   RACE_VOICE_OVER_STYLE,
 } from "@/src/domain/race-copy-style";
 import {
-  BRAND_TTS_INSTRUCTIONS,
   buildAssKaraoke,
   buildSrt,
   hashVoiceScript,
+  ttsInstructionsFor,
   type VoiceOverLanguage,
   type VoiceOverPackage,
 } from "@/src/domain/voice-over";
+import type { AppSettings } from "@/src/ports/settings-repository";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
@@ -59,6 +60,15 @@ const SYSTEM_PROMPT = `${RACE_VOICE_OVER_STYLE}
 Write a YouTube Short voice-over lasting 8–25 spoken seconds.
 Hook in the first 2 seconds with a concrete race moment (positions, battle, mistake, recovery), then end with a CTA to subscribe or watch the full race.
 Also return concise localized titles and descriptions (${RACE_METADATA_STYLE}).`;
+
+function voiceProfileForLanguage(
+  settings: Pick<AppSettings, "brandVoiceProfile" | "italianVoiceProfile">,
+  language: VoiceOverLanguage,
+): string {
+  return language === "it"
+    ? settings.italianVoiceProfile
+    : settings.brandVoiceProfile;
+}
 
 const MIN_VOICE_OVER_DURATION_MS = 8_000;
 const MAX_VOICE_OVER_DURATION_MS = 25_000;
@@ -191,9 +201,10 @@ export function createGenerateShortVoiceOvers(
 
       for (const { language, script, title, description } of languageScripts) {
         const languageStartedAt = performance.now();
+        const voiceProfile = voiceProfileForLanguage(appSettings, language);
         const scriptHash = hashVoiceScript(
           script,
-          appSettings.brandVoiceProfile,
+          voiceProfile,
           language,
         );
         const cached = existingByLanguage.get(language);
@@ -212,9 +223,9 @@ export function createGenerateShortVoiceOvers(
         const ttsStartedAt = performance.now();
         const synthesis = await deps.tts.synthesize({
           text: script,
-          voiceProfile: appSettings.brandVoiceProfile,
+          voiceProfile,
           outputPath: audioPath,
-          instructions: BRAND_TTS_INSTRUCTIONS,
+          instructions: ttsInstructionsFor(language),
         });
         const measured = await measureNarrationMs(
           audioPath,
@@ -265,7 +276,7 @@ export function createGenerateShortVoiceOvers(
           script,
           title,
           description,
-          voiceProfile: appSettings.brandVoiceProfile,
+          voiceProfile,
           audioPath,
           words,
           srtPath,

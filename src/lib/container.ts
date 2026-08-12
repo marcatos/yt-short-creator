@@ -192,6 +192,7 @@ export function createContainer(env: AppEnv): AppContainer {
       defaultPrivacy: "public",
       videoEncoderPreference: "auto_igpu",
       brandVoiceProfile: "coral",
+      italianVoiceProfile: "ash",
       shortsBurnInCaptions: true,
       fullBurnInCaptions: false,
       voiceDuckDb: -12,

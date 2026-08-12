@@ -15,6 +15,9 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [brandVoiceProfile, setBrandVoiceProfile] = useState(
     initial.brandVoiceProfile,
   );
+  const [italianVoiceProfile, setItalianVoiceProfile] = useState(
+    initial.italianVoiceProfile,
+  );
   const [shortsBurnInCaptions, setShortsBurnInCaptions] = useState(
     initial.shortsBurnInCaptions,
   );
@@ -41,6 +44,7 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           defaultPrivacy,
           videoEncoderPreference,
           brandVoiceProfile,
+          italianVoiceProfile,
           shortsBurnInCaptions,
           fullBurnInCaptions,
           voiceDuckDb,
@@ -124,7 +128,7 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
         </p>
         <div className="field-pair">
           <label>
-            Brand voice
+            English voice
             <select
               value={brandVoiceProfile}
               onChange={(event) =>
@@ -140,6 +144,29 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
               ))}
             </select>
           </label>
+          <label>
+            Italian voice
+            <select
+              value={italianVoiceProfile}
+              onChange={(event) =>
+                setItalianVoiceProfile(
+                  event.target.value as SettingsView["italianVoiceProfile"],
+                )
+              }
+            >
+              {BRAND_VOICE_PROFILES.map((voice) => (
+                <option key={`it-${voice}`} value={voice}>
+                  {voice}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="muted">
+          English defaults to coral. Italian defaults to ash with a younger,
+          brisker delivery — coral often sounds older/slower in Italian.
+        </p>
+        <div className="field-pair">
           <label>
             Voice ducking (dB)
             <input
