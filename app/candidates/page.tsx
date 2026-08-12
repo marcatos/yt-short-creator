@@ -81,7 +81,7 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
             candidate.origin === "clip"
               ? `Source ${"sourceVideoId" in candidate.provenance ? candidate.provenance.sourceVideoId : "video"}`
               : candidate.origin === "replay"
-                ? `Replay ${"replaySessionId" in candidate.provenance ? candidate.provenance.replaySessionId : "session"} · ${"eventType" in candidate.provenance ? candidate.provenance.eventType : "moment"}`
+                ? `Replay ${"replaySessionId" in candidate.provenance ? candidate.provenance.replaySessionId : "session"} · ${"eventType" in candidate.provenance ? candidate.provenance.eventType : "moment"}${"segments" in candidate.provenance && Array.isArray(candidate.provenance.segments) && candidate.provenance.segments.length >= 2 ? ` · multi-scene×${candidate.provenance.segments.length}` : ""}`
                 : `Brief ${"generationBriefId" in candidate.provenance ? candidate.provenance.generationBriefId : "generated"}`,
         }))}
       />

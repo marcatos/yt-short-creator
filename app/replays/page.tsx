@@ -13,13 +13,13 @@ async function createSessionAction(formData: FormData): Promise<void> {
   const trackName = String(formData.get("trackName") ?? "").trim();
   const mediaPath = String(formData.get("mediaPath") ?? "").trim();
   const ibtPath = String(formData.get("ibtPath") ?? "").trim();
-  if (!rpyPath) {
-    throw new Error("Path to .rpy is required");
+  if (!rpyPath && !mediaPath) {
+    throw new Error("Provide a .rpy path and/or a local media path (OBS MKV/MP4)");
   }
 
   const container = getContainer();
   const session = await container.createReplaySession({
-    rpyPath,
+    rpyPath: rpyPath || null,
     title: title || undefined,
     trackName: trackName || null,
     mediaPath: mediaPath || null,
@@ -108,15 +108,14 @@ export default async function ReplaysPage() {
             textTransform: "uppercase",
           }}
         >
-          iRacing source
+          Race sources
         </p>
         <h1 style={{ marginBottom: "0.5rem" }}>Replay sessions</h1>
-        <p style={{ color: "var(--ice-dim)", maxWidth: "40rem" }}>
-          A <code>.rpy</code> is not a video. Prefer{" "}
-          <strong>Auto-record</strong>: the app opens the replay in iRacing,
-          starts in-sim capture, plays it, then attaches the MP4. You can still
-          drop an existing capture or mark moments manually. Requires{" "}
-          <em>Options → Enable video and screen capture</em> in iRacing.
+        <p style={{ color: "var(--ice-dim)", maxWidth: "42rem" }}>
+          Attach an OBS <code>.mkv</code>/<code>.mp4</code> for AV analysis
+          (transcript + YouTube title/description + Shorts), or use a{" "}
+          <code>.rpy</code> with Auto-record. Analyze builds a lightweight proxy
+          and never re-reads the full 2K file once cached.
         </p>
       </header>
 
@@ -133,23 +132,26 @@ export default async function ReplaysPage() {
           style={{ display: "grid", gap: "0.75rem", maxWidth: "40rem" }}
         >
           <label>
-            Path to .rpy
-            <input name="rpyPath" required placeholder="C:\...\race.rpy" />
+            OBS / local media path (MKV/MP4)
+            <input
+              name="mediaPath"
+              placeholder="C:\Users\...\race-rec2k.mkv"
+            />
+          </label>
+          <label>
+            Path to .rpy (optional if media is set)
+            <input name="rpyPath" placeholder="C:\...\race.rpy" />
           </label>
           <label>
             Title (optional)
-            <input name="title" placeholder="Imola race 12" />
+            <input name="title" placeholder="Oschersleben race 12 Aug" />
           </label>
           <label>
             Track (optional)
-            <input name="trackName" placeholder="Imola" />
+            <input name="trackName" placeholder="Oschersleben" />
           </label>
           <label>
-            MP4 path (optional — drop-first)
-            <input name="mediaPath" placeholder="C:\...\capture.mp4" />
-          </label>
-          <label>
-            IBT path (optional)
+            IBT path (optional enrichment)
             <input name="ibtPath" placeholder="C:\...\telemetry.ibt" />
           </label>
           <button
@@ -194,6 +196,7 @@ export default async function ReplaysPage() {
                     {session.durationSec
                       ? ` · ${Math.floor(session.durationSec / 60)}:${String(session.durationSec % 60).padStart(2, "0")}`
                       : ""}
+                    {session.rpyPath ? "" : " · OBS media-only"}
                   </p>
                   <p
                     style={{
@@ -203,7 +206,7 @@ export default async function ReplaysPage() {
                       color: "var(--ice-dim)",
                     }}
                   >
-                    {session.rpyPath}
+                    {session.rpyPath ?? "(no .rpy)"}
                   </p>
                   <p style={{ margin: "0.25rem 0 0", color: "var(--ice-dim)" }}>
                     Media: {session.mediaPath ?? "none"} · IBT:{" "}
@@ -213,16 +216,64 @@ export default async function ReplaysPage() {
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                   <form action={captureReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
-                    <button type="submit">Auto-record replay</button>
+                    <button type="submit" disabled={!session.rpyPath}>
+                      Auto-record replay
+                    </button>
                   </form>
                   <form action={analyzeReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
                     <button type="submit" disabled={!session.mediaPath}>
-                      Analyze
+                      Analyze AV
                     </button>
                   </form>
                 </div>
               </div>
+
+              {session.racePackage ? (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    background: "#141414",
+                    border: "1px solid #2a2a2a",
+                    display: "grid",
+                    gap: "0.75rem",
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>YouTube long-form package</h3>
+                  <p style={{ margin: 0 }}>
+                    <strong>Title:</strong> {session.racePackage.fullVideo.title}
+                  </p>
+                  <pre
+                    style={{
+                      margin: 0,
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      color: "var(--ice-dim)",
+                    }}
+                  >
+                    {session.racePackage.fullVideo.description}
+                  </pre>
+                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                    Tags: {session.racePackage.fullVideo.tags.join(", ")}
+                  </p>
+                  <details>
+                    <summary style={{ cursor: "pointer" }}>
+                      Race transcript ({session.racePackage.timeline.length}{" "}
+                      beats)
+                    </summary>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "inherit",
+                        color: "var(--ice-dim)",
+                      }}
+                    >
+                      {session.racePackage.transcript}
+                    </pre>
+                  </details>
+                </div>
+              ) : null}
 
               <div
                 style={{
@@ -238,8 +289,12 @@ export default async function ReplaysPage() {
                 >
                   <input type="hidden" name="sessionId" value={session.id} />
                   <label>
-                    Attach MP4
-                    <input name="mediaPath" required placeholder="C:\...\file.mp4" />
+                    Attach media
+                    <input
+                      name="mediaPath"
+                      required
+                      placeholder="C:\...\file.mkv"
+                    />
                   </label>
                   <button type="submit">Attach media</button>
                 </form>
