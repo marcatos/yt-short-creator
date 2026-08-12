@@ -1,4 +1,8 @@
-import type { ClipCrop, GenerateTimelineEntry } from "@/src/domain/entities";
+import type {
+  ClipCrop,
+  GenerateTimelineEntry,
+  ReplaySegment,
+} from "@/src/domain/entities";
 
 export type RenderInput = {
   candidateId: string;
@@ -7,6 +11,8 @@ export type RenderInput = {
   outputPath: string;
   startMs?: number;
   endMs?: number;
+  /** Multi-scene montage for replay/clip shorts. */
+  segments?: ReplaySegment[];
   crop?: ClipCrop;
   voiceAssetPath?: string;
   timeline?: GenerateTimelineEntry[];

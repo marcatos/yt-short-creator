@@ -83,6 +83,7 @@ async function renderInputForCandidate(
       sourceMediaPath: session.mediaPath,
       startMs: candidate.provenance.startMs,
       endMs: candidate.provenance.endMs,
+      segments: candidate.provenance.segments,
       crop: candidate.provenance.crop,
     };
   }

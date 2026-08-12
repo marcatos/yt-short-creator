@@ -76,6 +76,10 @@ function scaleAndCrop(label: string, focusX = 0.5): string {
 }
 
 function clipArgs(input: RenderInput): string[] {
+  if (input.segments && input.segments.length >= 2) {
+    return multiSegmentClipArgs(input);
+  }
+
   if (input.startMs === undefined || input.endMs === undefined) {
     throw new Error("Clip render requires startMs and endMs");
   }
@@ -109,6 +113,67 @@ function clipArgs(input: RenderInput): string[] {
     "0:a?",
     "-t",
     seconds(durationMs),
+  ];
+}
+
+function multiSegmentClipArgs(input: RenderInput): string[] {
+  const segments = input.segments ?? [];
+  if (segments.length < 2) {
+    throw new Error("Multi-segment render requires at least 2 segments");
+  }
+
+  const args: string[] = [];
+  const filterParts: string[] = [];
+  const videoConcat: string[] = [];
+  const audioConcat: string[] = [];
+
+  segments.forEach((segment, index) => {
+    const durationMs = segment.endMs - segment.startMs;
+    if (durationMs <= 0) {
+      throw new Error(`Segment ${index} has invalid duration`);
+    }
+    args.push(
+      "-ss",
+      seconds(segment.startMs),
+      "-t",
+      seconds(durationMs),
+      "-i",
+      input.sourceMediaPath,
+    );
+    filterParts.push(
+      `${scaleAndCrop(`${index}:v`, input.crop?.focusX)},` +
+        `trim=duration=${seconds(durationMs)},setpts=PTS-STARTPTS[v${index}]`,
+    );
+    filterParts.push(
+      `[${index}:a]atrim=duration=${seconds(durationMs)},asetpts=PTS-STARTPTS[a${index}]`,
+    );
+    videoConcat.push(`[v${index}]`);
+    audioConcat.push(`[a${index}]`);
+  });
+
+  const logoIndex = segments.length;
+  args.push("-loop", "1", "-i", input.logoPath);
+
+  filterParts.push(
+    `${videoConcat.join("")}concat=n=${segments.length}:v=1:a=0[vcat]`,
+  );
+  filterParts.push(
+    `${audioConcat.join("")}concat=n=${segments.length}:v=0:a=1[acat]`,
+  );
+  filterParts.push(
+    `[vcat]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent]`,
+  );
+  filterParts.push(`[${logoIndex}:v]scale=240:-2[logo]`);
+  filterParts.push("[accent][logo]overlay=W-w-48:48:format=auto[outv]");
+
+  return [
+    ...args,
+    "-filter_complex",
+    filterParts.join(";"),
+    "-map",
+    "[outv]",
+    "-map",
+    "[acat]",
   ];
 }
 
