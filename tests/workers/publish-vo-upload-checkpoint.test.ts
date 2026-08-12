@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type { ShortCandidate } from "@/src/domain/entities";
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { Logger } from "@/src/ports/logger";
@@ -82,15 +83,26 @@ function makeContext(
   };
 }
 
-function makeHarness(failAt: "video" | "caption") {
+function makeHarness(
+  failAt: "video" | "caption" | null,
+  options: { failFirstSidecarWrite?: boolean } = {},
+) {
   let current = candidate();
   let checkpoint: JobCheckpoint | null = null;
   const sidecars = new Map<string, string>();
+  const queueJobs: JobRecord[] = [];
   let failurePending = true;
+  let sidecarFailurePending = options.failFirstSidecarWrite ?? false;
   let videoUploads = 0;
   let captionUploads = 0;
-  const saveCheckpoint = async (step: string, data?: unknown) => {
+  const saveCheckpoint = async (
+    jobId: string,
+    step: string,
+    data?: unknown,
+  ) => {
     checkpoint = data === undefined ? { step } : { step, data };
+    const job = queueJobs.find((item) => item.id === jobId);
+    if (job) job.checkpoint = checkpoint;
   };
   const handler = createPublishShortHandler({
     logger: logger(),
@@ -98,7 +110,9 @@ function makeHarness(failAt: "video" | "caption") {
       async save(value) {
         const voiceOver = value.voiceOvers?.[0];
         const reachedFailure =
-          failAt === "video"
+          failAt === null
+            ? false
+            : failAt === "video"
             ? Boolean(voiceOver?.youtubeVideoId) &&
               !voiceOver?.youtubeCaptionId
             : Boolean(voiceOver?.youtubeCaptionId);
@@ -118,6 +132,11 @@ function makeHarness(failAt: "video" | "caption") {
       getPublishJobById: async () => null,
       getRenderJobByCandidateId: async () => null,
       getPublishJobByCandidateId: async () => null,
+    },
+    queue: {
+      enqueue: async () => "unused",
+      getProgress: async () => null,
+      listJobs: () => queueJobs,
     },
     settings: {
       get: async () => ({
@@ -181,19 +200,83 @@ function makeHarness(failAt: "video" | "caption") {
         `vo-publish-${candidateId}-${language}.json`,
       readText: async (filePath) => sidecars.get(filePath) ?? null,
       writeText: async (filePath, content) => {
+        if (sidecarFailurePending) {
+          sidecarFailurePending = false;
+          throw new Error("sidecar write failed");
+        }
         sidecars.set(filePath, content);
       },
     },
   });
 
   return {
-    firstRun: () => handler(makeContext(null, saveCheckpoint)),
-    retry: () => handler(makeContext(checkpoint, saveCheckpoint)),
-    replacementJob: () =>
-      handler(makeContext(null, saveCheckpoint, "publish-it-replacement")),
+    firstRun: () => {
+      queueJobs.push(jobRecord("publish-it", "running", null));
+      return handler(
+        makeContext(null, (step, data) =>
+          saveCheckpoint("publish-it", step, data),
+        ),
+      );
+    },
+    retry: () =>
+      handler(
+        makeContext(checkpoint, (step, data) =>
+          saveCheckpoint("publish-it", step, data),
+        ),
+      ),
+    replacementJob: () => {
+      const prior = queueJobs.find((job) => job.id === "publish-it");
+      if (prior) prior.status = "failed";
+      queueJobs.push(jobRecord("publish-it-replacement", "running", null));
+      return handler(
+        makeContext(
+          null,
+          (step, data) =>
+            saveCheckpoint("publish-it-replacement", step, data),
+          "publish-it-replacement",
+        ),
+      );
+    },
+    seedSidecar: (value: Record<string, unknown>) => {
+      sidecars.set(
+        "vo-publish-candidate-42-it.json",
+        JSON.stringify(value),
+      );
+    },
+    setScriptHash: (scriptHash: string) => {
+      current = {
+        ...current,
+        voiceOvers: current.voiceOvers?.map((voiceOver) => ({
+          ...voiceOver,
+          scriptHash,
+        })),
+      };
+    },
     checkpoint: () => checkpoint,
     current: () => current,
     counts: () => ({ videoUploads, captionUploads }),
+  };
+}
+
+function jobRecord(
+  id: string,
+  status: JobRecord["status"],
+  checkpoint: JobCheckpoint | null,
+): JobRecord {
+  return {
+    id,
+    type: "publish_short",
+    payload: { candidateId: "candidate-42", language: "it" },
+    status,
+    position: 0,
+    progressPct: 0,
+    progressMessage: "",
+    checkpoint,
+    error: null,
+    createdAt: now,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
   };
 }
 
@@ -206,10 +289,56 @@ describe("publish_short VO external upload checkpoints", () => {
     );
     expect(harness.checkpoint()).toEqual({
       step: "upload",
-      data: { language: "it", youtubeVideoId: "youtube-it" },
+      data: {
+        language: "it",
+        scriptHash: "it-hash",
+        renderOutputBasename: "vo-it.mp4",
+        youtubeVideoId: "youtube-it",
+      },
     });
 
     await expect(harness.retry()).resolves.toBeUndefined();
+    expect(harness.counts()).toEqual({ videoUploads: 1, captionUploads: 1 });
+    expect(harness.current().voiceOvers?.[0]).toEqual(
+      expect.objectContaining({
+        youtubeVideoId: "youtube-it",
+        youtubeCaptionId: "caption-it",
+      }),
+    );
+  });
+
+  it("recovers from a prior failed job when sidecar persistence fails", async () => {
+    const harness = makeHarness("video", { failFirstSidecarWrite: true });
+
+    await expect(harness.firstRun()).rejects.toThrow(
+      "Failed to durably persist voice-over upload result",
+    );
+    expect(harness.checkpoint()).toEqual({
+      step: "upload",
+      data: {
+        language: "it",
+        scriptHash: "it-hash",
+        renderOutputBasename: "vo-it.mp4",
+        youtubeVideoId: "youtube-it",
+      },
+    });
+
+    await expect(harness.replacementJob()).resolves.toBeUndefined();
+    expect(harness.counts()).toEqual({ videoUploads: 1, captionUploads: 1 });
+  });
+
+  it("ignores a sidecar from a regenerated voice-over script", async () => {
+    const harness = makeHarness(null);
+    harness.seedSidecar({
+      language: "it",
+      scriptHash: "old-hash",
+      renderOutputBasename: "vo-it.mp4",
+      youtubeVideoId: "stale-video",
+      youtubeCaptionId: "stale-caption",
+    });
+    harness.setScriptHash("regenerated-hash");
+
+    await expect(harness.firstRun()).resolves.toBeUndefined();
     expect(harness.counts()).toEqual({ videoUploads: 1, captionUploads: 1 });
     expect(harness.current().voiceOvers?.[0]).toEqual(
       expect.objectContaining({
@@ -246,6 +375,8 @@ describe("publish_short VO external upload checkpoints", () => {
       step: "captions",
       data: {
         language: "it",
+        scriptHash: "it-hash",
+        renderOutputBasename: "vo-it.mp4",
         youtubeVideoId: "youtube-it",
         youtubeCaptionId: "caption-it",
       },

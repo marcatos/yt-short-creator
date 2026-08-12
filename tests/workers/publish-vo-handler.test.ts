@@ -119,6 +119,11 @@ describe("publish_short bilingual VO flow", () => {
         getRenderJobByCandidateId: async () => null,
         getPublishJobByCandidateId: async () => null,
       },
+      queue: {
+        enqueue: async () => "unused",
+        getProgress: async () => null,
+        listJobs: () => [],
+      },
       settings: {
         get: async () => ({
           brandRoot: "brand",
@@ -262,6 +267,11 @@ describe("publish_short bilingual VO flow", () => {
         getPublishJobById: async () => null,
         getRenderJobByCandidateId: async () => null,
         getPublishJobByCandidateId: async () => null,
+      },
+      queue: {
+        enqueue: async () => "unused",
+        getProgress: async () => null,
+        listJobs: () => [],
       },
       settings: {
         get: async () => ({

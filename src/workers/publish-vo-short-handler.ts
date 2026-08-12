@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { applyCandidateEvent } from "@/src/domain/approval";
 import type { ShortCandidate } from "@/src/domain/entities";
 import { withFullVideoLink } from "@/src/domain/full-video-link";
@@ -8,6 +10,7 @@ import type {
 } from "@/src/domain/voice-over";
 import {
   createVoiceOverPublishSidecar,
+  priorVoiceOverJobCheckpoints,
   resolveVoiceOverUploadCheckpoint,
   type VoiceOverUploadCheckpoint,
 } from "@/src/application/voice-over-publish-checkpoint";
@@ -15,6 +18,7 @@ import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -36,6 +40,7 @@ type Dependencies = {
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
   mediaStore?: MediaStorePort;
+  queue: InspectableJobQueue;
 };
 
 type VoiceOverPublishPayload = {
@@ -118,6 +123,33 @@ async function saveVoiceOverResult(
   return updated;
 }
 
+async function persistVoiceOverUploadResult(
+  deps: Dependencies,
+  sidecar: { save(result: VoiceOverUploadCheckpoint): Promise<void> },
+  candidateId: string,
+  language: VoiceOverLanguage,
+  checkpoint: VoiceOverUploadCheckpoint,
+): Promise<ShortCandidate> {
+  const writes = await Promise.allSettled([
+    sidecar.save(checkpoint),
+    saveVoiceOverResult(deps, candidateId, language, checkpoint),
+  ]);
+  const failures = writes
+    .filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === "rejected",
+    )
+    .map((result) => result.reason);
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(
+      failures,
+      "Failed to durably persist voice-over upload result",
+    );
+  }
+  return (writes[1] as PromiseFulfilledResult<ShortCandidate>).value;
+}
+
 export function createPublishVoiceOverShortHandler(
   deps: Dependencies,
 ): JobHandler {
@@ -133,14 +165,31 @@ export function createPublishVoiceOverShortHandler(
     const initialPackage = packageForLanguage(candidate, payload.language);
     const sidecar = createVoiceOverPublishSidecar({
       candidateId,
-      language: payload.language,
+      voiceOver: initialPackage,
       mediaStore: deps.mediaStore,
       logger: log,
     });
+    const checkpointMetadata = {
+      language: payload.language,
+      scriptHash: initialPackage.scriptHash,
+      ...(initialPackage.renderOutputPath
+        ? {
+            renderOutputBasename: path.basename(
+              initialPackage.renderOutputPath,
+            ),
+          }
+        : {}),
+    };
     const recoveredResult = resolveVoiceOverUploadCheckpoint(
       initialPackage,
       await sidecar.load(),
       ctx.checkpoint,
+      priorVoiceOverJobCheckpoints({
+        jobs: deps.queue.listJobs(),
+        currentJobId: ctx.jobId,
+        candidateId,
+        language: payload.language,
+      }),
     );
     let accessToken: string | undefined;
     let youtubeVideoId = recoveredResult?.youtubeVideoId;
@@ -217,19 +266,17 @@ export function createPublishVoiceOverShortHandler(
           contentKind: "short",
         });
         youtubeVideoId = result.youtubeVideoId;
-        await sidecar.save({
-          language: payload.language,
+        const uploadCheckpoint = {
+          ...checkpointMetadata,
           youtubeVideoId,
-        });
-        await ctx.saveCheckpoint("upload", {
-          language: payload.language,
-          youtubeVideoId,
-        } satisfies VoiceOverUploadCheckpoint);
-        candidate = await saveVoiceOverResult(
+        } satisfies VoiceOverUploadCheckpoint;
+        await ctx.saveCheckpoint("upload", uploadCheckpoint);
+        candidate = await persistVoiceOverUploadResult(
           deps,
+          sidecar,
           candidateId,
           payload.language,
-          { youtubeVideoId },
+          uploadCheckpoint,
         );
         ctx.setProgress(85, `Uploaded video as ${youtubeVideoId}`);
       });
@@ -268,20 +315,19 @@ export function createPublishVoiceOverShortHandler(
           name: "VO",
         });
         youtubeCaptionId = caption.youtubeCaptionId;
-        await sidecar.save({
-          language: payload.language,
+        const captionsCheckpoint = {
+          ...checkpointMetadata,
           youtubeVideoId,
           youtubeCaptionId,
-        });
-        await ctx.saveCheckpoint("captions", {
-          language: payload.language,
-          youtubeVideoId,
-          youtubeCaptionId: caption.youtubeCaptionId,
-        } satisfies VoiceOverUploadCheckpoint);
-        await saveVoiceOverResult(deps, candidateId, payload.language, {
-          youtubeVideoId,
-          youtubeCaptionId,
-        });
+        } satisfies VoiceOverUploadCheckpoint;
+        await ctx.saveCheckpoint("captions", captionsCheckpoint);
+        await persistVoiceOverUploadResult(
+          deps,
+          sidecar,
+          candidateId,
+          payload.language,
+          captionsCheckpoint,
+        );
         ctx.setProgress(100, `Published as ${youtubeVideoId}`);
       });
 

@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type {
   VoiceOverLanguage,
@@ -8,13 +10,15 @@ import type { MediaStorePort } from "@/src/ports/media-store";
 
 export type VoiceOverUploadCheckpoint = {
   language: VoiceOverLanguage;
+  scriptHash: string;
+  renderOutputBasename?: string;
   youtubeVideoId: string;
   youtubeCaptionId?: string;
 };
 
 function fromJobCheckpoint(
   checkpoint: JobCheckpoint | null,
-  language: VoiceOverLanguage,
+  voiceOver: VoiceOverPackage,
 ): VoiceOverUploadCheckpoint | null {
   if (
     (checkpoint?.step !== "upload" && checkpoint?.step !== "captions") ||
@@ -25,14 +29,19 @@ function fromJobCheckpoint(
   }
   const data = checkpoint.data as Record<string, unknown>;
   if (
-    data.language !== language ||
+    data.language !== voiceOver.language ||
+    data.scriptHash !== voiceOver.scriptHash ||
     typeof data.youtubeVideoId !== "string" ||
     data.youtubeVideoId.length === 0
   ) {
     return null;
   }
   return {
-    language,
+    language: voiceOver.language,
+    scriptHash: voiceOver.scriptHash,
+    ...(typeof data.renderOutputBasename === "string"
+      ? { renderOutputBasename: data.renderOutputBasename }
+      : {}),
     youtubeVideoId: data.youtubeVideoId,
     ...(typeof data.youtubeCaptionId === "string" &&
     data.youtubeCaptionId.length > 0
@@ -61,25 +70,58 @@ export function resolveVoiceOverUploadCheckpoint(
   voiceOver: VoiceOverPackage,
   sidecar: VoiceOverUploadCheckpoint | null,
   jobCheckpoint: JobCheckpoint | null,
+  priorJobCheckpoints: JobCheckpoint[] = [],
 ): VoiceOverUploadCheckpoint | null {
   const packageCheckpoint = voiceOver.youtubeVideoId
     ? {
         language: voiceOver.language,
+        scriptHash: voiceOver.scriptHash,
+        ...(voiceOver.renderOutputPath
+          ? { renderOutputBasename: path.basename(voiceOver.renderOutputPath) }
+          : {}),
         youtubeVideoId: voiceOver.youtubeVideoId,
         ...(voiceOver.youtubeCaptionId
           ? { youtubeCaptionId: voiceOver.youtubeCaptionId }
           : {}),
       }
     : null;
-  return merge(
+  const current = merge(
     merge(packageCheckpoint, sidecar),
-    fromJobCheckpoint(jobCheckpoint, voiceOver.language),
+    fromJobCheckpoint(jobCheckpoint, voiceOver),
   );
+  return priorJobCheckpoints.reduce(
+    (result, checkpoint) =>
+      merge(result, fromJobCheckpoint(checkpoint, voiceOver)),
+    current,
+  );
+}
+
+export function priorVoiceOverJobCheckpoints(input: {
+  jobs: Array<{
+    id: string;
+    type: string;
+    payload: Record<string, unknown>;
+    checkpoint: JobCheckpoint | null;
+  }>;
+  currentJobId: string;
+  candidateId: string;
+  language: VoiceOverLanguage;
+}): JobCheckpoint[] {
+  return input.jobs
+    .filter(
+      (job) =>
+        job.id !== input.currentJobId &&
+        job.type === "publish_short" &&
+        job.payload.candidateId === input.candidateId &&
+        job.payload.language === input.language,
+    )
+    .map((job) => job.checkpoint)
+    .filter((checkpoint): checkpoint is JobCheckpoint => checkpoint !== null);
 }
 
 export function createVoiceOverPublishSidecar(deps: {
   candidateId: string;
-  language: VoiceOverLanguage;
+  voiceOver: VoiceOverPackage;
   mediaStore?: MediaStorePort;
   logger: Logger;
 }): {
@@ -88,11 +130,12 @@ export function createVoiceOverPublishSidecar(deps: {
 } {
   const sidecarPath = deps.mediaStore?.voPublishCheckpointPath?.(
     deps.candidateId,
-    deps.language,
+    deps.voiceOver.language,
   );
   const logContext = {
     candidateId: deps.candidateId,
-    language: deps.language,
+    language: deps.voiceOver.language,
+    scriptHash: deps.voiceOver.scriptHash,
     sidecarPath,
   };
 
@@ -107,7 +150,7 @@ export function createVoiceOverPublishSidecar(deps: {
             step: "captions",
             data: JSON.parse(content) as Record<string, unknown>,
           },
-          deps.language,
+          deps.voiceOver,
         );
         if (!parsed) {
           deps.logger.warn("Ignored invalid voice-over publish sidecar", logContext);
@@ -126,10 +169,12 @@ export function createVoiceOverPublishSidecar(deps: {
       try {
         await deps.mediaStore.writeText(sidecarPath, JSON.stringify(result));
       } catch (error) {
-        deps.logger.warn("Failed to persist voice-over publish sidecar", {
+        deps.logger.error("Failed to persist voice-over publish sidecar", {
           ...logContext,
           error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
         });
+        throw error;
       }
     },
   };

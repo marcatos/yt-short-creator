@@ -5,6 +5,7 @@ import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-contro
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
@@ -26,6 +27,7 @@ type Dependencies = {
   logger: Logger;
   candidates: CandidateRepository;
   jobs: JobRepository;
+  queue: InspectableJobQueue;
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
