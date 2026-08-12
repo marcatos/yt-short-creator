@@ -2,6 +2,7 @@ export type TtsSynthesizeInput = {
   text: string;
   voiceProfile: string;
   outputPath: string;
+  instructions?: string;
 };
 
 export type TtsSynthesizeResult = {

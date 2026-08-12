@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { Logger } from "@/src/ports/logger";
 import type {
+  TranscriptionOptions,
   TranscriptionPort,
   TranscriptionResult,
 } from "@/src/ports/transcription";
@@ -17,6 +18,15 @@ const verboseSchema = z.object({
         start: z.number(),
         end: z.number(),
         text: z.string(),
+      }),
+    )
+    .optional(),
+  words: z
+    .array(
+      z.object({
+        word: z.string(),
+        start: z.number(),
+        end: z.number(),
       }),
     )
     .optional(),
@@ -44,10 +54,14 @@ export function createOpenAiCompatibleWhisper(
   });
 
   return {
-    async transcribe(audioPath: string): Promise<TranscriptionResult> {
+    async transcribe(
+      audioPath: string,
+      options?: TranscriptionOptions,
+    ): Promise<TranscriptionResult> {
       const startedAt = performance.now();
       log.info("Transcription started", {
         audioPath: path.basename(audioPath),
+        wordTimestampsRequested: options?.words === true,
       });
 
       try {
@@ -60,6 +74,9 @@ export function createOpenAiCompatibleWhisper(
         );
         form.append("model", deps.model);
         form.append("response_format", "verbose_json");
+        if (options?.words === true) {
+          form.append("timestamp_granularities[]", "word");
+        }
 
         const response = await fetchImpl(transcriptionsUrl(deps.baseUrl), {
           method: "POST",
@@ -85,10 +102,20 @@ export function createOpenAiCompatibleWhisper(
             endMs: Math.max(0, Math.round(segment.end * 1_000)),
             text: segment.text.trim(),
           })),
+          ...(parsed.words === undefined
+            ? {}
+            : {
+                words: parsed.words.map((word) => ({
+                  text: word.word.trim(),
+                  startMs: Math.max(0, Math.round(word.start * 1_000)),
+                  endMs: Math.max(0, Math.round(word.end * 1_000)),
+                })),
+              }),
         };
 
         log.info("Transcription completed", {
           segmentCount: result.segments.length,
+          wordCount: result.words?.length ?? 0,
           textChars: result.text.length,
           language: result.language,
           durationMs: Math.round(performance.now() - startedAt),

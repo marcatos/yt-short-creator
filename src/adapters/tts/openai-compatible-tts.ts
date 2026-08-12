@@ -68,6 +68,9 @@ export function createOpenAiCompatibleTts(
             input: input.text,
             voice: input.voiceProfile,
             response_format: "mp3",
+            ...(input.instructions === undefined
+              ? {}
+              : { instructions: input.instructions }),
           }),
         });
         if (!response.ok) {

@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 
 export type VoiceOverLanguage = "it" | "en";
 
+export const BRAND_TTS_INSTRUCTIONS =
+  "Energetic simracing YouTube commentator for S.Marcato 42 Racing. Punchy, clear, inviting viewers to the channel. Not robotic.";
+
 export type TimedWord = {
   text: string;
   startMs: number;
