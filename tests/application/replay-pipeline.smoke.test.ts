@@ -313,6 +313,11 @@ describe("replay pipeline smoke", () => {
             logLevel: "INFO",
             defaultPrivacy: "unlisted",
             videoEncoderPreference: "libx264",
+            brandVoiceProfile: "coral",
+            shortsBurnInCaptions: true,
+            fullBurnInCaptions: false,
+            voiceDuckDb: -12,
+            enableVoiceOverPipeline: true,
           };
         },
         async save() {},

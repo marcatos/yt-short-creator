@@ -152,6 +152,11 @@ const noopDeps: HandlerDeps = {
         logLevel: "INFO",
         defaultPrivacy: "unlisted",
         videoEncoderPreference: "auto_igpu",
+        brandVoiceProfile: "coral",
+        shortsBurnInCaptions: true,
+        fullBurnInCaptions: false,
+        voiceDuckDb: -12,
+        enableVoiceOverPipeline: true,
       };
     },
     async save() {},
