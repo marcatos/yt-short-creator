@@ -86,7 +86,12 @@ async function publishFullReplayAction(formData: FormData): Promise<void> {
     privacyRaw === "public" || privacyRaw === "private" || privacyRaw === "unlisted"
       ? privacyRaw
       : "unlisted";
-  await getContainer().requestFullReplayPublish({ sessionId, privacy });
+  const voiceOver = formData.get("voiceOver") === "true";
+  await getContainer().requestFullReplayPublish({
+    sessionId,
+    privacy,
+    voiceOver,
+  });
   revalidatePath("/replays");
   revalidatePath("/jobs");
 }
@@ -259,6 +264,14 @@ export default async function ReplaysPage() {
                       disabled={!session.racePackage || !session.mediaPath}
                     >
                       Encode + upload full
+                    </button>
+                    <button
+                      type="submit"
+                      name="voiceOver"
+                      value="true"
+                      disabled={!session.racePackage || !session.mediaPath}
+                    >
+                      Encode + upload full IT+EN VO
                     </button>
                   </form>
                 </div>

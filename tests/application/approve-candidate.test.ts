@@ -43,6 +43,79 @@ function proposedCandidate(): ShortCandidate {
 }
 
 describe("candidate approval publishing flow", () => {
+  it("queues both localized renders after a VO package is approved", async () => {
+    let candidate: ShortCandidate = {
+      ...proposedCandidate(),
+      voiceOvers: [
+        {
+          language: "it",
+          script: "Spingi fino al traguardo.",
+          title: "Spinta finale",
+          description: "Il momento decisivo.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/candidate-1-it.mp3",
+          words: [{ text: "Spingi", startMs: 0, endMs: 400 }],
+          srtPath: "media/voice/candidate-1-it.srt",
+          assPath: "media/voice/candidate-1-it.ass",
+          scriptHash: "it-hash",
+        },
+        {
+          language: "en",
+          script: "Push to the finish.",
+          title: "Final push",
+          description: "The decisive moment.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/candidate-1-en.mp3",
+          words: [{ text: "Push", startMs: 0, endMs: 400 }],
+          srtPath: "media/voice/candidate-1-en.srt",
+          assPath: "media/voice/candidate-1-en.ass",
+          scriptHash: "en-hash",
+        },
+      ],
+    };
+    const queued: Array<{
+      type: string;
+      payload: Record<string, unknown>;
+    }> = [];
+    const approve = createApproveCandidate({
+      candidates: {
+        async save(value) {
+          candidate = value;
+        },
+        async getById() {
+          return candidate;
+        },
+        async list() {
+          return [candidate];
+        },
+      },
+      queue: {
+        async enqueue(job) {
+          queued.push(job);
+          return `job-${queued.length}`;
+        },
+        async getProgress() {
+          return null;
+        },
+      },
+      logger: createLogger(),
+    });
+
+    await approve({ candidateId: candidate.id });
+
+    expect(candidate.status).toBe("approved");
+    expect(queued).toEqual([
+      {
+        type: "render_short",
+        payload: { candidateId: candidate.id, language: "it" },
+      },
+      {
+        type: "render_short",
+        payload: { candidateId: candidate.id, language: "en" },
+      },
+    ]);
+  });
+
   it("approves, renders, and publishes exactly once", async () => {
     let candidate = proposedCandidate();
     const queued: Array<{

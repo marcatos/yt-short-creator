@@ -14,6 +14,13 @@ type CandidateReview = {
   scheduledAt: string | null;
   renderOutputPath: string | null;
   provenance: Record<string, unknown>;
+  voiceOvers: Array<{
+    language: "it" | "en";
+    hasAudio: boolean;
+    hasCaptions: boolean;
+    hasRender: boolean;
+    isPublished: boolean;
+  }>;
 };
 
 function localDateTime(iso: string | null): string {
@@ -82,6 +89,42 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
     } finally {
       setPending(false);
     }
+  }
+
+  async function generateVoiceOvers() {
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(
+        `/api/candidates/${candidate.id}/voice-over`,
+        { method: "POST" },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to generate voice-overs");
+      }
+      setMessage(
+        "IT+EN voice-over packages are ready. Approve to render and publish both.",
+      );
+      router.refresh();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Voice-over generation failed",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function voiceOverStatus(language: "it" | "en"): string {
+    const voiceOver = candidate.voiceOvers.find(
+      (item) => item.language === language,
+    );
+    if (!voiceOver) return "not generated";
+    if (voiceOver.isPublished) return "published";
+    if (voiceOver.hasRender) return "render ready";
+    if (voiceOver.hasAudio && voiceOver.hasCaptions) return "package ready";
+    return "incomplete";
   }
 
   const timedOrigin =
@@ -203,6 +246,26 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
             disabled={!editable}
           />
         </label>
+        <section className="provenance-panel" aria-label="Voice-over package status">
+          <p className="eyebrow">Bilingual voice-over</p>
+          <p>
+            <strong>IT:</strong> {voiceOverStatus("it")}
+            {" · "}
+            <strong>EN:</strong> {voiceOverStatus("en")}
+          </p>
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={pending || !editable}
+            onClick={generateVoiceOvers}
+          >
+            Generate VO IT+EN
+          </button>
+          <p className="muted">
+            Approve remains required before the localized render and publish pair
+            is queued.
+          </p>
+        </section>
         <div className="action-row">
           <button
             className="button button-primary"

@@ -27,6 +27,13 @@ export default async function CandidateReviewPage({
             scheduledAt: candidate.scheduledAt?.toISOString() ?? null,
             renderOutputPath: candidate.renderOutputPath,
             provenance: { ...candidate.provenance },
+            voiceOvers: (candidate.voiceOvers ?? []).map((voiceOver) => ({
+              language: voiceOver.language,
+              hasAudio: Boolean(voiceOver.audioPath),
+              hasCaptions: Boolean(voiceOver.srtPath),
+              hasRender: Boolean(voiceOver.renderOutputPath),
+              isPublished: Boolean(voiceOver.youtubeVideoId),
+            })),
           }}
         />
       </main>

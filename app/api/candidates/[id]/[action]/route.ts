@@ -10,6 +10,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { id, action } = await context.params;
   const container = getContainer();
   try {
+    if (action === "voice-over") {
+      const voiceOvers = await container.generateShortVoiceOvers({
+        candidateId: id,
+      });
+      return NextResponse.json({ voiceOvers });
+    }
+
     let candidate;
     if (action === "approve") {
       candidate = await container.approveCandidate({ candidateId: id });
