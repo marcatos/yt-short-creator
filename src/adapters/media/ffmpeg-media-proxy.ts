@@ -175,6 +175,8 @@ export function createFfmpegMediaProxy(
         [
           "-y",
           "-hide_banner",
+          "-hwaccel",
+          "auto",
           "-i",
           mediaPath,
           "-vn",
@@ -211,6 +213,8 @@ export function createFfmpegMediaProxy(
         [
           "-y",
           "-hide_banner",
+          "-hwaccel",
+          "auto",
           "-i",
           mediaPath,
           "-vf",
