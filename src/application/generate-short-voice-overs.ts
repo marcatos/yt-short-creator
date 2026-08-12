@@ -14,6 +14,7 @@ import {
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaDurationPort } from "@/src/ports/media-duration";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { TranscriptionPort } from "@/src/ports/transcription";
@@ -66,6 +67,8 @@ type Dependencies = {
   candidates: CandidateRepository;
   settings: SettingsRepository;
   logger: Logger;
+  /** Measures the rendered narration so the 8–25 s gate sees real audio. */
+  mediaDuration?: MediaDurationPort;
 };
 
 export type GenerateShortVoiceOvers = (input: {
@@ -92,6 +95,37 @@ export function createGenerateShortVoiceOvers(
   deps: Dependencies,
 ): GenerateShortVoiceOvers {
   const log = deps.logger.child({ operation: "generateShortVoiceOvers" });
+
+  /**
+   * Rendered length of the narration. TTS adapters may only return an estimate
+   * (words × constant), which can clear the 8–25 s gate that the actual file
+   * would fail, so the probed file wins and the estimate is the fallback.
+   */
+  async function measureNarrationMs(
+    audioPath: string,
+    estimateMs: number,
+    context: Record<string, unknown>,
+  ): Promise<{ durationMs: number; source: "probe" | "estimate" }> {
+    if (deps.mediaDuration) {
+      try {
+        const seconds = await deps.mediaDuration.probeDurationSec(audioPath);
+        if (seconds !== null && Number.isFinite(seconds) && seconds > 0) {
+          return { durationMs: Math.round(seconds * 1_000), source: "probe" };
+        }
+        log.warn("Voice-over duration probe returned no usable value", {
+          ...context,
+          audioPath,
+        });
+      } catch (error) {
+        log.warn("Voice-over duration probe failed", {
+          ...context,
+          audioPath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { durationMs: estimateMs, source: "estimate" };
+  }
 
   return async ({ candidateId }) => {
     const startedAt = performance.now();
@@ -178,18 +212,24 @@ export function createGenerateShortVoiceOvers(
           outputPath: audioPath,
           instructions: BRAND_TTS_INSTRUCTIONS,
         });
+        const measured = await measureNarrationMs(
+          audioPath,
+          synthesis.durationMs,
+          { candidateId, language },
+        );
         if (
-          synthesis.durationMs < MIN_VOICE_OVER_DURATION_MS ||
-          synthesis.durationMs > MAX_VOICE_OVER_DURATION_MS
+          measured.durationMs < MIN_VOICE_OVER_DURATION_MS ||
+          measured.durationMs > MAX_VOICE_OVER_DURATION_MS
         ) {
           throw new Error(
-            `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${synthesis.durationMs} ms`,
+            `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${measured.durationMs} ms`,
           );
         }
         log.info("Short voice-over synthesis completed", {
           candidateId,
           language,
-          audioDurationMs: synthesis.durationMs,
+          audioDurationMs: measured.durationMs,
+          durationSource: measured.source,
           durationMs: Math.round(performance.now() - ttsStartedAt),
         });
 

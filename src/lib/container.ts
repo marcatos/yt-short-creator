@@ -365,6 +365,7 @@ export function createContainer(env: AppEnv): AppContainer {
       llm,
       tts,
       transcription,
+      mediaDuration,
       mediaStore,
       candidates: repositories.candidates,
       settings,

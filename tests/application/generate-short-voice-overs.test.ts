@@ -299,6 +299,75 @@ describe("generateShortVoiceOvers", () => {
     },
   );
 
+  it("rejects a narration the probe measures outside the range", async () => {
+    const candidates = new MemoryCandidates(candidate());
+    const probed: string[] = [];
+    const generate = createGenerateShortVoiceOvers({
+      llm: { complete: async () => JSON.stringify(llmResponse) },
+      // The adapter estimate clears the gate; only the rendered file is long.
+      tts: { synthesize: async () => ({ durationMs: 10_000 }) },
+      transcription: {
+        transcribe: async () => ({
+          text: "valid",
+          segments: [],
+          language: null,
+          words: [{ text: "valid", startMs: 0, endMs: 500 }],
+        }),
+      },
+      mediaDuration: {
+        probeDurationSec: async (mediaPath) => {
+          probed.push(mediaPath);
+          return 31.4;
+        },
+      },
+      mediaStore: await store(),
+      candidates,
+      settings: { get: async () => settings(), save: async () => {} },
+      logger: logger(),
+    });
+
+    await expect(generate({ candidateId: "candidate-42" })).rejects.toThrow(
+      /received 31,?400 ms/,
+    );
+    expect(probed).toEqual([expect.stringContaining("vo-it.mp3")]);
+    expect(candidates.candidate.voiceOvers).toBeNull();
+  });
+
+  it("falls back to the synthesis estimate when the probe fails", async () => {
+    const candidates = new MemoryCandidates(candidate());
+    const generate = createGenerateShortVoiceOvers({
+      llm: { complete: async () => JSON.stringify(llmResponse) },
+      tts: {
+        synthesize: async ({ outputPath }) => {
+          await fs.mkdir(path.dirname(outputPath), { recursive: true });
+          await fs.writeFile(outputPath, "");
+          return { durationMs: 10_000 };
+        },
+      },
+      transcription: {
+        transcribe: async () => ({
+          text: "valid",
+          segments: [],
+          language: null,
+          words: [{ text: "valid", startMs: 0, endMs: 500 }],
+        }),
+      },
+      mediaDuration: {
+        probeDurationSec: async () => {
+          throw new Error("ffprobe missing");
+        },
+      },
+      mediaStore: await store(),
+      candidates,
+      settings: { get: async () => settings(), save: async () => {} },
+      logger: logger(),
+    });
+
+    await expect(generate({ candidateId: "candidate-42" })).resolves.toHaveLength(
+      2,
+    );
+  });
+
   it.each([undefined, []])(
     "rejects alignment without word timestamps (%s)",
     async (words) => {
