@@ -26,6 +26,15 @@ export function createFsMediaStore(deps: {
       return path.join(mediaRoot, "renders", `${candidateId}.mp4`);
     },
 
+    voRenderPath(candidateId: string, language: "it" | "en"): string {
+      return path.join(
+        mediaRoot,
+        "renders",
+        path.basename(candidateId),
+        `vo-${language}.mp4`,
+      );
+    },
+
     audioPath(candidateId: string): string {
       return path.join(mediaRoot, "audio", `${candidateId}.mp3`);
     },

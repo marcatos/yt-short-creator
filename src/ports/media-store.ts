@@ -1,6 +1,7 @@
 export interface MediaStorePort {
   sourcePath(youtubeVideoId: string): string;
   renderPath(candidateId: string): string;
+  voRenderPath?(candidateId: string, language: "it" | "en"): string;
   audioPath(candidateId: string): string;
   voPath?(candidateId: string, language: "it" | "en"): string;
   writeText?(filePath: string, content: string): Promise<void>;

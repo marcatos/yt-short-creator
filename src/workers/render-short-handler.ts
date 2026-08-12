@@ -49,10 +49,16 @@ async function renderInputForCandidate(
     deps.settings.get(),
   ]);
   const voiceOver = selectVoiceOver(candidate, language);
+  const voRenderPath = deps.mediaStore.voRenderPath?.bind(deps.mediaStore);
+  if (voiceOver && !voRenderPath) {
+    throw new Error("Media store does not support voice-over render paths");
+  }
   const common = {
     candidateId: candidate.id,
     origin: candidate.origin,
-    outputPath: deps.mediaStore.renderPath(candidate.id),
+    outputPath: voiceOver
+      ? voRenderPath!(candidate.id, voiceOver.language)
+      : deps.mediaStore.renderPath(candidate.id),
     logoPath: brand.logoStackedPath,
     accentColor: brand.accentHex,
     voiceAssetPath: voiceOver?.audioPath,
@@ -154,6 +160,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
       throw new Error(`Candidate not found: ${candidateId}`);
     }
     let candidate: ShortCandidate = found;
+    const renderedVoiceOver = selectVoiceOver(candidate, language);
 
     const existingJob = await deps.jobs.getRenderJobByCandidateId(candidateId);
     const renderJobId = existingJob?.id ?? ctx.jobId;
@@ -210,43 +217,59 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         await saveJob("running", null, 20, "Rendering 9:16 video");
         result = await deps.render.render(input, { signal: ctx.signal });
 
-        candidate = {
-          ...applyCandidateEvent(candidate, { type: "render_succeeded" }),
-          renderOutputPath: result.outputPath,
-        };
+        if (renderedVoiceOver) {
+          const freshCandidate =
+            (await deps.candidates.getById(candidateId)) ?? candidate;
+          candidate = {
+            ...freshCandidate,
+            voiceOvers: (freshCandidate.voiceOvers ?? []).map((voiceOver) =>
+              voiceOver.language === renderedVoiceOver.language
+                ? { ...voiceOver, renderOutputPath: result!.outputPath }
+                : voiceOver,
+            ),
+            updatedAt: deps.clock.now(),
+          };
+        } else {
+          candidate = {
+            ...applyCandidateEvent(candidate, { type: "render_succeeded" }),
+            renderOutputPath: result.outputPath,
+          };
+        }
         await deps.candidates.save(candidate);
         await saveJob("succeeded", result.outputPath, 100, "Render complete");
         ctx.setProgress(100, `Rendered to ${result.outputPath}`);
       });
 
       let publishJobId: string | undefined;
-      await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
-        const existingPublishJob = deps.queue.listJobs().find(
-          (job) =>
-            job.type === "publish_short" &&
-            job.payload.candidateId === candidateId &&
-            ["queued", "running", "paused", "succeeded"].includes(job.status),
-        );
-        if (existingPublishJob) {
-          publishJobId = existingPublishJob.id;
-          log.info("publish_short enqueue skipped", {
-            jobId: ctx.jobId,
-            candidateId,
-            existingPublishJobId: existingPublishJob.id,
-            existingPublishJobStatus: existingPublishJob.status,
+      if (!renderedVoiceOver) {
+        await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
+          const existingPublishJob = deps.queue.listJobs().find(
+            (job) =>
+              job.type === "publish_short" &&
+              job.payload.candidateId === candidateId &&
+              ["queued", "running", "paused", "succeeded"].includes(job.status),
+          );
+          if (existingPublishJob) {
+            publishJobId = existingPublishJob.id;
+            log.info("publish_short enqueue skipped", {
+              jobId: ctx.jobId,
+              candidateId,
+              existingPublishJobId: existingPublishJob.id,
+              existingPublishJobStatus: existingPublishJob.status,
+            });
+            return;
+          }
+          publishJobId = await deps.queue.enqueue({
+            type: "publish_short",
+            payload: { candidateId },
           });
-          return;
-        }
-        publishJobId = await deps.queue.enqueue({
-          type: "publish_short",
-          payload: { candidateId },
         });
-      });
+      }
 
       log.info("render_short completed", {
         jobId: ctx.jobId,
         candidateId,
-        outputPath: candidate.renderOutputPath,
+        outputPath: result?.outputPath,
         publishJobId,
         voiceOverLanguage: language ?? candidate.voiceOvers?.[0]?.language,
         durationMs: Math.round(performance.now() - startedAt),
@@ -262,7 +285,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         // Cancellation is terminal, so the candidate and job row must both
         // be marked failed: this lets retry work and keeps orphan repair
         // (recoverQueue) from re-enqueuing work the user explicitly cancelled.
-        if (candidate.status === "rendering") {
+        if (!renderedVoiceOver && candidate.status === "rendering") {
           await deps.candidates.save(
             applyCandidateEvent(candidate, { type: "render_failed" }),
           );
@@ -271,7 +294,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         log.info("render_short cancelled", { jobId: ctx.jobId, candidateId });
         throw error;
       }
-      if (candidate.status === "rendering") {
+      if (!renderedVoiceOver && candidate.status === "rendering") {
         await deps.candidates.save(
           applyCandidateEvent(candidate, { type: "render_failed" }),
         );

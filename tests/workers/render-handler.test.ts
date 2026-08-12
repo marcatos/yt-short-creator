@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { RenderJob, ShortCandidate, SourceVideo } from "@/src/domain/entities";
+import type {
+  RenderJob,
+  ShortCandidate,
+  SourceVideo,
+} from "@/src/domain/entities";
 import type { Logger } from "@/src/ports/logger";
 import { createHandlers } from "@/src/workers/handlers";
 
@@ -18,7 +22,7 @@ function logger(): Logger {
 }
 
 describe("render_short handler", () => {
-  it("renders the candidate, records the output, and transitions it to ready", async () => {
+  it("renders IT and EN voice-overs independently without publishing", async () => {
     let candidate: ShortCandidate = {
       id: "candidate-1",
       origin: "clip",
@@ -36,6 +40,18 @@ describe("render_short handler", () => {
       },
       renderOutputPath: null,
       voiceOvers: [
+        {
+          language: "it",
+          script: "Spingi fino al traguardo.",
+          title: "Spinta all'ultimo giro",
+          description: "L'ultimo giro decisivo.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/candidate-1-it.mp3",
+          words: [{ text: "Spingi", startMs: 0, endMs: 400 }],
+          srtPath: "media/voice/candidate-1-it.srt",
+          assPath: "media/voice/candidate-1-it.ass",
+          scriptHash: "script-hash-it",
+        },
         {
           language: "en",
           script: "Push to the finish.",
@@ -65,7 +81,8 @@ describe("render_short handler", () => {
       syncedAt: now,
     };
     const jobs: RenderJob[] = [];
-    let renderInput: Record<string, unknown> | undefined;
+    const renderInputs: Array<Record<string, unknown>> = [];
+    const enqueued: Array<Record<string, unknown>> = [];
     const handlers = createHandlers({
       logger: logger(),
       sourceVideos: {
@@ -81,7 +98,11 @@ describe("render_short handler", () => {
         },
         async upsertMany() {},
       },
-      videoDownload: { async download() { return ""; } },
+      videoDownload: {
+        async download() {
+          return "";
+        },
+      },
       runClipAnalysis: async () => [],
       runReplayAnalysis: async () => [],
       requestReplayCapture: async ({ sessionId }) => {
@@ -129,7 +150,7 @@ describe("render_short handler", () => {
       },
       render: {
         async render(input) {
-          renderInput = input;
+          renderInputs.push(input);
           return { outputPath: input.outputPath };
         },
       },
@@ -149,6 +170,8 @@ describe("render_short handler", () => {
       mediaStore: {
         sourcePath: () => "",
         renderPath: () => "media/renders/candidate-1.mp4",
+        voRenderPath: (_candidateId, language) =>
+          `media/renders/candidate-1/vo-${language}.mp4`,
         audioPath: () => "",
         brollPath: () => "",
         replayAnalysisDir: () => "",
@@ -171,8 +194,9 @@ describe("render_short handler", () => {
         },
       },
       queue: {
-        async enqueue() {
-          return "publish-job-1";
+        async enqueue(job) {
+          enqueued.push(job);
+          return `job-${enqueued.length}`;
         },
         async getProgress() {
           return null;
@@ -234,10 +258,23 @@ describe("render_short handler", () => {
       throwIfPausedOrCancelled() {},
     });
 
-    expect(renderInput).toMatchObject({
+    await handlers.render_short({
+      jobId: "render-job-2",
+      payload: { candidateId: candidate.id, language: "it" },
+      checkpoint: null,
+      setProgress(pct) {
+        progress.push(pct);
+      },
+      async saveCheckpoint() {},
+      signal: new AbortController().signal,
+      shouldPause: () => false,
+      throwIfPausedOrCancelled() {},
+    });
+
+    expect(renderInputs[0]).toMatchObject({
       candidateId: candidate.id,
       sourceMediaPath: source.localMediaPath,
-      outputPath: "media/renders/candidate-1.mp4",
+      outputPath: "media/renders/candidate-1/vo-en.mp4",
       logoPath: "brand/logo.png",
       accentColor: "#E10600",
       startMs: 1_000,
@@ -247,15 +284,31 @@ describe("render_short handler", () => {
       burnInCaptions: true,
       voiceDuckDb: -12,
     });
-    expect(candidate.status).toBe("ready");
-    expect(candidate.renderOutputPath).toBe("media/renders/candidate-1.mp4");
+    expect(renderInputs[1]).toMatchObject({
+      outputPath: "media/renders/candidate-1/vo-it.mp4",
+      voiceAssetPath: "media/voice/candidate-1-it.mp3",
+      assPath: "media/voice/candidate-1-it.ass",
+    });
+    expect(candidate.status).toBe("rendering");
+    expect(candidate.renderOutputPath).toBeNull();
+    expect(candidate.voiceOvers).toEqual([
+      expect.objectContaining({
+        language: "it",
+        renderOutputPath: "media/renders/candidate-1/vo-it.mp4",
+      }),
+      expect.objectContaining({
+        language: "en",
+        renderOutputPath: "media/renders/candidate-1/vo-en.mp4",
+      }),
+    ]);
     expect(jobs.at(-1)).toMatchObject({
-      id: "render-job-1",
+      id: "render-job-2",
       candidateId: candidate.id,
       status: "succeeded",
-      outputPath: "media/renders/candidate-1.mp4",
+      outputPath: "media/renders/candidate-1/vo-it.mp4",
       progressPct: 100,
     });
-    expect(progress).toEqual([5, 20, 100]);
+    expect(enqueued).toEqual([]);
+    expect(progress).toEqual([5, 20, 100, 5, 20, 100]);
   });
 });

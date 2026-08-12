@@ -25,6 +25,15 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.renderPath("cand-1")).toBe(
       path.join(mediaRoot, "renders", "cand-1.mp4"),
     );
+    expect(mediaStore.voRenderPath?.("cand-1", "it")).toBe(
+      path.join(mediaRoot, "renders", "cand-1", "vo-it.mp4"),
+    );
+    expect(mediaStore.voRenderPath?.("cand-1", "en")).toBe(
+      path.join(mediaRoot, "renders", "cand-1", "vo-en.mp4"),
+    );
+    expect(mediaStore.voRenderPath?.("cand-1", "it")).not.toBe(
+      mediaStore.voRenderPath?.("cand-1", "en"),
+    );
     expect(mediaStore.audioPath("cand-1")).toBe(
       path.join(mediaRoot, "audio", "cand-1.mp3"),
     );

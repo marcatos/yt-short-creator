@@ -22,6 +22,7 @@ export type VoiceOverPackage = {
   srtPath: string | null;
   assPath: string | null;
   scriptHash: string;
+  renderOutputPath?: string | null;
 };
 
 export function hashVoiceScript(
