@@ -137,7 +137,7 @@ describe("generateShortVoiceOvers", () => {
           synthesized.push(input);
           await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
           await fs.writeFile(input.outputPath, "");
-          return { durationMs: 4_000 };
+          return { durationMs: 10_000 };
         },
       },
       transcription: {
@@ -180,6 +180,24 @@ describe("generateShortVoiceOvers", () => {
       { path: expect.stringContaining("vo-en.mp3"), words: true },
     ]);
     expect(result.map(({ language }) => language)).toEqual(["it", "en"]);
+    expect(
+      result.map(({ language, title, description }) => ({
+        language,
+        title,
+        description,
+      })),
+    ).toEqual([
+      {
+        language: "it",
+        title: llmResponse.titleIt,
+        description: llmResponse.descriptionIt,
+      },
+      {
+        language: "en",
+        title: llmResponse.titleEn,
+        description: llmResponse.descriptionEn,
+      },
+    ]);
     expect(candidates.candidate.voiceOvers).toEqual(result);
     for (const voiceOver of result) {
       expect(await fs.readFile(voiceOver.srtPath!, "utf8")).toContain("two words");
@@ -192,6 +210,8 @@ describe("generateShortVoiceOvers", () => {
     const cached: VoiceOverPackage = {
       language: "it",
       script: scriptIt,
+      title: "Cached title",
+      description: "Cached description",
       voiceProfile: "coral",
       audioPath: "cached-it.mp3",
       words: [],
@@ -207,7 +227,7 @@ describe("generateShortVoiceOvers", () => {
           synthesized.push(outputPath);
           await fs.mkdir(path.dirname(outputPath), { recursive: true });
           await fs.writeFile(outputPath, "");
-          return { durationMs: 1_000 };
+          return { durationMs: 10_000 };
         },
       },
       transcription: {
@@ -226,7 +246,127 @@ describe("generateShortVoiceOvers", () => {
 
     const result = await generate({ candidateId: "candidate-42" });
 
-    expect(result[0]).toBe(cached);
+    expect(result[0]).toEqual({
+      ...cached,
+      title: llmResponse.titleIt,
+      description: llmResponse.descriptionIt,
+    });
     expect(synthesized).toEqual([expect.stringContaining("vo-en.mp3")]);
+  });
+
+  it.each([
+    { durationMs: 7_999, valid: false },
+    { durationMs: 8_000, valid: true },
+    { durationMs: 25_000, valid: true },
+    { durationMs: 25_001, valid: false },
+  ])(
+    "validates the inclusive 8–25 second range ($durationMs ms)",
+    async ({ durationMs, valid }) => {
+      const candidates = new MemoryCandidates(candidate());
+      let transcriptionCalls = 0;
+      const generate = createGenerateShortVoiceOvers({
+        llm: { complete: async () => JSON.stringify(llmResponse) },
+        tts: { synthesize: async () => ({ durationMs }) },
+        transcription: {
+          transcribe: async () => {
+            transcriptionCalls += 1;
+            return {
+              text: "valid",
+              segments: [],
+              language: null,
+              words: [{ text: "valid", startMs: 0, endMs: 500 }],
+            };
+          },
+        },
+        mediaStore: await store(),
+        candidates,
+        settings: { get: async () => settings(), save: async () => {} },
+        logger: logger(),
+      });
+
+      if (valid) {
+        await expect(
+          generate({ candidateId: "candidate-42" }),
+        ).resolves.toHaveLength(2);
+        expect(transcriptionCalls).toBe(2);
+      } else {
+        await expect(generate({ candidateId: "candidate-42" })).rejects.toThrow(
+          /duration.*8,000.*25,000/i,
+        );
+        expect(transcriptionCalls).toBe(0);
+        expect(candidates.candidate.voiceOvers).toBeNull();
+      }
+    },
+  );
+
+  it.each([undefined, []])(
+    "rejects alignment without word timestamps (%s)",
+    async (words) => {
+      const candidates = new MemoryCandidates(candidate());
+      const generate = createGenerateShortVoiceOvers({
+        llm: { complete: async () => JSON.stringify(llmResponse) },
+        tts: { synthesize: async () => ({ durationMs: 10_000 }) },
+        transcription: {
+          transcribe: async () => ({
+            text: "aligned text",
+            segments: [],
+            language: null,
+            words,
+          }),
+        },
+        mediaStore: await store(),
+        candidates,
+        settings: { get: async () => settings(), save: async () => {} },
+        logger: logger(),
+      });
+
+      await expect(generate({ candidateId: "candidate-42" })).rejects.toThrow(
+        /word timestamps/i,
+      );
+      expect(candidates.candidate.voiceOvers).toBeNull();
+    },
+  );
+
+  it("merges voice-overs onto a freshly loaded candidate before saving", async () => {
+    const initial = candidate();
+    const concurrentlyUpdated = {
+      ...initial,
+      title: "Title updated while VO generated",
+      description: "Concurrent description",
+      tags: ["simracing", "concurrent"],
+    };
+    let getCalls = 0;
+    let saved: ShortCandidate | null = null;
+    const candidates: CandidateRepository = {
+      getById: async () => {
+        getCalls += 1;
+        return getCalls === 1 ? initial : concurrentlyUpdated;
+      },
+      save: async (value) => {
+        saved = value;
+      },
+      list: async () => [],
+    };
+    const generate = createGenerateShortVoiceOvers({
+      llm: { complete: async () => JSON.stringify(llmResponse) },
+      tts: { synthesize: async () => ({ durationMs: 10_000 }) },
+      transcription: {
+        transcribe: async () => ({
+          text: "one",
+          segments: [],
+          language: null,
+          words: [{ text: "one", startMs: 0, endMs: 500 }],
+        }),
+      },
+      mediaStore: await store(),
+      candidates,
+      settings: { get: async () => settings(), save: async () => {} },
+      logger: logger(),
+    });
+
+    const voiceOvers = await generate({ candidateId: initial.id });
+
+    expect(getCalls).toBe(2);
+    expect(saved).toEqual({ ...concurrentlyUpdated, voiceOvers });
   });
 });

@@ -87,6 +87,8 @@ const sampleCandidate: ShortCandidate = {
     {
       language: "it",
       script: "Guarda questo sorpasso!",
+      title: "Sorpasso migliore",
+      description: "Il momento decisivo della gara.",
       voiceProfile: "coral",
       audioPath: "media/voice-overs/cand-1/vo-it.mp3",
       words: [{ text: "Guarda", startMs: 0, endMs: 350 }],

@@ -14,6 +14,8 @@ export type TimedWord = {
 export type VoiceOverPackage = {
   language: VoiceOverLanguage;
   script: string;
+  title: string;
+  description: string;
   voiceProfile: string;
   audioPath: string;
   words: TimedWord[];

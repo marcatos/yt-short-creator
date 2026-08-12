@@ -55,6 +55,9 @@ Both versions must hook viewers in the first 2 seconds, name the racing moment, 
 The focus car is the white/black/green π car from S.Marcato 42 Racing. Never invent race results or facts absent from the supplied candidate.
 Return both language scripts plus concise localized titles and descriptions.`;
 
+const MIN_VOICE_OVER_DURATION_MS = 8_000;
+const MAX_VOICE_OVER_DURATION_MS = 25_000;
+
 type Dependencies = {
   llm: LlmPort;
   tts: TtsPort;
@@ -126,13 +129,29 @@ export function createGenerateShortVoiceOvers(
       const existingByLanguage = new Map(
         (candidate.voiceOvers ?? []).map((item) => [item.language, item]),
       );
-      const languageScripts: Array<[VoiceOverLanguage, string]> = [
-        ["it", scripts.scriptIt],
-        ["en", scripts.scriptEn],
+      const languageScripts: Array<{
+        language: VoiceOverLanguage;
+        script: string;
+        title: string;
+        description: string;
+      }> = [
+        {
+          language: "it",
+          script: scripts.scriptIt,
+          title: scripts.titleIt,
+          description: scripts.descriptionIt,
+        },
+        {
+          language: "en",
+          script: scripts.scriptEn,
+          title: scripts.titleEn,
+          description: scripts.descriptionEn,
+        },
       ];
       const packages: VoiceOverPackage[] = [];
+      let reusedCount = 0;
 
-      for (const [language, script] of languageScripts) {
+      for (const { language, script, title, description } of languageScripts) {
         const languageStartedAt = performance.now();
         const scriptHash = hashVoiceScript(
           script,
@@ -141,7 +160,8 @@ export function createGenerateShortVoiceOvers(
         );
         const cached = existingByLanguage.get(language);
         if (cached?.scriptHash === scriptHash) {
-          packages.push(cached);
+          packages.push({ ...cached, title, description });
+          reusedCount += 1;
           log.info("Short voice-over package reused", {
             candidateId,
             language,
@@ -152,15 +172,24 @@ export function createGenerateShortVoiceOvers(
 
         const audioPath = voPath(candidateId, language);
         const ttsStartedAt = performance.now();
-        await deps.tts.synthesize({
+        const synthesis = await deps.tts.synthesize({
           text: script,
           voiceProfile: appSettings.brandVoiceProfile,
           outputPath: audioPath,
           instructions: BRAND_TTS_INSTRUCTIONS,
         });
+        if (
+          synthesis.durationMs < MIN_VOICE_OVER_DURATION_MS ||
+          synthesis.durationMs > MAX_VOICE_OVER_DURATION_MS
+        ) {
+          throw new Error(
+            `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${synthesis.durationMs} ms`,
+          );
+        }
         log.info("Short voice-over synthesis completed", {
           candidateId,
           language,
+          audioDurationMs: synthesis.durationMs,
           durationMs: Math.round(performance.now() - ttsStartedAt),
         });
 
@@ -169,6 +198,11 @@ export function createGenerateShortVoiceOvers(
           words: true,
         });
         const words = transcription.words ?? [];
+        if (words.length === 0) {
+          throw new Error(
+            `Voice-over alignment for ${language} returned no word timestamps`,
+          );
+        }
         log.info("Short voice-over alignment completed", {
           candidateId,
           language,
@@ -185,6 +219,8 @@ export function createGenerateShortVoiceOvers(
         packages.push({
           language,
           script,
+          title,
+          description,
           voiceProfile: appSettings.brandVoiceProfile,
           audioPath,
           words,
@@ -199,13 +235,15 @@ export function createGenerateShortVoiceOvers(
         });
       }
 
-      await deps.candidates.save({ ...candidate, voiceOvers: packages });
+      const freshCandidate = await deps.candidates.getById(candidateId);
+      if (!freshCandidate) {
+        throw new Error(`Short candidate not found before VO save: ${candidateId}`);
+      }
+      await deps.candidates.save({ ...freshCandidate, voiceOvers: packages });
       log.info("Short voice-over generation completed", {
         candidateId,
         packageCount: packages.length,
-        reusedCount: packages.filter(
-          (item) => existingByLanguage.get(item.language) === item,
-        ).length,
+        reusedCount,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return packages;
