@@ -168,33 +168,8 @@ export function createFfmpegMediaProxy(
 
       const durationSec = await probeMediaDurationSec(mediaPath, ffprobePath);
 
-      await runCommand(
-        ffmpegPath,
-        [
-          "-y",
-          "-hide_banner",
-          "-i",
-          mediaPath,
-          "-vf",
-          "scale=854:480:force_original_aspect_ratio=decrease,fps=2",
-          "-c:v",
-          "libx264",
-          "-preset",
-          "veryfast",
-          "-crf",
-          "28",
-          "-c:a",
-          "aac",
-          "-b:a",
-          "64k",
-          "-movflags",
-          "+faststart",
-          proxyVideoPath,
-        ],
-        log,
-        "ffmpeg proxy video",
-      );
-
+      // Analysis only needs audio + sampled frames. Skip a full proxy re-encode
+      // of huge OBS masters (often 100+ Mbps) — that path is optional/cached later.
       await runCommand(
         ffmpegPath,
         [
@@ -217,11 +192,19 @@ export function createFfmpegMediaProxy(
         "ffmpeg proxy audio",
       );
 
-      // Clear prior frames to avoid stale timestamps after rebuild.
       const prior = await fs.readdir(framesDir);
       await Promise.all(
-        prior.map((name) => fs.unlink(path.join(framesDir, name)).catch(() => undefined)),
+        prior.map((name) =>
+          fs.unlink(path.join(framesDir, name)).catch(() => undefined),
+        ),
       );
+
+      // Even dimensions required by libx264/jpeg pipelines (853x480 fails).
+      const frameVf = [
+        `fps=1/${frameIntervalSec}`,
+        "scale=854:480:force_original_aspect_ratio=decrease",
+        "pad=854:480:(ow-iw)/2:(oh-ih)/2",
+      ].join(",");
 
       await runCommand(
         ffmpegPath,
@@ -229,15 +212,41 @@ export function createFfmpegMediaProxy(
           "-y",
           "-hide_banner",
           "-i",
-          proxyVideoPath,
+          mediaPath,
           "-vf",
-          `fps=1/${frameIntervalSec}`,
+          frameVf,
           "-q:v",
           "5",
           path.join(framesDir, "frame_%06d.jpg"),
         ],
         log,
         "ffmpeg proxy frames",
+      );
+
+      // Lightweight scrub proxy from already-decoded low-rate frames path:
+      // build a tiny mp4 from the JPEGs so callers still get a proxyVideoPath.
+      await runCommand(
+        ffmpegPath,
+        [
+          "-y",
+          "-hide_banner",
+          "-framerate",
+          String(1 / frameIntervalSec),
+          "-i",
+          path.join(framesDir, "frame_%06d.jpg"),
+          "-c:v",
+          "libx264",
+          "-preset",
+          "ultrafast",
+          "-crf",
+          "32",
+          "-pix_fmt",
+          "yuv420p",
+          "-an",
+          proxyVideoPath,
+        ],
+        log,
+        "ffmpeg proxy video",
       );
 
       const frames = await listFrames(framesDir, frameIntervalSec);
