@@ -65,6 +65,7 @@ export function createOpenAiCompatibleWhisper(
       });
 
       try {
+        const preparationStartedAt = performance.now();
         const bytes = await fs.readFile(audioPath);
         const form = new FormData();
         form.append(
@@ -77,13 +78,25 @@ export function createOpenAiCompatibleWhisper(
         if (options?.words === true) {
           form.append("timestamp_granularities[]", "word");
         }
+        log.info("Transcription input prepared", {
+          audioPath: path.basename(audioPath),
+          byteCount: bytes.byteLength,
+          wordTimestampsRequested: options?.words === true,
+          durationMs: Math.round(performance.now() - preparationStartedAt),
+        });
 
+        const requestStartedAt = performance.now();
         const response = await fetchImpl(transcriptionsUrl(deps.baseUrl), {
           method: "POST",
           headers: {
             authorization: `Bearer ${deps.apiKey}`,
           },
           body: form,
+        });
+        log.info("Transcription API request completed", {
+          status: response.status,
+          ok: response.ok,
+          durationMs: Math.round(performance.now() - requestStartedAt),
         });
 
         if (!response.ok) {
