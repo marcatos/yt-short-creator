@@ -1,0 +1,313 @@
+import type { ReplaySession, YoutubePrivacy } from "@/src/domain/entities";
+import type {
+  VoiceOverLanguage,
+  VoiceOverPackage,
+} from "@/src/domain/voice-over";
+import {
+  priorFullVoiceOverJobCheckpoints,
+  resolveVoiceOverUploadCheckpoint,
+  type VoiceOverUploadCheckpoint,
+} from "@/src/application/voice-over-publish-checkpoint";
+import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
+import type { ClockPort } from "@/src/ports/clock";
+import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
+import type { Logger } from "@/src/ports/logger";
+import type { MediaStorePort } from "@/src/ports/media-store";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
+import type { SettingsRepository } from "@/src/ports/settings-repository";
+import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
+import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
+import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+
+import type { JobHandlerContext } from "./job-handler-context";
+import { runStep } from "./run-step";
+import { currentYouTubeAccessToken } from "./youtube-access-token";
+
+export type FullVoiceOverPublishDeps = {
+  logger: Logger;
+  replaySessions: ReplaySessionRepository;
+  mediaStore: MediaStorePort;
+  settings?: SettingsRepository;
+  auth: YouTubeAuthPort;
+  upload: YouTubeUploadPort;
+  captions?: YouTubeCaptionsPort;
+  queue?: InspectableJobQueue;
+  generateFullVoiceOvers?: GenerateFullVoiceOvers;
+  fullVoMix?: FullVoMixPort;
+  clock: ClockPort;
+};
+
+const JOB_TYPE = "publish_full_replay";
+const LANGUAGES: VoiceOverLanguage[] = ["it", "en"];
+
+/** Progress bands per language so the pair reports one continuous bar. */
+const LANGUAGE_PROGRESS: Record<VoiceOverLanguage, { mix: number; upload: number; captions: number }> = {
+  it: { mix: 62, upload: 70, captions: 78 },
+  en: { mix: 82, upload: 90, captions: 100 },
+};
+
+function packageFor(
+  session: ReplaySession,
+  language: VoiceOverLanguage,
+): VoiceOverPackage {
+  const voiceOver = (session.fullVoiceOvers ?? []).find(
+    (item) => item.language === language,
+  );
+  if (!voiceOver) {
+    throw new Error(
+      `Full-race voice-over package "${language}" not found for session: ${session.id}`,
+    );
+  }
+  return voiceOver;
+}
+
+async function requireSession(
+  deps: FullVoiceOverPublishDeps,
+  sessionId: string,
+): Promise<ReplaySession> {
+  const session = await deps.replaySessions.getById(sessionId);
+  if (!session) throw new Error(`Replay session not found: ${sessionId}`);
+  return session;
+}
+
+/** Reloads the session so concurrent writes are not clobbered. */
+async function patchVoiceOver(
+  deps: FullVoiceOverPublishDeps,
+  sessionId: string,
+  language: VoiceOverLanguage,
+  patch: Partial<VoiceOverPackage>,
+  sessionPatch: Partial<ReplaySession> = {},
+): Promise<ReplaySession> {
+  const fresh = await requireSession(deps, sessionId);
+  packageFor(fresh, language);
+  const updated: ReplaySession = {
+    ...fresh,
+    ...sessionPatch,
+    fullVoiceOvers: (fresh.fullVoiceOvers ?? []).map((voiceOver) =>
+      voiceOver.language === language ? { ...voiceOver, ...patch } : voiceOver,
+    ),
+    updatedAt: deps.clock.now(),
+  };
+  await deps.replaySessions.save(updated);
+  return updated;
+}
+
+export async function runFullVoiceOverPublish(
+  ctx: JobHandlerContext,
+  deps: FullVoiceOverPublishDeps,
+  input: { sessionId: string; privacy: YoutubePrivacy; encodePath: string },
+): Promise<void> {
+  const { sessionId, privacy } = input;
+  const log = deps.logger.child({ component: "PublishFullReplayVoiceOver" });
+  const generate = deps.generateFullVoiceOvers;
+  const mixer = deps.fullVoMix;
+  if (!generate || !mixer) {
+    throw new Error(
+      "Full-race voice-over publishing requires the voice-over generator and mixer adapters",
+    );
+  }
+  const voRenderPath = deps.mediaStore.fullReplayVoRenderPath?.bind(
+    deps.mediaStore,
+  );
+  if (!voRenderPath) {
+    throw new Error("Media store does not support full-race voice-over renders");
+  }
+  const appSettings = await deps.settings?.get();
+  const priorCheckpoints = priorFullVoiceOverJobCheckpoints({
+    jobs: deps.queue?.listJobs() ?? [],
+    currentJobId: ctx.jobId,
+    sessionId,
+  });
+
+  await runStep(ctx, JOB_TYPE, "voice_over", async () => {
+    ctx.setProgress(58, "Writing and synthesizing IT/EN narration");
+    const packages = await generate({ sessionId });
+    log.info("Full-race voice-over packages ready", {
+      sessionId,
+      languages: packages.map(({ language }) => language),
+    });
+  });
+
+  for (const language of LANGUAGES) {
+    const progress = LANGUAGE_PROGRESS[language];
+    const label = language.toUpperCase();
+    const current = await requireSession(deps, sessionId);
+    const recovered = resolveVoiceOverUploadCheckpoint(
+      packageFor(current, language),
+      null,
+      ctx.checkpoint,
+      priorCheckpoints,
+    );
+    if (recovered?.youtubeVideoId) {
+      await patchVoiceOver(
+        deps,
+        sessionId,
+        language,
+        {
+          youtubeVideoId: recovered.youtubeVideoId,
+          ...(recovered.youtubeCaptionId
+            ? { youtubeCaptionId: recovered.youtubeCaptionId }
+            : {}),
+        },
+        language === "it" && !current.fullVideoYoutubeId
+          ? { fullVideoYoutubeId: recovered.youtubeVideoId }
+          : {},
+      );
+      log.info("Recovered full-race voice-over upload from checkpoint", {
+        sessionId,
+        language,
+        youtubeVideoId: recovered.youtubeVideoId,
+      });
+    }
+
+    await runStep(ctx, JOB_TYPE, `mix_${language}`, async () => {
+      const voiceOver = packageFor(
+        await requireSession(deps, sessionId),
+        language,
+      );
+      if (voiceOver.renderOutputPath) {
+        ctx.setProgress(
+          progress.mix,
+          `Reusing ${label} narrated encode`,
+        );
+        return;
+      }
+      ctx.setProgress(progress.mix, `Mixing ${label} narration onto the race`);
+      const outputPath = voRenderPath(sessionId, language);
+      const result = await mixer.mix({
+        videoPath: input.encodePath,
+        voiceAudioPath: voiceOver.audioPath,
+        outputPath,
+        voiceDuckDb: appSettings?.voiceDuckDb,
+        burnInCaptions: appSettings?.fullBurnInCaptions ?? false,
+        ...(voiceOver.srtPath ? { subtitlesPath: voiceOver.srtPath } : {}),
+      });
+      await patchVoiceOver(deps, sessionId, language, {
+        renderOutputPath: result.outputPath,
+      });
+      log.info("Full-race voice-over mix done", {
+        sessionId,
+        language,
+        outputPath: result.outputPath,
+        burnedInCaptions: result.burnedInCaptions,
+        durationMs: result.durationMs,
+      });
+    });
+
+    await runStep(ctx, JOB_TYPE, `upload_${language}`, async () => {
+      const session = await requireSession(deps, sessionId);
+      const voiceOver = packageFor(session, language);
+      if (voiceOver.youtubeVideoId) {
+        if (language === "it" && !session.fullVideoYoutubeId) {
+          await patchVoiceOver(
+            deps,
+            sessionId,
+            language,
+            {},
+            { fullVideoYoutubeId: voiceOver.youtubeVideoId },
+          );
+        }
+        ctx.setProgress(
+          progress.upload,
+          `${label} already on YouTube as ${voiceOver.youtubeVideoId}`,
+        );
+        return;
+      }
+      if (!voiceOver.renderOutputPath) {
+        throw new Error(`Missing ${language} narrated encode for ${sessionId}`);
+      }
+      ctx.setProgress(progress.upload, `Uploading ${label} full race`);
+      const result = await deps.upload.upload({
+        accessToken: await currentYouTubeAccessToken(
+          deps.auth,
+          deps.clock.now(),
+        ),
+        filePath: voiceOver.renderOutputPath,
+        title: voiceOver.title.slice(0, 100),
+        description: voiceOver.description,
+        tags: (session.racePackage?.fullVideo.tags ?? []).slice(0, 15),
+        scheduledAt: null,
+        privacy,
+        contentKind: "full",
+      });
+      const checkpoint: VoiceOverUploadCheckpoint = {
+        language,
+        scriptHash: voiceOver.scriptHash,
+        youtubeVideoId: result.youtubeVideoId,
+      };
+      await ctx.saveCheckpoint(`upload_${language}`, checkpoint);
+      await patchVoiceOver(
+        deps,
+        sessionId,
+        language,
+        { youtubeVideoId: result.youtubeVideoId },
+        // The narrated Italian upload becomes the session's canonical full
+        // video so the silent path never publishes the race a second time.
+        language === "it" && !session.fullVideoYoutubeId
+          ? { fullVideoYoutubeId: result.youtubeVideoId }
+          : {},
+      );
+      log.info("Full-race voice-over uploaded", {
+        sessionId,
+        language,
+        youtubeVideoId: result.youtubeVideoId,
+        privacy,
+      });
+    });
+
+    await runStep(ctx, JOB_TYPE, `captions_${language}`, async () => {
+      if (!deps.captions) {
+        throw new Error("YouTube captions adapter is not configured");
+      }
+      const voiceOver = packageFor(
+        await requireSession(deps, sessionId),
+        language,
+      );
+      if (voiceOver.youtubeCaptionId) {
+        ctx.setProgress(progress.captions, `${label} captions already uploaded`);
+        return;
+      }
+      if (!voiceOver.youtubeVideoId) {
+        throw new Error(`YouTube video id missing for ${language} full race`);
+      }
+      if (!voiceOver.srtPath) {
+        throw new Error(`Missing ${language} SRT for ${sessionId}`);
+      }
+      ctx.setProgress(progress.captions, `Uploading ${label} captions`);
+      const caption = await deps.captions.upload({
+        accessToken: await currentYouTubeAccessToken(
+          deps.auth,
+          deps.clock.now(),
+        ),
+        youtubeVideoId: voiceOver.youtubeVideoId,
+        filePath: voiceOver.srtPath,
+        language,
+        name: "VO",
+      });
+      await ctx.saveCheckpoint(`captions_${language}`, {
+        language,
+        scriptHash: voiceOver.scriptHash,
+        youtubeVideoId: voiceOver.youtubeVideoId,
+        youtubeCaptionId: caption.youtubeCaptionId,
+      } satisfies VoiceOverUploadCheckpoint);
+      await patchVoiceOver(
+        deps,
+        sessionId,
+        language,
+        { youtubeCaptionId: caption.youtubeCaptionId },
+        language === "en"
+          ? {
+              fullVideoPrivacy: privacy,
+              fullVideoPublishedAt: deps.clock.now(),
+            }
+          : {},
+      );
+      log.info("Full-race voice-over captions uploaded", {
+        sessionId,
+        language,
+        youtubeCaptionId: caption.youtubeCaptionId,
+      });
+    });
+  }
+}

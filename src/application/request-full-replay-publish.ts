@@ -12,6 +12,8 @@ type Dependencies = {
 export type RequestFullReplayPublish = (input: {
   sessionId: string;
   privacy?: YoutubePrivacy;
+  /** Produce the IT+EN narrated pair instead of the single silent upload. */
+  voiceOver?: boolean;
 }) => Promise<{ jobId: string }>;
 
 export function createRequestFullReplayPublish(
@@ -19,7 +21,7 @@ export function createRequestFullReplayPublish(
 ): RequestFullReplayPublish {
   const log = deps.logger.child({ operation: "requestFullReplayPublish" });
 
-  return async ({ sessionId, privacy = "unlisted" }) => {
+  return async ({ sessionId, privacy = "unlisted", voiceOver = false }) => {
     const startedAt = performance.now();
     const session = await deps.replaySessions.getById(sessionId);
     if (!session) {
@@ -34,28 +36,33 @@ export function createRequestFullReplayPublish(
       );
     }
 
+    // The narrated and silent uploads are separate deliverables, so only a
+    // job of the same mode counts as already queued.
     const existing = deps.queue.listJobs().find(
       (job) =>
         job.type === "publish_full_replay" &&
         job.payload.sessionId === sessionId &&
+        Boolean(job.payload.voiceOver) === voiceOver &&
         ["queued", "running", "paused"].includes(job.status),
     );
     if (existing) {
       log.info("Full replay publish already queued", {
         sessionId,
         jobId: existing.id,
+        voiceOver,
       });
       return { jobId: existing.id };
     }
 
     const jobId = await deps.queue.enqueue({
       type: "publish_full_replay",
-      payload: { sessionId, privacy },
+      payload: { sessionId, privacy, voiceOver },
     });
     log.info("Full replay publish enqueued", {
       sessionId,
       jobId,
       privacy,
+      voiceOver,
       durationMs: Math.round(performance.now() - startedAt),
     });
     return { jobId };

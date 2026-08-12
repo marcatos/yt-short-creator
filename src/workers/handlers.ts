@@ -21,6 +21,8 @@ import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
+import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
+import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
 
 import { requireNumberPayload, requireStringPayload } from "./handler-utils";
 import type { JobHandlerContext, JobHandler, JobHandlers } from "./job-handler-context";
@@ -52,6 +54,8 @@ export type HandlerDeps = {
   upload: YouTubeUploadPort;
   captions?: YouTubeCaptionsPort;
   fullVideoEncode: FullVideoEncodePort;
+  fullVoMix?: FullVoMixPort;
+  generateFullVoiceOvers?: GenerateFullVoiceOvers;
   clock: ClockPort;
 };
 
@@ -237,6 +241,11 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
       replaySessions: deps.replaySessions,
       mediaStore: deps.mediaStore,
       fullVideoEncode: deps.fullVideoEncode,
+      fullVoMix: deps.fullVoMix,
+      generateFullVoiceOvers: deps.generateFullVoiceOvers,
+      settings: deps.settings,
+      captions: deps.captions,
+      queue: deps.queue,
       auth: deps.auth,
       upload: deps.upload,
       clock: deps.clock,

@@ -40,7 +40,19 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
   publish_short: ["prepare", "upload", "captions"],
-  publish_full_replay: ["encode", "upload"],
+  // "upload" is the silent single-video path; the language-suffixed steps
+  // run instead of it when the job publishes the narrated IT/EN pair.
+  publish_full_replay: [
+    "encode",
+    "upload",
+    "voice_over",
+    "mix_it",
+    "upload_it",
+    "captions_it",
+    "mix_en",
+    "upload_en",
+    "captions_en",
+  ],
 };
 
 function compareSteps(

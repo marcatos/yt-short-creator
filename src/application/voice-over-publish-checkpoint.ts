@@ -16,13 +16,20 @@ export type VoiceOverUploadCheckpoint = {
   youtubeCaptionId?: string;
 };
 
+/** Language-suffixed variants ("upload_it") come from the full-race handler. */
+function isUploadResultStep(step: string | undefined): boolean {
+  return Boolean(
+    step && (step.startsWith("upload") || step.startsWith("captions")),
+  );
+}
+
 function fromJobCheckpoint(
   checkpoint: JobCheckpoint | null,
   voiceOver: VoiceOverPackage,
 ): VoiceOverUploadCheckpoint | null {
   if (
-    (checkpoint?.step !== "upload" && checkpoint?.step !== "captions") ||
-    typeof checkpoint.data !== "object" ||
+    !isUploadResultStep(checkpoint?.step) ||
+    typeof checkpoint?.data !== "object" ||
     checkpoint.data === null
   ) {
     return null;
@@ -96,27 +103,57 @@ export function resolveVoiceOverUploadCheckpoint(
   );
 }
 
+type InspectedJob = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  checkpoint: JobCheckpoint | null;
+};
+
+function priorCheckpoints(
+  jobs: InspectedJob[],
+  currentJobId: string,
+  matches: (job: InspectedJob) => boolean,
+): JobCheckpoint[] {
+  return jobs
+    .filter((job) => job.id !== currentJobId && matches(job))
+    .map((job) => job.checkpoint)
+    .filter((checkpoint): checkpoint is JobCheckpoint => checkpoint !== null);
+}
+
 export function priorVoiceOverJobCheckpoints(input: {
-  jobs: Array<{
-    id: string;
-    type: string;
-    payload: Record<string, unknown>;
-    checkpoint: JobCheckpoint | null;
-  }>;
+  jobs: InspectedJob[];
   currentJobId: string;
   candidateId: string;
   language: VoiceOverLanguage;
 }): JobCheckpoint[] {
-  return input.jobs
-    .filter(
-      (job) =>
-        job.id !== input.currentJobId &&
-        job.type === "publish_short" &&
-        job.payload.candidateId === input.candidateId &&
-        job.payload.language === input.language,
-    )
-    .map((job) => job.checkpoint)
-    .filter((checkpoint): checkpoint is JobCheckpoint => checkpoint !== null);
+  return priorCheckpoints(
+    input.jobs,
+    input.currentJobId,
+    (job) =>
+      job.type === "publish_short" &&
+      job.payload.candidateId === input.candidateId &&
+      job.payload.language === input.language,
+  );
+}
+
+/**
+ * Checkpoints left by earlier `publish_full_replay` jobs for the same session.
+ * A single job publishes both languages, so language matching happens on the
+ * checkpoint payload rather than the job payload.
+ */
+export function priorFullVoiceOverJobCheckpoints(input: {
+  jobs: InspectedJob[];
+  currentJobId: string;
+  sessionId: string;
+}): JobCheckpoint[] {
+  return priorCheckpoints(
+    input.jobs,
+    input.currentJobId,
+    (job) =>
+      job.type === "publish_full_replay" &&
+      job.payload.sessionId === input.sessionId,
+  );
 }
 
 export function createVoiceOverPublishSidecar(deps: {

@@ -1,46 +1,21 @@
 import type { YoutubePrivacy } from "@/src/domain/entities";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
-import type { ClockPort } from "@/src/ports/clock";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
-import type { Logger } from "@/src/ports/logger";
-import type { MediaStorePort } from "@/src/ports/media-store";
-import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
-import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
-import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 
 import { requireStringPayload } from "./handler-utils";
 import type { JobHandler } from "./job-handler-context";
+import {
+  runFullVoiceOverPublish,
+  type FullVoiceOverPublishDeps,
+} from "./publish-full-replay-vo";
 import { runStep } from "./run-step";
+import { currentYouTubeAccessToken } from "./youtube-access-token";
 
-type Dependencies = {
-  logger: Logger;
-  replaySessions: ReplaySessionRepository;
-  mediaStore: MediaStorePort;
+type Dependencies = FullVoiceOverPublishDeps & {
   fullVideoEncode: FullVideoEncodePort;
-  auth: YouTubeAuthPort;
-  upload: YouTubeUploadPort;
-  clock: ClockPort;
 };
 
 const JOB_TYPE = "publish_full_replay";
-
-async function currentAccessToken(
-  auth: YouTubeAuthPort,
-  now: Date,
-): Promise<string> {
-  const tokens = await auth.getStoredTokens();
-  if (!tokens) throw new Error("YouTube is not connected");
-  if (tokens.expiresAt.getTime() > now.getTime() + 60_000) {
-    return tokens.accessToken;
-  }
-  const refreshed = await auth.refreshAccessToken(tokens.refreshToken);
-  await auth.saveTokens({
-    ...tokens,
-    accessToken: refreshed.accessToken,
-    expiresAt: refreshed.expiresAt,
-  });
-  return refreshed.accessToken;
-}
 
 function asPrivacy(value: unknown): YoutubePrivacy {
   if (value === "public" || value === "private" || value === "unlisted") {
@@ -57,8 +32,14 @@ export function createPublishFullReplayHandler(
   return async (ctx) => {
     const sessionId = requireStringPayload(ctx.payload, "sessionId");
     const privacy = asPrivacy(ctx.payload.privacy);
+    const voiceOver = ctx.payload.voiceOver === true;
     const startedAt = performance.now();
-    log.info("publish_full_replay started", { jobId: ctx.jobId, sessionId, privacy });
+    log.info("publish_full_replay started", {
+      jobId: ctx.jobId,
+      sessionId,
+      privacy,
+      voiceOver,
+    });
 
     try {
       let encodePath = "";
@@ -95,6 +76,26 @@ export function createPublishFullReplayHandler(
         });
       });
 
+      if (voiceOver) {
+        const session = await deps.replaySessions.getById(sessionId);
+        const deliveryPath = encodePath || session?.fullVideoEncodePath;
+        if (!deliveryPath) {
+          throw new Error("Missing full-video encode path");
+        }
+        await runFullVoiceOverPublish(ctx, deps, {
+          sessionId,
+          privacy,
+          encodePath: deliveryPath,
+        });
+        log.info("publish_full_replay completed", {
+          jobId: ctx.jobId,
+          sessionId,
+          voiceOver,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        return;
+      }
+
       await runStep(ctx, JOB_TYPE, "upload", async () => {
         const session = await deps.replaySessions.getById(sessionId);
         if (!session) throw new Error(`Replay session not found: ${sessionId}`);
@@ -120,7 +121,7 @@ export function createPublishFullReplayHandler(
         }
 
         ctx.setProgress(60, "Uploading full race to YouTube");
-        const accessToken = await currentAccessToken(
+        const accessToken = await currentYouTubeAccessToken(
           deps.auth,
           deps.clock.now(),
         );

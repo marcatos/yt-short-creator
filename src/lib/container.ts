@@ -8,6 +8,7 @@ import {
 } from "@/src/adapters/db/repositories";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
 import { createFfmpegFullVideoEncode } from "@/src/adapters/ffmpeg/ffmpeg-full-video-encode";
+import { createFfmpegFullVoMix } from "@/src/adapters/ffmpeg/ffmpeg-full-vo-mix";
 import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
 import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
@@ -107,6 +108,10 @@ import {
   createGenerateShortVoiceOvers,
   type GenerateShortVoiceOvers,
 } from "@/src/application/generate-short-voice-overs";
+import {
+  createGenerateFullVoiceOvers,
+  type GenerateFullVoiceOvers,
+} from "@/src/application/generate-full-voice-overs";
 import { createRecoverQueue } from "@/src/application/recover-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
@@ -116,6 +121,7 @@ import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
+import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type {
   AppSettings,
@@ -146,6 +152,7 @@ export type AppContainer = {
   requestReplayCapture: RequestReplayCapture;
   requestFullReplayPublish: RequestFullReplayPublish;
   generateShortVoiceOvers: GenerateShortVoiceOvers;
+  generateFullVoiceOvers: GenerateFullVoiceOvers;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -162,6 +169,7 @@ export type AppContainer = {
   brandPack: BrandPackPort;
   render: RenderPort;
   fullVideoEncode: FullVideoEncodePort;
+  fullVoMix: FullVoMixPort;
   upload: YouTubeUploadPort;
   captions: YouTubeCaptionsPort;
   logger: Logger;
@@ -196,6 +204,7 @@ export function createContainer(env: AppEnv): AppContainer {
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
   const render = createFfmpegRender({ logger, settings });
   const fullVideoEncode = createFfmpegFullVideoEncode({ logger, settings });
+  const fullVoMix = createFfmpegFullVoMix({ logger, settings });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const mediaDuration = createFfprobeMediaDuration();
   const ibtTelemetry = createIbtFileTelemetry({ logger });
@@ -283,6 +292,7 @@ export function createContainer(env: AppEnv): AppContainer {
     brandPack,
     render,
     fullVideoEncode,
+    fullVoMix,
     upload,
     captions,
     clock,
@@ -358,6 +368,17 @@ export function createContainer(env: AppEnv): AppContainer {
       mediaStore,
       candidates: repositories.candidates,
       settings,
+      logger,
+    }),
+    generateFullVoiceOvers: createGenerateFullVoiceOvers({
+      llm,
+      tts,
+      transcription,
+      audioConcat: fullVoMix,
+      mediaStore,
+      replaySessions: repositories.replaySessions,
+      settings,
+      clock,
       logger,
     }),
     approveCandidate: createApproveCandidate({
@@ -459,6 +480,8 @@ export function startWorkers(): void {
       brandPack: container.brandPack,
       mediaStore: container.mediaStore,
       fullVideoEncode: container.fullVideoEncode,
+      fullVoMix: container.fullVoMix,
+      generateFullVoiceOvers: container.generateFullVoiceOvers,
       queue: container.jobQueue,
       settings: container.settings,
       auth: container.auth,
