@@ -15,6 +15,10 @@ export interface MediaStorePort {
   replayAnalysisDir(sessionId: string): string;
   /** YouTube-delivery encode of the full race for a session. */
   fullReplayEncodePath(sessionId: string): string;
+  /** Narration audio for one language of a full-race session. */
+  fullReplayVoPath?(sessionId: string, language: "it" | "en"): string;
+  /** Delivery encode with the narration mixed in, per language. */
+  fullReplayVoRenderPath?(sessionId: string, language: "it" | "en"): string;
   listBroll(): Promise<string[]>;
   ensureDirs(): Promise<void>;
 }

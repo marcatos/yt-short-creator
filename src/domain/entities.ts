@@ -104,6 +104,8 @@ export type ReplaySession = {
   fullVideoYoutubeId: string | null;
   fullVideoPrivacy: YoutubePrivacy | null;
   fullVideoPublishedAt: Date | null;
+  /** Bilingual narration packages for the full-race upload pair. */
+  fullVoiceOvers?: VoiceOverPackage[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

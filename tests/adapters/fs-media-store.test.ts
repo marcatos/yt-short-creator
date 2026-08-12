@@ -52,6 +52,18 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.fullReplayEncodePath("session-1")).toBe(
       path.join(mediaRoot, "replays", "session-1", "full-youtube.mp4"),
     );
+    expect(mediaStore.fullReplayVoPath?.("session-1", "it")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "vo-it.mp3"),
+    );
+    expect(mediaStore.fullReplayVoPath?.("../session-1", "en")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "vo-en.mp3"),
+    );
+    expect(mediaStore.fullReplayVoRenderPath?.("session-1", "it")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "full-youtube-it.mp4"),
+    );
+    expect(mediaStore.fullReplayVoRenderPath?.("session-1", "en")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "full-youtube-en.mp4"),
+    );
   });
 
   it("creates sources, renders, audio, broll, and replays directories", async () => {

@@ -91,6 +91,24 @@ export function createFsMediaStore(deps: {
       return path.join(mediaRoot, "replays", sessionId, "full-youtube.mp4");
     },
 
+    fullReplayVoPath(sessionId: string, language: "it" | "en"): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        `vo-${language}.mp3`,
+      );
+    },
+
+    fullReplayVoRenderPath(sessionId: string, language: "it" | "en"): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        `full-youtube-${language}.mp4`,
+      );
+    },
+
     async listBroll(): Promise<string[]> {
       const brollRoot = path.join(mediaRoot, "broll");
       await fs.mkdir(brollRoot, { recursive: true });

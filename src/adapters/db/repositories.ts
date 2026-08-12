@@ -132,6 +132,7 @@ function toReplaySession(row: ReplaySessionRow): ReplaySession {
     fullVideoYoutubeId: row.fullVideoYoutubeId ?? null,
     fullVideoPrivacy: row.fullVideoPrivacy ?? null,
     fullVideoPublishedAt: row.fullVideoPublishedAt ?? null,
+    fullVoiceOvers: row.fullVoiceOvers ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -524,6 +525,7 @@ export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
         fullVideoYoutubeId: session.fullVideoYoutubeId,
         fullVideoPrivacy: session.fullVideoPrivacy,
         fullVideoPublishedAt: session.fullVideoPublishedAt,
+        fullVoiceOvers: session.fullVoiceOvers ?? null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
       })
@@ -544,6 +546,7 @@ export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
           fullVideoYoutubeId: session.fullVideoYoutubeId,
           fullVideoPrivacy: session.fullVideoPrivacy,
           fullVideoPublishedAt: session.fullVideoPublishedAt,
+          fullVoiceOvers: session.fullVoiceOvers ?? null,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
         },

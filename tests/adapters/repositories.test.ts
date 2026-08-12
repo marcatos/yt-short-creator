@@ -11,6 +11,7 @@ import type {
   GenerationBrief,
   PublishJob,
   RenderJob,
+  ReplaySession,
   ShortCandidate,
   SourceVideo,
 } from "@/src/domain/entities";
@@ -102,6 +103,51 @@ const sampleCandidate: ShortCandidate = {
   updatedAt: now,
 };
 
+const sampleReplaySession: ReplaySession = {
+  id: "rs-1",
+  rpyPath: null,
+  ibtPath: null,
+  mediaPath: "C:/Videos/race.mkv",
+  trackName: "Oschersleben",
+  focusCarIdx: 42,
+  title: "Endurance race",
+  durationSec: 3_600,
+  status: "ready",
+  events: [],
+  racePackage: {
+    focusCarHint: "pi",
+    transcript: "Gara",
+    timeline: [
+      { startMs: 0, endMs: 60_000, summary: "Partenza", involvingFocusCar: true },
+    ],
+    fullVideo: { title: "Gara completa", description: "Desc", tags: ["iRacing"] },
+    audioTranscript: "",
+  },
+  fullVideoEncodePath: "media/replays/rs-1/full-youtube.mp4",
+  fullVideoYoutubeId: null,
+  fullVideoPrivacy: "unlisted",
+  fullVideoPublishedAt: null,
+  fullVoiceOvers: [
+    {
+      language: "it",
+      script: "Benvenuti alla gara.",
+      title: "Gara completa IT",
+      description: "Narrazione italiana.",
+      voiceProfile: "coral",
+      audioPath: "media/replays/rs-1/vo-it.mp3",
+      words: [{ text: "Benvenuti", startMs: 0, endMs: 420 }],
+      srtPath: "media/replays/rs-1/vo-it.srt",
+      assPath: null,
+      scriptHash: "hash-full-it",
+      renderOutputPath: "media/replays/rs-1/full-youtube-it.mp4",
+      youtubeVideoId: "yt-full-it",
+      youtubeCaptionId: "caption-full-it",
+    },
+  ],
+  createdAt: now,
+  updatedAt: now,
+};
+
 const sampleRenderJob: RenderJob = {
   id: "rj-1",
   candidateId: "cand-1",
@@ -158,6 +204,17 @@ describe("Drizzle repositories", () => {
     );
     expect(await repos.jobs.getPublishJobByCandidateId("cand-1")).toEqual(
       samplePublishJob,
+    );
+  });
+
+  it("round-trips replay sessions including full-race voice-overs", async () => {
+    const { db } = openTempDb();
+    const repos = createRepositories(db);
+
+    await repos.replaySessions.save(sampleReplaySession);
+
+    expect(await repos.replaySessions.getById("rs-1")).toEqual(
+      sampleReplaySession,
     );
   });
 

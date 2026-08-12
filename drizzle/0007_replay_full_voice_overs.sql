@@ -1,0 +1,1 @@
+ALTER TABLE `replay_sessions` ADD `full_voice_overs` text;

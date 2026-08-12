@@ -90,6 +90,9 @@ export const replaySessions = sqliteTable("replay_sessions", {
   fullVideoYoutubeId: text("full_video_youtube_id"),
   fullVideoPrivacy: text("full_video_privacy").$type<YoutubePrivacy | null>(),
   fullVideoPublishedAt: integer("full_video_published_at", { mode: "timestamp" }),
+  fullVoiceOvers: text("full_voice_overs", { mode: "json" }).$type<
+    VoiceOverPackage[] | null
+  >(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
