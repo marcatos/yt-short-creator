@@ -68,7 +68,7 @@ describe("FFmpeg VO and ASS render", () => {
     expect(filter).toContain("[0:a]volume=0.251189[ga]");
     expect(filter).toContain("[2:a]volume=1[va]");
     expect(filter).toContain(
-      "[ga][va]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+      "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
     );
     expect(filter).toContain(
       "ass=filename='C\\:/media/captions-it.ass'[outv]",

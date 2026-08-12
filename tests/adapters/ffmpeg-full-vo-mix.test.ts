@@ -81,7 +81,7 @@ describe("FFmpeg full-race VO mix", () => {
     expect(filter).toContain("[0:a]volume=0.251189[ga]");
     expect(filter).toContain("[1:a]volume=1[va]");
     expect(filter).toContain(
-      "[ga][va]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+      "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
     );
     expect(args.slice(args.indexOf("-map"), args.indexOf("-map") + 4)).toEqual([
       "-map",

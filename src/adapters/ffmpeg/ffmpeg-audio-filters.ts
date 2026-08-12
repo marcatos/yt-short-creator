@@ -39,7 +39,9 @@ export function duckedVoiceMixFilter(input: {
       gated ? gatedDuckVolume(duck, input.voiceDurationMs!) : `volume=${duck}`
     }[ga]`,
     `[${input.voiceAudioLabel}]volume=1[va]`,
-    "[ga][va]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+    // normalize=0 keeps both inputs at the gains set above; amix otherwise
+    // divides every input by the input count and halves the narration.
+    "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
   ];
 }
 
