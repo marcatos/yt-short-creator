@@ -211,6 +211,7 @@ export function createFfmpegFullVoMix(
         outputPath,
         burnedInCaptions,
         voiceDuckDb: input.voiceDuckDb ?? null,
+        voiceDurationMs: input.voiceDurationMs ?? null,
       });
 
       await runFfmpeg(
@@ -227,6 +228,7 @@ export function createFfmpegFullVoMix(
             sourceAudioLabel: "0:a",
             voiceAudioLabel: "1:a",
             voiceDuckDb: input.voiceDuckDb,
+            voiceDurationMs: input.voiceDurationMs,
           }).join(";"),
           "-map",
           "0:v",

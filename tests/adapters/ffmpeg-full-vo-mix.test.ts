@@ -98,6 +98,50 @@ describe("FFmpeg full-race VO mix", () => {
     });
   });
 
+  it("releases the duck once the narration ends", async () => {
+    succeedingSpawn();
+    const mixer = createFfmpegFullVoMix({
+      logger: logger(),
+      videoEncoderPreference: "libx264",
+    });
+
+    await mixer.mix({
+      videoPath: "C:/media/full-youtube.mp4",
+      voiceAudioPath: "C:/media/vo-it.mp3",
+      outputPath: "C:/media/full-youtube-it.mp4",
+      voiceDuckDb: -12,
+      voiceDurationMs: 754_200,
+    });
+
+    const args = lastArgs();
+    const filter = args[args.indexOf("-filter_complex") + 1]!;
+    expect(filter).toContain(
+      "[0:a]volume='if(lt(t,754.200),0.251189,min(1,0.251189+(1-0.251189)*(t-754.200)/1))':eval=frame[ga]",
+    );
+    expect(filter).not.toContain("[0:a]volume=0.251189[ga]");
+  });
+
+  it("ducks throughout when the narration length is unknown", async () => {
+    succeedingSpawn();
+    const mixer = createFfmpegFullVoMix({
+      logger: logger(),
+      videoEncoderPreference: "libx264",
+    });
+
+    await mixer.mix({
+      videoPath: "C:/media/full-youtube.mp4",
+      voiceAudioPath: "C:/media/vo-it.mp3",
+      outputPath: "C:/media/full-youtube-it.mp4",
+      voiceDuckDb: -12,
+      voiceDurationMs: 0,
+    });
+
+    const args = lastArgs();
+    expect(args[args.indexOf("-filter_complex") + 1]).toContain(
+      "[0:a]volume=0.251189[ga]",
+    );
+  });
+
   it("burns soft captions into the video only when asked", async () => {
     succeedingSpawn();
     const mixer = createFfmpegFullVoMix({

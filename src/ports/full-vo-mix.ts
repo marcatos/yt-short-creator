@@ -21,6 +21,8 @@ export type FullVoMixInput = {
   outputPath: string;
   /** Race audio gain under the narration (default -12 dB). */
   voiceDuckDb?: number;
+  /** Narration length; the duck is released once it ends. */
+  voiceDurationMs?: number;
   burnInCaptions?: boolean;
   /** SRT burned into the picture when `burnInCaptions` is set. */
   subtitlesPath?: string;
