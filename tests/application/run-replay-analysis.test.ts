@@ -8,7 +8,10 @@ import type {
 } from "@/src/domain/entities";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaProxyPort } from "@/src/ports/media-proxy";
+import type { MediaStorePort } from "@/src/ports/media-store";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
+import type { TranscriptionPort } from "@/src/ports/transcription";
 
 const now = new Date("2026-08-11T10:00:00.000Z");
 
@@ -67,18 +70,86 @@ function baseSession(overrides: Partial<ReplaySession> = {}): ReplaySession {
     durationSec: 180,
     status: "ready",
     events: [],
+    racePackage: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
   };
 }
 
+function fakeMediaStore(): MediaStorePort {
+  return {
+    sourcePath: () => "",
+    renderPath: () => "",
+    audioPath: () => "",
+    brollPath: () => "",
+    replayAnalysisDir: (sessionId) => `C:/media/replays/${sessionId}`,
+    listBroll: async () => [],
+    ensureDirs: async () => undefined,
+  };
+}
+
+function fakeMediaProxy(): MediaProxyPort {
+  return {
+    async ensureProxy() {
+      return {
+        proxyVideoPath: "C:/media/proxy.mp4",
+        audioPath: "C:/media/audio.mp3",
+        framesDir: "C:/media/frames",
+        frames: [
+          { timeMs: 0, path: "C:/media/frames/frame_000001.jpg" },
+          { timeMs: 2_000, path: "C:/media/frames/frame_000002.jpg" },
+        ],
+        durationSec: 180,
+        reused: false,
+      };
+    },
+  };
+}
+
+function fakeTranscription(): TranscriptionPort {
+  return {
+    async transcribe() {
+      return {
+        text: "engine noise",
+        language: "en",
+        segments: [{ startMs: 0, endMs: 2_000, text: "engine noise" }],
+      };
+    },
+  };
+}
+
+function tenWindows() {
+  return Array.from({ length: 10 }, (_, index) => {
+    const startMs = 10_000 + index * 12_000;
+    return {
+      startMs,
+      endMs: startMs + 15_000,
+      title: `Momento ${index + 1}`,
+      description: `Descrizione ${index + 1}`,
+      tags: ["racing"],
+      score: 0.9 - index * 0.02,
+      hookReason: `Hook ${index + 1}`,
+      segments:
+        index === 0
+          ? [
+              { startMs: 10_000, endMs: 18_000 },
+              { startMs: 40_000, endMs: 47_000 },
+            ]
+          : [],
+    };
+  });
+}
+
 describe("runReplayAnalysis", () => {
-  it("uses telemetry events when IBT yields strong moments", async () => {
+  it("runs AV analysis and stores racePackage with >=10 shorts", async () => {
     const sessions = new MemoryReplaySessions(
       baseSession({ ibtPath: "C:/telemetry/race.ibt" }),
     );
     const candidates = new MemoryCandidates();
+    let visionCalls = 0;
+    let packageCalls = 0;
+
     const run = createRunReplayAnalysis({
       replaySessions: sessions,
       candidates,
@@ -100,56 +171,45 @@ describe("runReplayAnalysis", () => {
           };
         },
       },
+      mediaProxy: fakeMediaProxy(),
+      transcription: fakeTranscription(),
+      mediaStore: fakeMediaStore(),
       llm: {
-        async complete() {
-          throw new Error("LLM should not be called");
-        },
-      },
-      id: {
-        generate: (() => {
-          let n = 0;
-          return () => `id-${++n}`;
-        })(),
-      },
-      clock: { now: () => now },
-      logger: createLogger(),
-    });
-
-    const proposed = await run({ sessionId: "session-1" });
-    expect(proposed).toHaveLength(1);
-    expect(proposed[0]?.origin).toBe("replay");
-    expect(proposed[0]?.provenance).toMatchObject({
-      replaySessionId: "session-1",
-      eventType: "incident",
-    });
-    expect(sessions.session.status).toBe("ready");
-  });
-
-  it("falls back to LLM when telemetry is empty", async () => {
-    const sessions = new MemoryReplaySessions(baseSession());
-    const candidates = new MemoryCandidates();
-    const run = createRunReplayAnalysis({
-      replaySessions: sessions,
-      candidates,
-      ibtTelemetry: {
-        async parse() {
-          return { events: [], trackName: null };
-        },
-      },
-      llm: {
-        async complete() {
+        async complete(input) {
+          if (input.userParts?.length) {
+            visionCalls += 1;
+            return JSON.stringify({
+              moments: [
+                {
+                  timeMs: 0,
+                  summary: "Focus car on grid",
+                  involvingFocusCar: true,
+                  interest: 0.7,
+                },
+              ],
+            });
+          }
+          packageCalls += 1;
           return JSON.stringify({
-            windows: [
-              {
-                startMs: 10_000,
-                endMs: 25_000,
-                title: "Overtake",
-                description: "Close pass",
-                tags: ["racing"],
-                score: 0.8,
-                hookReason: "Door-to-door",
+            racePackage: {
+              focusCarHint: "pi livery",
+              transcript: "Partenza tesa, poi battaglia al T1.",
+              timeline: [
+                {
+                  startMs: 0,
+                  endMs: 20_000,
+                  summary: "Start",
+                  involvingFocusCar: true,
+                },
+              ],
+              fullVideo: {
+                title: "Imola: battaglia da brividi",
+                description: "Gara completa S.Marcato 42",
+                tags: ["iRacing", "Imola"],
               },
-            ],
+              audioTranscript: "engine noise",
+            },
+            windows: tenWindows(),
           });
         },
       },
@@ -164,12 +224,74 @@ describe("runReplayAnalysis", () => {
     });
 
     const proposed = await run({ sessionId: "session-1" });
-    expect(proposed).toHaveLength(1);
-    expect(proposed[0]?.provenance).toMatchObject({
-      eventType: "llm_moment",
-      startMs: 10_000,
-      endMs: 25_000,
+    expect(proposed.length).toBeGreaterThanOrEqual(10);
+    expect(proposed[0]?.origin).toBe("replay");
+    expect(visionCalls).toBeGreaterThan(0);
+    expect(packageCalls).toBe(1);
+    expect(sessions.session.racePackage?.fullVideo.title).toContain("Imola");
+    expect(sessions.session.status).toBe("ready");
+    expect(
+      proposed.some(
+        (candidate) =>
+          "segments" in candidate.provenance &&
+          Array.isArray(candidate.provenance.segments) &&
+          (candidate.provenance.segments?.length ?? 0) >= 2,
+      ),
+    ).toBe(true);
+  });
+
+  it("still proposes shorts when whisper fails", async () => {
+    const sessions = new MemoryReplaySessions(baseSession());
+    const candidates = new MemoryCandidates();
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: {
+        async transcribe() {
+          throw new Error("whisper down");
+        },
+      },
+      mediaStore: fakeMediaStore(),
+      llm: {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({ moments: [] });
+          }
+          return JSON.stringify({
+            racePackage: {
+              focusCarHint: "pi",
+              transcript: "Narrativa vision-only",
+              timeline: [],
+              fullVideo: {
+                title: "Titolo",
+                description: "Desc",
+                tags: ["iRacing"],
+              },
+              audioTranscript: "",
+            },
+            windows: tenWindows(),
+          });
+        },
+      },
+      id: {
+        generate: (() => {
+          let n = 0;
+          return () => `id-${++n}`;
+        })(),
+      },
+      clock: { now: () => now },
+      logger: createLogger(),
     });
+
+    const proposed = await run({ sessionId: "session-1" });
+    expect(proposed).toHaveLength(10);
+    expect(sessions.session.racePackage?.transcript).toContain("vision");
   });
 });
 
@@ -204,5 +326,38 @@ describe("addManualReplayMoment", () => {
       endMs: 28_000,
     });
     expect(sessions.session.events).toHaveLength(1);
+  });
+});
+
+describe("createReplaySession media-only", () => {
+  it("allows OBS sessions without rpy", async () => {
+    const { createCreateReplaySession } = await import(
+      "@/src/application/create-replay-session"
+    );
+    const sessions = new MemoryReplaySessions(baseSession());
+    const create = createCreateReplaySession({
+      replaySessions: {
+        async save(session) {
+          sessions.session = session;
+        },
+        async getById() {
+          return sessions.session;
+        },
+        async list() {
+          return [sessions.session];
+        },
+      },
+      id: { generate: () => "obs-1" },
+      clock: { now: () => now },
+      logger: createLogger(),
+    });
+
+    const session = await create({
+      mediaPath: "C:/Videos/race.mkv",
+      title: "OBS race",
+    });
+    expect(session.rpyPath).toBeNull();
+    expect(session.mediaPath).toContain("race.mkv");
+    expect(session.status).toBe("ready");
   });
 });

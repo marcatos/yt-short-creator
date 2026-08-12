@@ -31,9 +31,12 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.brollPath("../escape.mp4")).toBe(
       path.join(mediaRoot, "broll", "escape.mp4"),
     );
+    expect(mediaStore.replayAnalysisDir("session-1")).toBe(
+      path.join(mediaRoot, "replays", "session-1"),
+    );
   });
 
-  it("creates sources, renders, audio, and broll directories", async () => {
+  it("creates sources, renders, audio, broll, and replays directories", async () => {
     const mediaRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), "yt-short-creator-media-"),
     );
@@ -46,5 +49,6 @@ describe("createFsMediaStore", () => {
     expect(fs.existsSync(path.join(mediaRoot, "renders"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "audio"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "broll"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaRoot, "replays"))).toBe(true);
   });
 });

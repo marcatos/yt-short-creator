@@ -38,6 +38,7 @@ describe("replay pipeline smoke", () => {
       durationSec: 120,
       status: "ready",
       events: [],
+      racePackage: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -75,6 +76,21 @@ describe("replay pipeline smoke", () => {
       },
     };
 
+    let idCounter = 0;
+    const windows = Array.from({ length: 10 }, (_, index) => {
+      const startMs = 5_000 + index * 10_000;
+      return {
+        startMs,
+        endMs: startMs + 15_000,
+        title: index === 0 ? "Monza dive" : `Moment ${index + 1}`,
+        description: "Late brake pass",
+        tags: ["iRacing"],
+        score: 0.91 - index * 0.01,
+        hookReason: "Late dive",
+        segments: [],
+      };
+    });
+
     const runReplayAnalysis = createRunReplayAnalysis({
       replaySessions: {
         async save(session) {
@@ -93,30 +109,76 @@ describe("replay pipeline smoke", () => {
           return { events: [], trackName: null };
         },
       },
+      mediaProxy: {
+        async ensureProxy() {
+          return {
+            proxyVideoPath: "media/proxy.mp4",
+            audioPath: "media/audio.mp3",
+            framesDir: "media/frames",
+            frames: [{ timeMs: 0, path: "media/frames/a.jpg" }],
+            durationSec: 120,
+            reused: true,
+          };
+        },
+      },
+      transcription: {
+        async transcribe() {
+          return { text: "", language: null, segments: [] };
+        },
+      },
+      mediaStore: {
+        sourcePath: () => "",
+        renderPath: (id) => `media/renders/${id}.mp4`,
+        audioPath: () => "",
+        brollPath: () => "",
+        replayAnalysisDir: () => "media/replays/session-1",
+        listBroll: async () => [],
+        ensureDirs: async () => {},
+      },
       llm: {
-        async complete() {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({
+              moments: [
+                {
+                  timeMs: 0,
+                  summary: "Focus car",
+                  involvingFocusCar: true,
+                  interest: 0.8,
+                },
+              ],
+            });
+          }
           return JSON.stringify({
-            windows: [
-              {
-                startMs: 5_000,
-                endMs: 20_000,
-                title: "Monza dive",
-                description: "Late brake pass",
+            racePackage: {
+              focusCarHint: "pi",
+              transcript: "Gara a Monza",
+              timeline: [],
+              fullVideo: {
+                title: "Monza race",
+                description: "Full race",
                 tags: ["iRacing"],
-                score: 0.91,
-                hookReason: "Late dive",
               },
-            ],
+              audioTranscript: "",
+            },
+            windows,
           });
         },
       },
-      id: { generate: () => "candidate-replay-1" },
+      id: {
+        generate: () => {
+          idCounter += 1;
+          return `id-${idCounter}`;
+        },
+      },
       clock: { now: () => now },
       logger,
     });
 
-    const [proposed] = await runReplayAnalysis({ sessionId: "session-1" });
+    const proposedList = await runReplayAnalysis({ sessionId: "session-1" });
+    const proposed = proposedList[0]!;
     expect(proposed.origin).toBe("replay");
+    expect(proposedList.length).toBeGreaterThanOrEqual(10);
 
     const approveCandidate = createApproveCandidate({
       candidates: candidateRepository,
@@ -219,6 +281,7 @@ describe("replay pipeline smoke", () => {
         renderPath: (id) => `media/renders/${id}.mp4`,
         audioPath: () => "",
         brollPath: () => "",
+        replayAnalysisDir: () => "media/replays/session-1",
         listBroll: async () => [],
         ensureDirs: async () => {},
       },

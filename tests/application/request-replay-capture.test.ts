@@ -30,6 +30,7 @@ describe("requestReplayCapture", () => {
       durationSec: 60,
       status: "draft",
       events: [],
+      racePackage: null,
       createdAt: now,
       updatedAt: now,
     };
