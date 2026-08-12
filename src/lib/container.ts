@@ -175,6 +175,11 @@ export function createContainer(env: AppEnv): AppContainer {
       logLevel: env.LOG_LEVEL,
       defaultPrivacy: "public",
       videoEncoderPreference: "auto_igpu",
+      brandVoiceProfile: "coral",
+      shortsBurnInCaptions: true,
+      fullBurnInCaptions: false,
+      voiceDuckDb: -12,
+      enableVoiceOverPipeline: true,
     },
   });
   const clock = new SystemClock();

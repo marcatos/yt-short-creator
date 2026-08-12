@@ -70,6 +70,11 @@ export function createUpdateSettings(deps: {
         logLevel: input.logLevel,
         defaultPrivacy: input.defaultPrivacy,
         videoEncoderPreference: input.videoEncoderPreference,
+        brandVoiceProfile: input.brandVoiceProfile,
+        shortsBurnInCaptions: input.shortsBurnInCaptions,
+        fullBurnInCaptions: input.fullBurnInCaptions,
+        voiceDuckDb: input.voiceDuckDb,
+        enableVoiceOverPipeline: input.enableVoiceOverPipeline,
       };
       if (!updated.brandRoot) throw new Error("Brand path must not be empty");
       await deps.settings.save(updated);
@@ -77,6 +82,11 @@ export function createUpdateSettings(deps: {
         logLevel: updated.logLevel,
         defaultPrivacy: updated.defaultPrivacy,
         videoEncoderPreference: updated.videoEncoderPreference,
+        brandVoiceProfile: updated.brandVoiceProfile,
+        shortsBurnInCaptions: updated.shortsBurnInCaptions,
+        fullBurnInCaptions: updated.fullBurnInCaptions,
+        voiceDuckDb: updated.voiceDuckDb,
+        enableVoiceOverPipeline: updated.enableVoiceOverPipeline,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return updated;

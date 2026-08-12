@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getContainer } from "@/src/lib/container";
+import { BRAND_VOICE_PROFILES } from "@/src/ports/settings-repository";
 
 const settingsSchema = z.object({
   brandRoot: z.string().trim().min(1),
@@ -16,6 +17,11 @@ const settingsSchema = z.object({
     "h264_mf",
     "libx264",
   ]),
+  brandVoiceProfile: z.enum(BRAND_VOICE_PROFILES),
+  shortsBurnInCaptions: z.boolean(),
+  fullBurnInCaptions: z.boolean(),
+  voiceDuckDb: z.number().finite(),
+  enableVoiceOverPipeline: z.boolean(),
 });
 
 export async function GET() {

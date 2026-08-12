@@ -3,9 +3,11 @@ import path from "node:path";
 
 import type {
   AppSettings,
+  BrandVoiceProfile,
   SettingsRepository,
   VideoEncoderPreference,
 } from "@/src/ports/settings-repository";
+import { BRAND_VOICE_PROFILES } from "@/src/ports/settings-repository";
 
 const VALID_ENCODERS = new Set<VideoEncoderPreference>([
   "auto_igpu",
@@ -16,6 +18,10 @@ const VALID_ENCODERS = new Set<VideoEncoderPreference>([
   "h264_mf",
   "libx264",
 ]);
+
+const VALID_VOICE_PROFILES = new Set<BrandVoiceProfile>(
+  BRAND_VOICE_PROFILES,
+);
 
 function normalizeSettings(
   defaults: AppSettings,
@@ -30,6 +36,22 @@ function normalizeSettings(
       preference && VALID_ENCODERS.has(preference)
         ? preference
         : defaults.videoEncoderPreference,
+    brandVoiceProfile:
+      stored.brandVoiceProfile &&
+      VALID_VOICE_PROFILES.has(stored.brandVoiceProfile)
+        ? stored.brandVoiceProfile
+        : defaults.brandVoiceProfile,
+    shortsBurnInCaptions:
+      stored.shortsBurnInCaptions ?? defaults.shortsBurnInCaptions,
+    fullBurnInCaptions:
+      stored.fullBurnInCaptions ?? defaults.fullBurnInCaptions,
+    voiceDuckDb:
+      typeof stored.voiceDuckDb === "number" &&
+      Number.isFinite(stored.voiceDuckDb)
+        ? stored.voiceDuckDb
+        : defaults.voiceDuckDb,
+    enableVoiceOverPipeline:
+      stored.enableVoiceOverPipeline ?? defaults.enableVoiceOverPipeline,
   };
 }
 

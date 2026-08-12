@@ -2,24 +2,8 @@
 
 import { useState } from "react";
 
-type SettingsView = {
-  brandRoot: string;
-  logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";
-  defaultPrivacy: "public" | "unlisted" | "private";
-  videoEncoderPreference:
-    | "auto_igpu"
-    | "auto_dgpu"
-    | "h264_qsv"
-    | "h264_nvenc"
-    | "h264_amf"
-    | "h264_mf"
-    | "libx264";
-  secrets: {
-    youtubeClientSecret: string;
-    llmApiKey: string;
-    ttsApiKey: string;
-  };
-};
+import type { SettingsView } from "@/src/application/settings";
+import { BRAND_VOICE_PROFILES } from "@/src/ports/settings-repository";
 
 export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [brandRoot, setBrandRoot] = useState(initial.brandRoot);
@@ -27,6 +11,19 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [defaultPrivacy, setDefaultPrivacy] = useState(initial.defaultPrivacy);
   const [videoEncoderPreference, setVideoEncoderPreference] = useState(
     initial.videoEncoderPreference ?? "auto_igpu",
+  );
+  const [brandVoiceProfile, setBrandVoiceProfile] = useState(
+    initial.brandVoiceProfile,
+  );
+  const [shortsBurnInCaptions, setShortsBurnInCaptions] = useState(
+    initial.shortsBurnInCaptions,
+  );
+  const [fullBurnInCaptions, setFullBurnInCaptions] = useState(
+    initial.fullBurnInCaptions,
+  );
+  const [voiceDuckDb, setVoiceDuckDb] = useState(initial.voiceDuckDb);
+  const [enableVoiceOverPipeline, setEnableVoiceOverPipeline] = useState(
+    initial.enableVoiceOverPipeline,
   );
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -43,6 +40,11 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           logLevel,
           defaultPrivacy,
           videoEncoderPreference,
+          brandVoiceProfile,
+          shortsBurnInCaptions,
+          fullBurnInCaptions,
+          voiceDuckDb,
+          enableVoiceOverPipeline,
         }),
       });
       const body = await response.json();
@@ -120,6 +122,59 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           Prefer iGPU when gaming or other apps need the discrete GPU. Falls
           back automatically if the chosen encoder is unavailable.
         </p>
+        <div className="field-pair">
+          <label>
+            Brand voice
+            <select
+              value={brandVoiceProfile}
+              onChange={(event) =>
+                setBrandVoiceProfile(
+                  event.target.value as SettingsView["brandVoiceProfile"],
+                )
+              }
+            >
+              {BRAND_VOICE_PROFILES.map((voice) => (
+                <option key={voice} value={voice}>
+                  {voice}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Voice ducking (dB)
+            <input
+              type="number"
+              value={voiceDuckDb}
+              onChange={(event) => setVoiceDuckDb(event.target.valueAsNumber)}
+            />
+          </label>
+        </div>
+        <label>
+          <input
+            type="checkbox"
+            checked={enableVoiceOverPipeline}
+            onChange={(event) =>
+              setEnableVoiceOverPipeline(event.target.checked)
+            }
+          />
+          Enable voice-over pipeline
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={shortsBurnInCaptions}
+            onChange={(event) => setShortsBurnInCaptions(event.target.checked)}
+          />
+          Burn captions into shorts
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={fullBurnInCaptions}
+            onChange={(event) => setFullBurnInCaptions(event.target.checked)}
+          />
+          Burn captions into full videos
+        </label>
         <button className="button button-primary" disabled={pending} onClick={save}>
           Save settings
         </button>

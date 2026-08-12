@@ -16,6 +16,11 @@ const defaults: AppSettings = {
   logLevel: "INFO",
   defaultPrivacy: "public",
   videoEncoderPreference: "auto_igpu",
+  brandVoiceProfile: "coral",
+  shortsBurnInCaptions: true,
+  fullBurnInCaptions: false,
+  voiceDuckDb: -12,
+  enableVoiceOverPipeline: true,
 };
 
 const noop = () => {};
@@ -68,6 +73,11 @@ describe("settings use cases", () => {
       logLevel: "DEBUG",
       defaultPrivacy: "private",
       videoEncoderPreference: "h264_nvenc",
+      brandVoiceProfile: "verse",
+      shortsBurnInCaptions: false,
+      fullBurnInCaptions: true,
+      voiceDuckDb: -9,
+      enableVoiceOverPipeline: false,
     });
 
     await expect(settings.get()).resolves.toEqual({
@@ -75,6 +85,11 @@ describe("settings use cases", () => {
       logLevel: "DEBUG",
       defaultPrivacy: "private",
       videoEncoderPreference: "h264_nvenc",
+      brandVoiceProfile: "verse",
+      shortsBurnInCaptions: false,
+      fullBurnInCaptions: true,
+      voiceDuckDb: -9,
+      enableVoiceOverPipeline: false,
     });
   });
 

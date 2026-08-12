@@ -2,6 +2,19 @@ import type { LogLevel } from "./logger";
 
 export type DefaultPrivacy = "public" | "unlisted" | "private";
 
+export const BRAND_VOICE_PROFILES = [
+  "coral",
+  "verse",
+  "alloy",
+  "echo",
+  "fable",
+  "onyx",
+  "nova",
+  "shimmer",
+] as const;
+
+export type BrandVoiceProfile = (typeof BRAND_VOICE_PROFILES)[number];
+
 export type VideoEncoderPreference =
   | "auto_igpu"
   | "auto_dgpu"
@@ -17,6 +30,11 @@ export type AppSettings = {
   defaultPrivacy: DefaultPrivacy;
   /** Prefer iGPU by default to leave the discrete GPU free for other apps. */
   videoEncoderPreference: VideoEncoderPreference;
+  brandVoiceProfile: BrandVoiceProfile;
+  shortsBurnInCaptions: boolean;
+  fullBurnInCaptions: boolean;
+  voiceDuckDb: number;
+  enableVoiceOverPipeline: boolean;
 };
 
 export interface SettingsRepository {
