@@ -9,6 +9,7 @@ import {
   chunkNarration,
   hashVoiceScript,
   offsetWords,
+  TTS_CHUNK_LIMITS,
   type TimedWord,
   type VoiceOverLanguage,
   type VoiceOverPackage,
@@ -17,6 +18,7 @@ import type { ClockPort } from "@/src/ports/clock";
 import type { AudioConcatPort } from "@/src/ports/full-vo-mix";
 import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaDurationPort } from "@/src/ports/media-duration";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
@@ -77,11 +79,6 @@ Place a call to action to subscribe mid-narration and again at the end.
 The focus car is the white/black/green π car from S.Marcato 42 Racing. Never invent race facts absent from the supplied race package.
 Return the chapter list plus localized titles and descriptions for the two uploads.`;
 
-/** Provider-friendly TTS budget; the spec allows roughly 500–800 words per call. */
-const MAX_WORDS_PER_TTS_CALL = 700;
-
-const LANGUAGES: VoiceOverLanguage[] = ["it", "en"];
-
 type Dependencies = {
   llm: LlmPort;
   tts: TtsPort;
@@ -92,10 +89,14 @@ type Dependencies = {
   settings: SettingsRepository;
   clock: ClockPort;
   logger: Logger;
+  /** Measures rendered chunk audio so word offsets match the concatenated file. */
+  mediaDuration?: MediaDurationPort;
 };
 
 export type GenerateFullVoiceOvers = (input: {
   sessionId: string;
+  /** Rebuilds already-published languages whose script drifted. */
+  regenerate?: boolean;
 }) => Promise<VoiceOverPackage[]>;
 
 type LanguageScript = {
@@ -156,6 +157,40 @@ export function createGenerateFullVoiceOvers(
 ): GenerateFullVoiceOvers {
   const log = deps.logger.child({ operation: "generateFullVoiceOvers" });
 
+  /**
+   * Rendered length of a synthesized chunk. TTS adapters may only return an
+   * estimate (words × constant), which drifts by seconds over a full race, so
+   * the probed file wins and the aligner's last word end is the fallback.
+   */
+  async function measureChunkMs(
+    audioPath: string,
+    words: TimedWord[],
+    context: Record<string, unknown>,
+  ): Promise<{ durationMs: number; source: "probe" | "alignment" }> {
+    if (deps.mediaDuration) {
+      try {
+        const seconds = await deps.mediaDuration.probeDurationSec(audioPath);
+        if (seconds !== null && Number.isFinite(seconds) && seconds > 0) {
+          return { durationMs: Math.round(seconds * 1_000), source: "probe" };
+        }
+        log.warn("Voice-over chunk duration probe returned no usable value", {
+          ...context,
+          audioPath,
+        });
+      } catch (error) {
+        log.warn("Voice-over chunk duration probe failed", {
+          ...context,
+          audioPath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return {
+      durationMs: words[words.length - 1]!.endMs,
+      source: "alignment",
+    };
+  }
+
   /** Synthesizes one chunk and returns its words on the concatenated timeline. */
   async function synthesizeChunk(input: {
     sessionId: string;
@@ -168,17 +203,13 @@ export function createGenerateFullVoiceOvers(
     voiceProfile: string;
   }): Promise<{ words: TimedWord[]; durationMs: number }> {
     const startedAt = performance.now();
-    const synthesis = await deps.tts.synthesize({
+    const chunkLabel = `${input.index + 1}/${input.total}`;
+    await deps.tts.synthesize({
       text: input.text,
       voiceProfile: input.voiceProfile,
       outputPath: input.outputPath,
       instructions: BRAND_TTS_INSTRUCTIONS,
     });
-    if (synthesis.durationMs <= 0) {
-      throw new Error(
-        `Voice-over chunk ${input.index + 1}/${input.total} for ${input.language} produced no audio`,
-      );
-    }
     const transcription = await deps.transcription.transcribe(
       input.outputPath,
       { words: true },
@@ -186,20 +217,31 @@ export function createGenerateFullVoiceOvers(
     const words = transcription.words ?? [];
     if (words.length === 0) {
       throw new Error(
-        `Voice-over alignment for ${input.language} chunk ${input.index + 1}/${input.total} returned no word timestamps`,
+        `Voice-over alignment for ${input.language} chunk ${chunkLabel} returned no word timestamps`,
+      );
+    }
+    const measured = await measureChunkMs(input.outputPath, words, {
+      sessionId: input.sessionId,
+      language: input.language,
+      chunk: chunkLabel,
+    });
+    if (measured.durationMs <= 0) {
+      throw new Error(
+        `Voice-over chunk ${chunkLabel} for ${input.language} produced no audio`,
       );
     }
     log.info("Full voice-over chunk completed", {
       sessionId: input.sessionId,
       language: input.language,
-      chunk: `${input.index + 1}/${input.total}`,
-      audioDurationMs: synthesis.durationMs,
+      chunk: chunkLabel,
+      audioDurationMs: measured.durationMs,
+      durationSource: measured.source,
       wordCount: words.length,
       durationMs: Math.round(performance.now() - startedAt),
     });
     return {
       words: offsetWords(words, input.offsetMs),
-      durationMs: synthesis.durationMs,
+      durationMs: measured.durationMs,
     };
   }
 
@@ -215,7 +257,7 @@ export function createGenerateFullVoiceOvers(
     const audioPath = input.voPath(input.sessionId, language);
     const chunks = chunkNarration(
       input.languageScript.segments,
-      MAX_WORDS_PER_TTS_CALL,
+      TTS_CHUNK_LIMITS,
     );
     if (chunks.length === 0) {
       throw new Error(`Voice-over script for ${language} is empty`);
@@ -224,6 +266,7 @@ export function createGenerateFullVoiceOvers(
       sessionId: input.sessionId,
       language,
       chunkCount: chunks.length,
+      maxChunkChars: Math.max(...chunks.map((chunk) => chunk.length)),
     });
 
     const chunkPaths: string[] = [];
@@ -278,9 +321,9 @@ export function createGenerateFullVoiceOvers(
     };
   }
 
-  return async ({ sessionId }) => {
+  return async ({ sessionId, regenerate = false }) => {
     const startedAt = performance.now();
-    log.info("Full voice-over generation started", { sessionId });
+    log.info("Full voice-over generation started", { sessionId, regenerate });
     try {
       const [session, appSettings] = await Promise.all([
         deps.replaySessions.getById(sessionId),
@@ -344,6 +387,21 @@ export function createGenerateFullVoiceOvers(
             sessionId,
             language: languageScript.language,
             durationMs: Math.round(performance.now() - languageStartedAt),
+          });
+          continue;
+        }
+        // A fresh LLM pass produces a new script hash on every run. Replacing a
+        // package that already carries a YouTube id would drop that id and
+        // publish the same race twice, so drift only rebuilds on request.
+        if (cached?.youtubeVideoId && !regenerate) {
+          packages.push(cached);
+          reusedCount += 1;
+          log.warn("Full voice-over script drifted after publishing; keeping published package", {
+            sessionId,
+            language: languageScript.language,
+            youtubeVideoId: cached.youtubeVideoId,
+            publishedScriptHash: cached.scriptHash,
+            candidateScriptHash: scriptHash,
           });
           continue;
         }

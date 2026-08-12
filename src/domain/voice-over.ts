@@ -38,38 +38,98 @@ export function hashVoiceScript(
     .slice(0, 16);
 }
 
+export type NarrationChunkLimits = {
+  maxWords: number;
+  maxChars: number;
+};
+
+/**
+ * gpt-4o-mini-tts rejects inputs above 4096 characters, and Italian narration
+ * averages well over 5 characters per word, so the character cap — not the word
+ * budget — is what a 700-word chapter actually hits first.
+ */
+export const TTS_CHUNK_LIMITS: NarrationChunkLimits = {
+  maxWords: 700,
+  maxChars: 3_500,
+};
+
+const CHUNK_SEPARATOR = "\n\n";
+
 function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-/** Sentence-sized pieces of at most `maxWords`, hard-splitting long sentences. */
-function splitOversizedSegment(segment: string, maxWords: number): string[] {
+/** Word-by-word split for a sentence that alone busts either budget. */
+function hardSplitSentence(
+  sentence: string,
+  limits: NarrationChunkLimits,
+): string[] {
+  const pieces: string[] = [];
+  let current: string[] = [];
+  let chars = 0;
+
+  for (const word of sentence.split(/\s+/).filter(Boolean)) {
+    const separator = current.length ? 1 : 0;
+    if (
+      current.length &&
+      (current.length + 1 > limits.maxWords ||
+        chars + separator + word.length > limits.maxChars)
+    ) {
+      pieces.push(current.join(" "));
+      current = [];
+      chars = 0;
+    }
+    chars += (current.length ? 1 : 0) + word.length;
+    current.push(word);
+  }
+  if (current.length) pieces.push(current.join(" "));
+  return pieces;
+}
+
+/** Sentence-sized pieces that fit both budgets, hard-splitting long sentences. */
+function splitOversizedSegment(
+  segment: string,
+  limits: NarrationChunkLimits,
+): string[] {
   const sentences = segment.match(/[^.!?]+[.!?]*\s*/g) ?? [segment];
   const pieces: string[] = [];
   let buffer: string[] = [];
   let bufferWords = 0;
+  let bufferChars = 0;
 
   const flush = () => {
     if (!buffer.length) return;
     pieces.push(buffer.join(" "));
     buffer = [];
     bufferWords = 0;
+    bufferChars = 0;
+  };
+
+  const append = (sentence: string, words: number) => {
+    if (
+      buffer.length &&
+      (bufferWords + words > limits.maxWords ||
+        bufferChars + 1 + sentence.length > limits.maxChars)
+    ) {
+      flush();
+    }
+    bufferChars += (buffer.length ? 1 : 0) + sentence.length;
+    buffer.push(sentence);
+    bufferWords += words;
   };
 
   for (const raw of sentences) {
     const sentence = raw.trim();
     if (!sentence) continue;
-    const words = sentence.split(/\s+/).filter(Boolean);
-    if (words.length > maxWords) {
+    const words = countWords(sentence);
+    if (words > limits.maxWords || sentence.length > limits.maxChars) {
       flush();
-      for (let index = 0; index < words.length; index += maxWords) {
-        pieces.push(words.slice(index, index + maxWords).join(" "));
+      for (const piece of hardSplitSentence(sentence, limits)) {
+        pieces.push(piece);
       }
       continue;
     }
-    if (bufferWords + words.length > maxWords) flush();
-    buffer.push(sentence);
-    bufferWords += words.length;
+    append(sentence, words);
   }
   flush();
   return pieces;
@@ -77,20 +137,35 @@ function splitOversizedSegment(segment: string, maxWords: number): string[] {
 
 /**
  * Groups narration segments (chapters) into TTS-sized chunks so a full-race
- * script never exceeds the provider's per-call limit.
+ * script never exceeds the provider's per-call word or character limit.
  */
-export function chunkNarration(segments: string[], maxWords: number): string[] {
-  if (maxWords < 1) throw new Error("chunkNarration requires maxWords >= 1");
+export function chunkNarration(
+  segments: string[],
+  limits: NarrationChunkLimits,
+): string[] {
+  if (limits.maxWords < 1) {
+    throw new Error("chunkNarration requires maxWords >= 1");
+  }
+  if (limits.maxChars < 1) {
+    throw new Error("chunkNarration requires maxChars >= 1");
+  }
   const chunks: string[] = [];
   let current: string[] = [];
   let currentWords = 0;
+  let currentChars = 0;
 
   const append = (text: string, words: number) => {
-    if (current.length && currentWords + words > maxWords) {
-      chunks.push(current.join("\n\n"));
+    if (
+      current.length &&
+      (currentWords + words > limits.maxWords ||
+        currentChars + CHUNK_SEPARATOR.length + text.length > limits.maxChars)
+    ) {
+      chunks.push(current.join(CHUNK_SEPARATOR));
       current = [];
       currentWords = 0;
+      currentChars = 0;
     }
+    currentChars += (current.length ? CHUNK_SEPARATOR.length : 0) + text.length;
     current.push(text);
     currentWords += words;
   };
@@ -99,15 +174,15 @@ export function chunkNarration(segments: string[], maxWords: number): string[] {
     const trimmed = segment.trim();
     if (!trimmed) continue;
     const words = countWords(trimmed);
-    if (words <= maxWords) {
+    if (words <= limits.maxWords && trimmed.length <= limits.maxChars) {
       append(trimmed, words);
       continue;
     }
-    for (const piece of splitOversizedSegment(trimmed, maxWords)) {
+    for (const piece of splitOversizedSegment(trimmed, limits)) {
       append(piece, countWords(piece));
     }
   }
-  if (current.length) chunks.push(current.join("\n\n"));
+  if (current.length) chunks.push(current.join(CHUNK_SEPARATOR));
   return chunks;
 }
 

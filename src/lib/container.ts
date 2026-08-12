@@ -375,6 +375,7 @@ export function createContainer(env: AppEnv): AppContainer {
       tts,
       transcription,
       audioConcat: fullVoMix,
+      mediaDuration,
       mediaStore,
       replaySessions: repositories.replaySessions,
       settings,

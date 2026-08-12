@@ -5,7 +5,10 @@ import {
   chunkNarration,
   hashVoiceScript,
   offsetWords,
+  TTS_CHUNK_LIMITS,
 } from "@/src/domain/voice-over";
+
+const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
 describe("voice-over captions", () => {
   const words = [
@@ -37,15 +40,19 @@ describe("voice-over captions", () => {
 
 describe("chunkNarration", () => {
   const sentence = (index: number) => `Frase numero ${index} del capitolo.`;
+  const limits = (maxWords: number, maxChars = 10_000) => ({
+    maxWords,
+    maxChars,
+  });
 
   it("keeps chapters together while they fit the word budget", () => {
-    expect(chunkNarration(["uno due tre", "quattro cinque"], 10)).toEqual([
-      "uno due tre\n\nquattro cinque",
-    ]);
+    expect(chunkNarration(["uno due tre", "quattro cinque"], limits(10))).toEqual(
+      ["uno due tre\n\nquattro cinque"],
+    );
   });
 
   it("starts a new chunk before exceeding the budget", () => {
-    expect(chunkNarration(["uno due tre", "quattro cinque"], 4)).toEqual([
+    expect(chunkNarration(["uno due tre", "quattro cinque"], limits(4))).toEqual([
       "uno due tre",
       "quattro cinque",
     ]);
@@ -54,7 +61,7 @@ describe("chunkNarration", () => {
   it("splits an oversized chapter on sentence boundaries", () => {
     const chapter = [sentence(1), sentence(2), sentence(3)].join(" ");
 
-    const chunks = chunkNarration([chapter], 10);
+    const chunks = chunkNarration([chapter], limits(10));
 
     expect(chunks).toEqual([
       `${sentence(1)} ${sentence(2)}`,
@@ -63,13 +70,52 @@ describe("chunkNarration", () => {
   });
 
   it("hard-splits a single sentence longer than the budget", () => {
-    const chunks = chunkNarration(["uno due tre quattro cinque"], 2);
+    const chunks = chunkNarration(["uno due tre quattro cinque"], limits(2));
 
     expect(chunks).toEqual(["uno due", "tre quattro", "cinque"]);
   });
 
   it("drops blank chapters", () => {
-    expect(chunkNarration(["  ", "uno"], 5)).toEqual(["uno"]);
+    expect(chunkNarration(["  ", "uno"], limits(5))).toEqual(["uno"]);
+  });
+
+  it("starts a new chunk on the character budget even when words still fit", () => {
+    const chunks = chunkNarration(
+      ["parolalunghissima parolalunghissima", "coda"],
+      { maxWords: 100, maxChars: 36 },
+    );
+
+    expect(chunks).toEqual(["parolalunghissima parolalunghissima", "coda"]);
+  });
+
+  it("splits Italian chapters that fit the word budget but bust the char cap", () => {
+    const chapter = Array.from({ length: 55 }, (_, index) =>
+      `Il pilota italiano incrementa progressivamente il distacco cronometrato ${index}.`,
+    ).join(" ");
+
+    const chunks = chunkNarration([chapter], TTS_CHUNK_LIMITS);
+
+    expect(wordCount(chapter)).toBeLessThan(TTS_CHUNK_LIMITS.maxWords);
+    expect(chapter.length).toBeGreaterThan(TTS_CHUNK_LIMITS.maxChars);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(
+      chunks.every((chunk) => chunk.length <= TTS_CHUNK_LIMITS.maxChars),
+    ).toBe(true);
+  });
+
+  it("keeps hard-split pieces inside the character cap", () => {
+    const runOn = Array.from({ length: 400 }, () => "parola").join(" ");
+
+    const chunks = chunkNarration([runOn], { maxWords: 700, maxChars: 120 });
+
+    expect(chunks.every((chunk) => chunk.length <= 120)).toBe(true);
+    expect(chunks.join(" ")).toBe(runOn);
+  });
+
+  it("rejects a non-positive character budget", () => {
+    expect(() => chunkNarration(["uno"], { maxWords: 10, maxChars: 0 })).toThrow(
+      /maxChars/,
+    );
   });
 });
 
