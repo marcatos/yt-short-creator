@@ -164,7 +164,8 @@ describe("generateShortVoiceOvers", () => {
 
     expect(systemPrompt).toMatch(/first person/i);
     expect(systemPrompt).toMatch(/Italian first/i);
-    expect(systemPrompt).toMatch(/S\.Marcato 42/);
+    expect(systemPrompt).toMatch(/Simone Marcato/);
+    expect(systemPrompt).toMatch(/not a brand name|Do NOT treat/i);
     expect(systemPrompt).toMatch(/8–25 spoken seconds/);
     expect(systemPrompt).toMatch(/Do not speak chapter timestamps/i);
     expect(synthesized.map(({ text }) => text)).toEqual([

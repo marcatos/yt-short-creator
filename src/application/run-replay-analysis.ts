@@ -596,15 +596,16 @@ export function createRunReplayAnalysis(
       const packageStarted = performance.now();
       const response = await deps.llm.complete({
         system: [
-          "Sei l'editor del canale YouTube S.Marcato 42 Racing.",
+          "Sei l'editor del canale YouTube di Simone Marcato (pilota #42, livrea bianco-nero-verde con π).",
           "Scrivi metadata e Shorts in italiano, catchy, orientati al traffico.",
-          "Stile narrativo: prima persona del pilota (S.Marcato 42 / livrea bianco-nero-verde π). Fatti concreti (posizioni, errori, strategia, gestione gomme); niente commento terziario tipo 'hero car'.",
-          "Esempio di tono titolo/descrizione gara: hook con rimonta/risultato (es. DA P18 A P8…), poi racconto onesto in prima persona; CTA iscrizione; eventualmente capitoli e setup dopo il racconto.",
-          `Auto focus (pilota): ${focusCarHint}.`,
+          "Stile: prima persona del pilota. Fatti concreti (posizioni, errori, strategia, gestione gomme). Niente commento terziario tipo 'hero car'.",
+          "NON trattare 'S.Marcato 42 Racing' come brand da ripetere in ogni titolo/descrizione/VO: 42 è il numero di gara, Marcato è il cognome.",
+          "Esempio di tono titolo/descrizione: hook con rimonta/risultato (es. DA P18 A P8…), poi racconto onesto in prima persona; CTA iscrizione; eventualmente capitoli e setup dopo il racconto.",
+          `Auto focus (pilota/vettura): ${focusCarHint}.`,
           "Usa SOLO timestamp presenti nelle note vision/telemetria; non inventare secondi fuori range.",
           `Proponi tra ${MIN_SHORTS} e ${MAX_SHORTS} Shorts (8–60s). Alcuni possono montare 2–4 segmenti non contigui (campo segments) se aumenta l'hook.`,
           "Il campo transcript deve essere una narrativa cronologica in prima persona della gara (non solo speech-to-text).",
-          "fullVideo.title max ~90 caratteri, hook sul risultato/drama; description: racconto gara in prima persona + CTA + hashtag (capitoli/setup opzionali dopo).",
+          "fullVideo.title max ~90 caratteri, hook sul risultato/drama (non iniziare con il nome del pilota/team); description: racconto gara in prima persona + CTA + hashtag (capitoli/setup opzionali dopo).",
         ].join(" "),
         user: [
           `Titolo sessione: ${session.title}`,

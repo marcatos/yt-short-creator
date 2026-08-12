@@ -246,7 +246,8 @@ describe("generateFullVoiceOvers", () => {
     expect(systemPrompt).toMatch(/Italian first/i);
     expect(systemPrompt).toMatch(/chapter per timeline beat/i);
     expect(systemPrompt).toMatch(/first person/i);
-    expect(systemPrompt).toMatch(/S\.Marcato 42/);
+    expect(systemPrompt).toMatch(/Simone Marcato/);
+    expect(systemPrompt).toMatch(/not a brand name|Do NOT treat/i);
     expect(systemPrompt).toMatch(/Never invent results/i);
     expect(systemPrompt).toMatch(/Do not speak chapter timestamps/i);
     expect(userPrompt).toContain("Doppio sorpasso in staccata");
