@@ -1,4 +1,5 @@
 import type { CandidateStatus } from "./status";
+import type { VoiceOverPackage } from "./voice-over";
 
 export type CandidateOrigin = "clip" | "generate" | "replay";
 
@@ -134,6 +135,7 @@ export type ShortCandidate = {
   provenance: ClipProvenance | GenerateProvenance | ReplayProvenance;
   /** Set when render succeeds; required to retry upload after publish failure. */
   renderOutputPath: string | null;
+  voiceOvers?: VoiceOverPackage[] | null;
   scheduledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
