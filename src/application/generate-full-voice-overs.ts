@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import type { ReplaySession } from "@/src/domain/entities";
 import {
+  RACE_METADATA_STYLE,
+  RACE_VOICE_OVER_STYLE,
+} from "@/src/domain/race-copy-style";
+import {
   BRAND_TTS_INSTRUCTIONS,
   buildSrt,
   chunkNarration,
@@ -72,12 +76,13 @@ const responseJsonSchema = {
   },
 } satisfies Record<string, unknown>;
 
-const SYSTEM_PROMPT = `Write a chaptered voice-over narration for a full simracing race upload.
-Follow the supplied race timeline: one chapter per timeline beat, in chronological order, dense but catchy.
-Generate Italian first, then create an English adaptation (not a literal translation) that keeps the same energy.
-Place a call to action to subscribe mid-narration and again at the end.
-The focus car is the white/black/green π car from S.Marcato 42 Racing. Never invent race facts absent from the supplied race package.
-Return the chapter list plus localized titles and descriptions for the two uploads.`;
+const SYSTEM_PROMPT = `${RACE_VOICE_OVER_STYLE}
+
+Write a chaptered spoken narration for a full simracing race upload.
+Follow the supplied race timeline: one chapter per timeline beat, chronological, dense but concrete.
+Also return localized titles and YouTube descriptions for the two uploads (${RACE_METADATA_STYLE}).
+Spoken chapters = race story only; put CTA mid + end in the spoken text.
+Written description may add chapters/timestamps, rig block, and hashtags after the race story.`;
 
 type Dependencies = {
   llm: LlmPort;

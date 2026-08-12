@@ -243,10 +243,12 @@ describe("generateFullVoiceOvers", () => {
 
     const result = await generate({ sessionId: "session-7" });
 
-    expect(systemPrompt).toMatch(/Italian first[\s\S]*English adaptation/);
+    expect(systemPrompt).toMatch(/Italian first/i);
     expect(systemPrompt).toMatch(/chapter per timeline beat/i);
-    expect(systemPrompt).toMatch(/white\/black\/green π[\s\S]*S\.Marcato 42/);
-    expect(systemPrompt).toMatch(/Never invent race facts/i);
+    expect(systemPrompt).toMatch(/first person/i);
+    expect(systemPrompt).toMatch(/S\.Marcato 42/);
+    expect(systemPrompt).toMatch(/Never invent results/i);
+    expect(systemPrompt).toMatch(/Do not speak chapter timestamps/i);
     expect(userPrompt).toContain("Doppio sorpasso in staccata");
     expect(result.map(({ language }) => language)).toEqual(["it", "en"]);
 

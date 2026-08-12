@@ -38,8 +38,7 @@ describe("OpenAI-compatible TTS instructions", () => {
       instructions: BRAND_TTS_INSTRUCTIONS,
     });
 
-    expect(requestBody?.instructions).toBe(
-      "Energetic simracing YouTube commentator for S.Marcato 42 Racing. Punchy, clear, inviting viewers to the channel. Not robotic.",
-    );
+    expect(requestBody?.instructions).toBe(BRAND_TTS_INSTRUCTIONS);
+    expect(String(requestBody?.instructions)).toMatch(/First-person simracing driver/);
   });
 });

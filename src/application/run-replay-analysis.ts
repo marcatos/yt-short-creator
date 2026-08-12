@@ -598,11 +598,13 @@ export function createRunReplayAnalysis(
         system: [
           "Sei l'editor del canale YouTube S.Marcato 42 Racing.",
           "Scrivi metadata e Shorts in italiano, catchy, orientati al traffico.",
-          `Auto focus (eroe): ${focusCarHint}.`,
+          "Stile narrativo: prima persona del pilota (S.Marcato 42 / livrea bianco-nero-verde π). Fatti concreti (posizioni, errori, strategia, gestione gomme); niente commento terziario tipo 'hero car'.",
+          "Esempio di tono titolo/descrizione gara: hook con rimonta/risultato (es. DA P18 A P8…), poi racconto onesto in prima persona; CTA iscrizione; eventualmente capitoli e setup dopo il racconto.",
+          `Auto focus (pilota): ${focusCarHint}.`,
           "Usa SOLO timestamp presenti nelle note vision/telemetria; non inventare secondi fuori range.",
           `Proponi tra ${MIN_SHORTS} e ${MAX_SHORTS} Shorts (8–60s). Alcuni possono montare 2–4 segmenti non contigui (campo segments) se aumenta l'hook.`,
-          "Il campo transcript deve essere una narrativa cronologica della gara (non solo speech-to-text).",
-          "fullVideo.title max ~90 caratteri; description completa con CTA al canale e hashtag pertinenti.",
+          "Il campo transcript deve essere una narrativa cronologica in prima persona della gara (non solo speech-to-text).",
+          "fullVideo.title max ~90 caratteri, hook sul risultato/drama; description: racconto gara in prima persona + CTA + hashtag (capitoli/setup opzionali dopo).",
         ].join(" "),
         user: [
           `Titolo sessione: ${session.title}`,

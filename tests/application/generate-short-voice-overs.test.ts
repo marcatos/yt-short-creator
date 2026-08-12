@@ -162,9 +162,11 @@ describe("generateShortVoiceOvers", () => {
 
     const result = await generate({ candidateId: "candidate-42" });
 
-    expect(systemPrompt).toMatch(
-      /Italian first[\s\S]*English adaptation[\s\S]*CTA[\s\S]*white\/black\/green π[\s\S]*S\.Marcato 42/,
-    );
+    expect(systemPrompt).toMatch(/first person/i);
+    expect(systemPrompt).toMatch(/Italian first/i);
+    expect(systemPrompt).toMatch(/S\.Marcato 42/);
+    expect(systemPrompt).toMatch(/8–25 spoken seconds/);
+    expect(systemPrompt).toMatch(/Do not speak chapter timestamps/i);
     expect(synthesized.map(({ text }) => text)).toEqual([
       expect.stringContaining("Ultimo giro"),
       expect.stringContaining("Final lap"),

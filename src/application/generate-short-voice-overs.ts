@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import type { ShortCandidate } from "@/src/domain/entities";
 import {
+  RACE_METADATA_STYLE,
+  RACE_VOICE_OVER_STYLE,
+} from "@/src/domain/race-copy-style";
+import {
   BRAND_TTS_INSTRUCTIONS,
   buildAssKaraoke,
   buildSrt,
@@ -50,11 +54,11 @@ const responseJsonSchema = {
   },
 } satisfies Record<string, unknown>;
 
-const SYSTEM_PROMPT = `Write an energetic YouTube Short voice-over lasting 8–25 spoken seconds.
-Generate Italian first, then create an English adaptation (not a literal translation).
-Both versions must hook viewers in the first 2 seconds, name the racing moment, and end with a clear CTA to subscribe or watch the full race.
-The focus car is the white/black/green π car from S.Marcato 42 Racing. Never invent race results or facts absent from the supplied candidate.
-Return both language scripts plus concise localized titles and descriptions.`;
+const SYSTEM_PROMPT = `${RACE_VOICE_OVER_STYLE}
+
+Write a YouTube Short voice-over lasting 8–25 spoken seconds.
+Hook in the first 2 seconds with a concrete race moment (positions, battle, mistake, recovery), then end with a CTA to subscribe or watch the full race.
+Also return concise localized titles and descriptions (${RACE_METADATA_STYLE}).`;
 
 const MIN_VOICE_OVER_DURATION_MS = 8_000;
 const MAX_VOICE_OVER_DURATION_MS = 25_000;
