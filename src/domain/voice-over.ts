@@ -38,6 +38,89 @@ export function hashVoiceScript(
     .slice(0, 16);
 }
 
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/** Sentence-sized pieces of at most `maxWords`, hard-splitting long sentences. */
+function splitOversizedSegment(segment: string, maxWords: number): string[] {
+  const sentences = segment.match(/[^.!?]+[.!?]*\s*/g) ?? [segment];
+  const pieces: string[] = [];
+  let buffer: string[] = [];
+  let bufferWords = 0;
+
+  const flush = () => {
+    if (!buffer.length) return;
+    pieces.push(buffer.join(" "));
+    buffer = [];
+    bufferWords = 0;
+  };
+
+  for (const raw of sentences) {
+    const sentence = raw.trim();
+    if (!sentence) continue;
+    const words = sentence.split(/\s+/).filter(Boolean);
+    if (words.length > maxWords) {
+      flush();
+      for (let index = 0; index < words.length; index += maxWords) {
+        pieces.push(words.slice(index, index + maxWords).join(" "));
+      }
+      continue;
+    }
+    if (bufferWords + words.length > maxWords) flush();
+    buffer.push(sentence);
+    bufferWords += words.length;
+  }
+  flush();
+  return pieces;
+}
+
+/**
+ * Groups narration segments (chapters) into TTS-sized chunks so a full-race
+ * script never exceeds the provider's per-call limit.
+ */
+export function chunkNarration(segments: string[], maxWords: number): string[] {
+  if (maxWords < 1) throw new Error("chunkNarration requires maxWords >= 1");
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let currentWords = 0;
+
+  const append = (text: string, words: number) => {
+    if (current.length && currentWords + words > maxWords) {
+      chunks.push(current.join("\n\n"));
+      current = [];
+      currentWords = 0;
+    }
+    current.push(text);
+    currentWords += words;
+  };
+
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+    const words = countWords(trimmed);
+    if (words <= maxWords) {
+      append(trimmed, words);
+      continue;
+    }
+    for (const piece of splitOversizedSegment(trimmed, maxWords)) {
+      append(piece, countWords(piece));
+    }
+  }
+  if (current.length) chunks.push(current.join("\n\n"));
+  return chunks;
+}
+
+/** Shifts chunk-local word timings onto the concatenated audio timeline. */
+export function offsetWords(words: TimedWord[], offsetMs: number): TimedWord[] {
+  if (offsetMs === 0) return words;
+  return words.map((word) => ({
+    text: word.text,
+    startMs: word.startMs + offsetMs,
+    endMs: word.endMs + offsetMs,
+  }));
+}
+
 function srtStamp(ms: number): string {
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
