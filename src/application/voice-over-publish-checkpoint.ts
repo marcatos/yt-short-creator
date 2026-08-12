@@ -156,21 +156,24 @@ export function priorFullVoiceOverJobCheckpoints(input: {
   );
 }
 
+/**
+ * Publish results survive a job (or its DB row) disappearing by also living in
+ * a media-store file keyed by owner + language, versioned by script hash.
+ */
 export function createVoiceOverPublishSidecar(deps: {
-  candidateId: string;
+  /** Candidate id for Shorts, session id for full races. */
+  ownerId: string;
   voiceOver: VoiceOverPackage;
+  sidecarPath?: string;
   mediaStore?: MediaStorePort;
   logger: Logger;
 }): {
   load(): Promise<VoiceOverUploadCheckpoint | null>;
   save(result: VoiceOverUploadCheckpoint): Promise<void>;
 } {
-  const sidecarPath = deps.mediaStore?.voPublishCheckpointPath?.(
-    deps.candidateId,
-    deps.voiceOver.language,
-  );
+  const sidecarPath = deps.sidecarPath;
   const logContext = {
-    candidateId: deps.candidateId,
+    ownerId: deps.ownerId,
     language: deps.voiceOver.language,
     scriptHash: deps.voiceOver.scriptHash,
     sidecarPath,

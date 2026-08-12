@@ -19,6 +19,11 @@ export interface MediaStorePort {
   fullReplayVoPath?(sessionId: string, language: "it" | "en"): string;
   /** Delivery encode with the narration mixed in, per language. */
   fullReplayVoRenderPath?(sessionId: string, language: "it" | "en"): string;
+  /** Durable publish result for one language of a full-race session. */
+  fullVoPublishCheckpointPath?(
+    sessionId: string,
+    language: "it" | "en",
+  ): string;
   listBroll(): Promise<string[]>;
   ensureDirs(): Promise<void>;
 }

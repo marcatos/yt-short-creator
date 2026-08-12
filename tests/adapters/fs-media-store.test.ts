@@ -58,6 +58,12 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.fullReplayVoPath?.("../session-1", "en")).toBe(
       path.join(mediaRoot, "replays", "session-1", "vo-en.mp3"),
     );
+    expect(mediaStore.fullVoPublishCheckpointPath?.("../session-1", "it")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "vo-publish-it.json"),
+    );
+    expect(mediaStore.fullVoPublishCheckpointPath?.("session-1", "en")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "vo-publish-en.json"),
+    );
     expect(mediaStore.fullReplayVoRenderPath?.("session-1", "it")).toBe(
       path.join(mediaRoot, "replays", "session-1", "full-youtube-it.mp4"),
     );

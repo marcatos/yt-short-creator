@@ -100,6 +100,7 @@ type Harness = {
   captioned: YouTubeCaptionUploadInput[];
   generateCalls: string[];
   checkpoints: Array<{ step: string; data?: unknown }>;
+  sidecars: Map<string, string>;
 };
 
 function harness(options: {
@@ -108,8 +109,10 @@ function harness(options: {
   packages?: VoiceOverPackage[];
   withCaptions?: boolean;
   withVoiceOverDeps?: boolean;
+  sidecars?: Map<string, string>;
 } = {}): Harness {
   const store = { session: options.session ?? session() };
+  const sidecars = options.sidecars ?? new Map<string, string>();
   const mixed: FullVoMixInput[] = [];
   const uploaded: YouTubeUploadInput[] = [];
   const captioned: YouTubeCaptionUploadInput[] = [];
@@ -166,6 +169,12 @@ function harness(options: {
         `media/replays/${sessionId}/vo-${language}.mp3`,
       fullReplayVoRenderPath: (sessionId, language) =>
         `media/replays/${sessionId}/full-youtube-${language}.mp4`,
+      fullVoPublishCheckpointPath: (sessionId, language) =>
+        `media/replays/${sessionId}/vo-publish-${language}.json`,
+      readText: async (filePath) => sidecars.get(filePath) ?? null,
+      writeText: async (filePath, content) => {
+        sidecars.set(filePath, content);
+      },
       listBroll: async () => [],
       ensureDirs: async () => {},
     },
@@ -228,7 +237,16 @@ function harness(options: {
     clock: { now: () => now },
   });
 
-  return { handler, store, mixed, uploaded, captioned, generateCalls, checkpoints };
+  return {
+    handler,
+    store,
+    mixed,
+    uploaded,
+    captioned,
+    generateCalls,
+    checkpoints,
+    sidecars,
+  };
 }
 
 function makeCtx(
@@ -429,6 +447,88 @@ describe("publish_full_replay voice-over mode", () => {
     expect(target.captioned.map(({ youtubeVideoId }) => youtubeVideoId)).toEqual([
       "yt-recovered-it",
       "yt-1",
+    ]);
+  });
+
+  it("recovers an upload id from the media-store sidecar and skips the mix", async () => {
+    // The job row and its checkpoint are gone (queue replaced the job), so the
+    // sidecar is the only record that IT already reached YouTube.
+    const sidecars = new Map([
+      [
+        "media/replays/session-1/vo-publish-it.json",
+        JSON.stringify({
+          language: "it",
+          scriptHash: "hash-it",
+          youtubeVideoId: "yt-sidecar-it",
+          youtubeCaptionId: "caption-sidecar-it",
+        }),
+      ],
+    ]);
+    const target = harness({
+      sidecars,
+      session: session({
+        fullVideoEncodePath: "media/replays/session-1/full-youtube.mp4",
+      }),
+    });
+
+    await target.handler(makeCtx(target));
+
+    expect(target.mixed.map(({ outputPath }) => outputPath)).toEqual([
+      "media/replays/session-1/full-youtube-en.mp4",
+    ]);
+    expect(target.uploaded.map(({ filePath }) => filePath)).toEqual([
+      "media/replays/session-1/full-youtube-en.mp4",
+    ]);
+    expect(target.captioned.map(({ language }) => language)).toEqual(["en"]);
+    expect(target.store.session.fullVideoYoutubeId).toBe("yt-sidecar-it");
+    expect(
+      JSON.parse(sidecars.get("media/replays/session-1/vo-publish-en.json")!),
+    ).toMatchObject({
+      language: "en",
+      scriptHash: "hash-en",
+      youtubeVideoId: "yt-1",
+      youtubeCaptionId: "caption-1",
+    });
+  });
+
+  it("ignores a sidecar written for a different script hash", async () => {
+    const target = harness({
+      sidecars: new Map([
+        [
+          "media/replays/session-1/vo-publish-it.json",
+          JSON.stringify({
+            language: "it",
+            scriptHash: "hash-di-un-vecchio-copione",
+            youtubeVideoId: "yt-stale-it",
+          }),
+        ],
+      ]),
+    });
+
+    await target.handler(makeCtx(target));
+
+    expect(target.uploaded).toHaveLength(2);
+    expect(target.store.session.fullVideoYoutubeId).toBe("yt-1");
+  });
+
+  it("ducks the race only for the narration span", async () => {
+    const target = harness({
+      packages: [
+        voiceOver("it", {
+          words: [
+            { text: "via", startMs: 0, endMs: 200 },
+            { text: "bandiera", startMs: 700_000, endMs: 754_200 },
+          ],
+        }),
+        voiceOver("en", { words: [] }),
+      ],
+    });
+
+    await target.handler(makeCtx(target));
+
+    expect(target.mixed.map(({ voiceDurationMs }) => voiceDurationMs)).toEqual([
+      754_200,
+      undefined,
     ]);
   });
 

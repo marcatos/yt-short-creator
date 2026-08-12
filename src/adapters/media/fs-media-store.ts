@@ -109,6 +109,18 @@ export function createFsMediaStore(deps: {
       );
     },
 
+    fullVoPublishCheckpointPath(
+      sessionId: string,
+      language: "it" | "en",
+    ): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        `vo-publish-${language}.json`,
+      );
+    },
+
     async listBroll(): Promise<string[]> {
       const brollRoot = path.join(mediaRoot, "broll");
       await fs.mkdir(brollRoot, { recursive: true });

@@ -164,8 +164,12 @@ export function createPublishVoiceOverShortHandler(
     let candidate: ShortCandidate = found;
     const initialPackage = packageForLanguage(candidate, payload.language);
     const sidecar = createVoiceOverPublishSidecar({
-      candidateId,
+      ownerId: candidateId,
       voiceOver: initialPackage,
+      sidecarPath: deps.mediaStore?.voPublishCheckpointPath?.(
+        candidateId,
+        payload.language,
+      ),
       mediaStore: deps.mediaStore,
       logger: log,
     });

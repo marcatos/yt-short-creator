@@ -4,6 +4,7 @@ import type {
   VoiceOverPackage,
 } from "@/src/domain/voice-over";
 import {
+  createVoiceOverPublishSidecar,
   priorFullVoiceOverJobCheckpoints,
   resolveVoiceOverUploadCheckpoint,
   type VoiceOverUploadCheckpoint,
@@ -71,6 +72,12 @@ async function requireSession(
   return session;
 }
 
+/** Narration length drives the duck release so the race is not left 12 dB down. */
+function narrationDurationMs(voiceOver: VoiceOverPackage): number | undefined {
+  const lastWord = voiceOver.words[voiceOver.words.length - 1];
+  return lastWord && lastWord.endMs > 0 ? lastWord.endMs : undefined;
+}
+
 /** Reloads the session so concurrent writes are not clobbered. */
 async function patchVoiceOver(
   deps: FullVoiceOverPublishDeps,
@@ -133,9 +140,19 @@ export async function runFullVoiceOverPublish(
     const progress = LANGUAGE_PROGRESS[language];
     const label = language.toUpperCase();
     const current = await requireSession(deps, sessionId);
+    const sidecar = createVoiceOverPublishSidecar({
+      ownerId: sessionId,
+      voiceOver: packageFor(current, language),
+      sidecarPath: deps.mediaStore.fullVoPublishCheckpointPath?.(
+        sessionId,
+        language,
+      ),
+      mediaStore: deps.mediaStore,
+      logger: log,
+    });
     const recovered = resolveVoiceOverUploadCheckpoint(
       packageFor(current, language),
-      null,
+      await sidecar.load(),
       ctx.checkpoint,
       priorCheckpoints,
     );
@@ -166,6 +183,20 @@ export async function runFullVoiceOverPublish(
         await requireSession(deps, sessionId),
         language,
       );
+      // A recovered upload means the narrated encode already reached YouTube;
+      // re-mixing a 40-minute race for it would burn hours for nothing.
+      if (voiceOver.youtubeVideoId) {
+        ctx.setProgress(
+          progress.mix,
+          `${label} already published as ${voiceOver.youtubeVideoId}`,
+        );
+        log.info("Full-race voice-over mix skipped (already published)", {
+          sessionId,
+          language,
+          youtubeVideoId: voiceOver.youtubeVideoId,
+        });
+        return;
+      }
       if (voiceOver.renderOutputPath) {
         ctx.setProgress(
           progress.mix,
@@ -175,11 +206,13 @@ export async function runFullVoiceOverPublish(
       }
       ctx.setProgress(progress.mix, `Mixing ${label} narration onto the race`);
       const outputPath = voRenderPath(sessionId, language);
+      const voiceDurationMs = narrationDurationMs(voiceOver);
       const result = await mixer.mix({
         videoPath: input.encodePath,
         voiceAudioPath: voiceOver.audioPath,
         outputPath,
         voiceDuckDb: appSettings?.voiceDuckDb,
+        ...(voiceDurationMs === undefined ? {} : { voiceDurationMs }),
         burnInCaptions: appSettings?.fullBurnInCaptions ?? false,
         ...(voiceOver.srtPath ? { subtitlesPath: voiceOver.srtPath } : {}),
       });
@@ -237,6 +270,7 @@ export async function runFullVoiceOverPublish(
         youtubeVideoId: result.youtubeVideoId,
       };
       await ctx.saveCheckpoint(`upload_${language}`, checkpoint);
+      await sidecar.save(checkpoint);
       await patchVoiceOver(
         deps,
         sessionId,
@@ -285,12 +319,14 @@ export async function runFullVoiceOverPublish(
         language,
         name: "VO",
       });
-      await ctx.saveCheckpoint(`captions_${language}`, {
+      const captionsCheckpoint: VoiceOverUploadCheckpoint = {
         language,
         scriptHash: voiceOver.scriptHash,
         youtubeVideoId: voiceOver.youtubeVideoId,
         youtubeCaptionId: caption.youtubeCaptionId,
-      } satisfies VoiceOverUploadCheckpoint);
+      };
+      await ctx.saveCheckpoint(`captions_${language}`, captionsCheckpoint);
+      await sidecar.save(captionsCheckpoint);
       await patchVoiceOver(
         deps,
         sessionId,
