@@ -364,6 +364,8 @@ function candidatesFromVisionMoments(
   }
   return extras;
 }
+
+function candidateFromTelemetryEvent(
   deps: Dependencies,
   sessionId: string,
   event: ReplayEvent,
