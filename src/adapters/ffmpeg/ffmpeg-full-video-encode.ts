@@ -18,8 +18,8 @@ import type { SettingsRepository } from "@/src/ports/settings-repository";
 const MANIFEST_NAME = "full-encode-manifest.json";
 
 /** YouTube recommended ~24 Mbps for 1440p60; we target slightly under with CQ. */
-const DEFAULT_TARGET_MBPS = 20;
-const DEFAULT_MAX_MBPS = 24;
+export const DEFAULT_TARGET_MBPS = 20;
+export const DEFAULT_MAX_MBPS = 24;
 const DEFAULT_MAX_WIDTH = 2560;
 
 type Manifest = {
@@ -69,7 +69,7 @@ async function resolvePreference(deps: Deps): Promise<VideoEncoderPreference> {
   return "auto_dgpu";
 }
 
-function deliveryEncoderArgs(
+export function deliveryEncoderArgs(
   codec: string,
   targetMbps: number,
   maxMbps: number,

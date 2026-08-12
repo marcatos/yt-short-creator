@@ -11,6 +11,7 @@ import type {
   VideoEncoderPreference,
 } from "@/src/ports/settings-repository";
 
+import { duckedVoiceMixFilter, filterFilename } from "./ffmpeg-audio-filters";
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
 
 type FfmpegRenderDeps = {
@@ -75,18 +76,6 @@ function scaleAndCrop(label: string, focusX = 0.5): string {
   );
 }
 
-function assFilenameForFilter(filePath: string): string {
-  return filePath
-    .replaceAll("\\", "/")
-    .replaceAll(":", "\\:")
-    .replaceAll("'", "\\'");
-}
-
-function voiceDuckVolume(db: number | undefined): string {
-  const normalizedDb = db !== undefined && Number.isFinite(db) ? db : -12;
-  return Math.pow(10, normalizedDb / 20).toFixed(6);
-}
-
 function brandedVideoFilter(
   input: RenderInput,
   baseLabel: string,
@@ -101,7 +90,7 @@ function brandedVideoFilter(
   ];
   if (input.burnInCaptions && input.assPath) {
     filters.push(
-      `[branded]ass=filename='${assFilenameForFilter(input.assPath)}'[outv]`,
+      `[branded]ass=filename='${filterFilename(input.assPath)}'[outv]`,
     );
   }
   return filters;
@@ -113,11 +102,11 @@ function voiceMixFilter(
   voiceInputIndex: number,
 ): string[] {
   if (!input.voiceAssetPath) return [];
-  return [
-    `[${gameAudioLabel}]volume=${voiceDuckVolume(input.voiceDuckDb)}[ga]`,
-    `[${voiceInputIndex}:a]volume=1[va]`,
-    "[ga][va]amix=inputs=2:duration=first:dropout_transition=0[aout]",
-  ];
+  return duckedVoiceMixFilter({
+    sourceAudioLabel: gameAudioLabel,
+    voiceAudioLabel: `${voiceInputIndex}:a`,
+    voiceDuckDb: input.voiceDuckDb,
+  });
 }
 
 function clipArgs(input: RenderInput): string[] {
