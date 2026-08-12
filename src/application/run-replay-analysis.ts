@@ -283,7 +283,87 @@ function boostScoreNearTelemetry(
   return near ? Math.min(1, score + 0.08) : score;
 }
 
-function candidateFromTelemetryEvent(
+function clampWindow(
+  startMs: number,
+  endMs: number,
+  maxEndMs: number,
+): { startMs: number; endMs: number } {
+  let start = Math.max(0, Math.floor(startMs));
+  let end = Math.max(start + 1, Math.floor(endMs));
+  if (Number.isFinite(maxEndMs)) {
+    end = Math.min(end, maxEndMs);
+    start = Math.min(start, Math.max(0, end - 1));
+  }
+  let duration = end - start;
+  if (duration < MIN_WINDOW_MS) {
+    end = Math.min(
+      Number.isFinite(maxEndMs) ? maxEndMs : start + MIN_WINDOW_MS,
+      start + MIN_WINDOW_MS,
+    );
+    duration = end - start;
+    if (duration < MIN_WINDOW_MS) {
+      start = Math.max(0, end - MIN_WINDOW_MS);
+    }
+  }
+  if (end - start > MAX_WINDOW_MS) {
+    end = start + MAX_WINDOW_MS;
+  }
+  return { startMs: Math.floor(start), endMs: Math.floor(end) };
+}
+
+function candidatesFromVisionMoments(
+  deps: Dependencies,
+  sessionId: string,
+  moments: VisionMoment[],
+  durationSec: number,
+  existingStarts: number[],
+  needed: number,
+): ShortCandidate[] {
+  const maxEndMs = durationSec > 0 ? durationSec * 1_000 : Number.POSITIVE_INFINITY;
+  const now = deps.clock.now();
+  const ranked = [...moments]
+    .filter((moment) => moment.involvingFocusCar && moment.interest >= 0.55)
+    .sort((a, b) => b.interest - a.interest);
+
+  const extras: ShortCandidate[] = [];
+  for (const moment of ranked) {
+    if (extras.length >= needed) break;
+    if (
+      existingStarts.some((start) => Math.abs(start - moment.timeMs) < 6_000)
+    ) {
+      continue;
+    }
+    const window = clampWindow(
+      moment.timeMs - 3_000,
+      moment.timeMs + 12_000,
+      maxEndMs,
+    );
+    if (window.endMs - window.startMs < MIN_WINDOW_MS) continue;
+    extras.push({
+      id: deps.id.generate(),
+      origin: "replay",
+      status: "proposed",
+      title: moment.summary.slice(0, 80) || "Momento gara",
+      description: `${moment.summary}\n#Shorts\n#iRacing`,
+      tags: ["Shorts", "iRacing", "highlight"],
+      score: moment.interest,
+      provenance: {
+        replaySessionId: sessionId,
+        startMs: window.startMs,
+        endMs: window.endMs,
+        hookReason: moment.summary,
+        eventType: "llm_moment",
+        crop: { mode: "center_vertical", focusX: 0.5 },
+      },
+      renderOutputPath: null,
+      scheduledAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    existingStarts.push(window.startMs);
+  }
+  return extras;
+}
   deps: Dependencies,
   sessionId: string,
   event: ReplayEvent,
@@ -580,7 +660,16 @@ export function createRunReplayAnalysis(
             window.segments.length >= 2 ? window.segments : undefined,
             Number.isFinite(maxEndMs) ? maxEndMs : window.endMs,
           );
-          return { ...window, ...normalized };
+          const clamped = clampWindow(
+            normalized.startMs,
+            normalized.endMs,
+            Number.isFinite(maxEndMs) ? maxEndMs : normalized.endMs,
+          );
+          return {
+            ...window,
+            ...clamped,
+            segments: normalized.segments,
+          };
         })
         .filter((window) => {
           const durationMs = windowDurationMs(window);
@@ -659,6 +748,27 @@ export function createRunReplayAnalysis(
             ),
           );
         candidates = [...candidates, ...extras];
+      }
+
+      if (candidates.length < MIN_SHORTS) {
+        const starts = candidates.map(
+          (candidate) =>
+            (candidate.provenance as { startMs: number }).startMs,
+        );
+        const visionExtras = candidatesFromVisionMoments(
+          deps,
+          sessionId,
+          visionMoments,
+          durationSec,
+          starts,
+          MIN_SHORTS - candidates.length,
+        );
+        candidates = [...candidates, ...visionExtras];
+        log.info("Filled Shorts from vision moments", {
+          sessionId,
+          added: visionExtras.length,
+          total: candidates.length,
+        });
       }
 
       candidates = candidates

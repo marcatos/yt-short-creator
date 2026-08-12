@@ -34,10 +34,8 @@ function argValue(flag: string): string | undefined {
 
 async function main(): Promise<void> {
   loadEnvLocal();
+  const sessionIdArg = argValue("--session-id");
   const mediaPath = argValue("--media");
-  if (!mediaPath) {
-    throw new Error('Missing --media "C:\\path\\to\\capture.mkv"');
-  }
   const title = argValue("--title");
   const trackName = argValue("--track");
 
@@ -45,35 +43,53 @@ async function main(): Promise<void> {
   const container = createContainer(env);
   await container.mediaStore.ensureDirs();
 
-  const absoluteMedia = path.resolve(mediaPath);
-  const session = await container.createReplaySession({
-    mediaPath: absoluteMedia,
-    title: title ?? undefined,
-    trackName: trackName ?? null,
-  });
-  await container.attachReplayMedia({
-    sessionId: session.id,
-    mediaPath: absoluteMedia,
-  });
+  let sessionId: string;
+  if (sessionIdArg) {
+    const existing = await container.repositories.replaySessions.getById(
+      sessionIdArg,
+    );
+    if (!existing?.mediaPath) {
+      throw new Error(`Session not found or missing media: ${sessionIdArg}`);
+    }
+    sessionId = existing.id;
+    container.logger.info("Re-analyzing existing session", {
+      sessionId,
+      mediaPath: existing.mediaPath,
+    });
+  } else {
+    if (!mediaPath) {
+      throw new Error(
+        'Missing --media "C:\\path\\to\\capture.mkv" (or pass --session-id)',
+      );
+    }
+    const absoluteMedia = path.resolve(mediaPath);
+    const session = await container.createReplaySession({
+      mediaPath: absoluteMedia,
+      title: title ?? undefined,
+      trackName: trackName ?? null,
+    });
+    await container.attachReplayMedia({
+      sessionId: session.id,
+      mediaPath: absoluteMedia,
+    });
+    sessionId = session.id;
+    container.logger.info("Starting AV analysis for OBS media", {
+      sessionId,
+      mediaPath: absoluteMedia,
+    });
+  }
 
-  container.logger.info("Starting AV analysis for OBS media", {
-    sessionId: session.id,
-    mediaPath: absoluteMedia,
-  });
-
-  const candidates = await container.runReplayAnalysis({
-    sessionId: session.id,
-  });
+  const candidates = await container.runReplayAnalysis({ sessionId });
   const refreshed =
-    (await container.repositories.replaySessions.getById(session.id)) ?? session;
+    (await container.repositories.replaySessions.getById(sessionId)) ?? null;
 
   const summary = {
-    sessionId: session.id,
+    sessionId,
     candidateCount: candidates.length,
-    title: refreshed.racePackage?.fullVideo.title ?? null,
-    description: refreshed.racePackage?.fullVideo.description ?? null,
-    tags: refreshed.racePackage?.fullVideo.tags ?? [],
-    transcript: refreshed.racePackage?.transcript ?? null,
+    title: refreshed?.racePackage?.fullVideo.title ?? null,
+    description: refreshed?.racePackage?.fullVideo.description ?? null,
+    tags: refreshed?.racePackage?.fullVideo.tags ?? [],
+    transcript: refreshed?.racePackage?.transcript ?? null,
     shorts: candidates.map((candidate) => ({
       id: candidate.id,
       title: candidate.title,
@@ -92,7 +108,7 @@ async function main(): Promise<void> {
   };
 
   container.logger.info("OBS AV analysis finished", {
-    sessionId: session.id,
+    sessionId,
     candidateCount: candidates.length,
   });
   console.log(JSON.stringify(summary, null, 2));
