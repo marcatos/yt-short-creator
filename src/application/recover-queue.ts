@@ -1,3 +1,4 @@
+import type { VoiceOverPackage } from "@/src/domain/voice-over";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
@@ -17,6 +18,92 @@ export type RecoverQueueResult = {
   requeuedRunning: number;
   repairedCandidates: number;
 };
+
+/** Shared state for the per-language fan-outs below. */
+type FanOut = {
+  queue: DurableJobQueue;
+  activeJobs: Set<string>;
+  logger: Logger;
+};
+
+/**
+ * Rendering only fans out per language once both narrations exist: a partial
+ * set still belongs to the single-render path that produced it.
+ */
+function isBilingual(voiceOvers: readonly VoiceOverPackage[]): boolean {
+  const languages = new Set(voiceOvers.map(({ language }) => language));
+  return languages.has("it") && languages.has("en");
+}
+
+/**
+ * Re-renders only the languages still missing their narrated cut. A generic
+ * render_short would render one language and never fan out the publish pair,
+ * so VO candidates never fall through to generic recovery.
+ */
+async function enqueueVoiceOverRenders(
+  fanOut: FanOut,
+  candidateId: string,
+  voiceOvers: readonly VoiceOverPackage[],
+): Promise<number> {
+  let localizedJobs = 0;
+  for (const voiceOver of voiceOvers) {
+    if (voiceOver.renderOutputPath) continue;
+    const payload = { candidateId, language: voiceOver.language };
+    const activeKey = activeJobKey("render_short", payload);
+    if (fanOut.activeJobs.has(activeKey)) continue;
+    await fanOut.queue.enqueue({ type: "render_short", payload });
+    fanOut.activeJobs.add(activeKey);
+    localizedJobs += 1;
+  }
+  if (localizedJobs > 0) {
+    fanOut.logger.warn("Repaired orphan voice-over render jobs", {
+      candidateId,
+      localizedJobs,
+    });
+  }
+  return localizedJobs;
+}
+
+/** Re-publishes only the languages whose captions never reached YouTube. */
+async function enqueueVoiceOverPublishes(
+  fanOut: FanOut,
+  candidateId: string,
+  voiceOvers: readonly VoiceOverPackage[],
+): Promise<number> {
+  let localizedJobs = 0;
+  for (const voiceOver of voiceOvers) {
+    if (voiceOver.youtubeCaptionId) continue;
+    if (!voiceOver.renderOutputPath || !voiceOver.srtPath) {
+      fanOut.logger.warn("Skipped incomplete voice-over recovery package", {
+        candidateId,
+        language: voiceOver.language,
+        hasRender: Boolean(voiceOver.renderOutputPath),
+        hasSrt: Boolean(voiceOver.srtPath),
+      });
+      continue;
+    }
+    const payload = {
+      candidateId,
+      language: voiceOver.language,
+      filePath: voiceOver.renderOutputPath,
+      srtPath: voiceOver.srtPath,
+      title: voiceOver.title,
+      description: voiceOver.description,
+    };
+    const activeKey = activeJobKey("publish_short", payload);
+    if (fanOut.activeJobs.has(activeKey)) continue;
+    await fanOut.queue.enqueue({ type: "publish_short", payload });
+    fanOut.activeJobs.add(activeKey);
+    localizedJobs += 1;
+  }
+  if (localizedJobs > 0) {
+    fanOut.logger.warn("Repaired orphan voice-over publish jobs", {
+      candidateId,
+      localizedJobs,
+    });
+  }
+  return localizedJobs;
+}
 
 export function createRecoverQueue(deps: {
   queue: DurableJobQueue;
@@ -44,6 +131,7 @@ export function createRecoverQueue(deps: {
           )
           .map(({ type, payload }) => activeJobKey(type, payload)),
       );
+      const fanOut: FanOut = { queue: deps.queue, activeJobs, logger };
       const candidates = await deps.candidates.list({});
       let repairedCandidates = 0;
 
@@ -55,46 +143,23 @@ export function createRecoverQueue(deps: {
           continue;
         }
 
-        if (
-          candidate.status === "publishing" &&
-          candidate.voiceOvers?.length
-        ) {
-          let localizedJobs = 0;
-          for (const voiceOver of candidate.voiceOvers) {
-            if (voiceOver.youtubeCaptionId) continue;
-            if (!voiceOver.renderOutputPath || !voiceOver.srtPath) {
-              logger.warn("Skipped incomplete voice-over recovery package", {
-                candidateId: candidate.id,
-                language: voiceOver.language,
-                hasRender: Boolean(voiceOver.renderOutputPath),
-                hasSrt: Boolean(voiceOver.srtPath),
-              });
-              continue;
-            }
-            const payload = {
-              candidateId: candidate.id,
-              language: voiceOver.language,
-              filePath: voiceOver.renderOutputPath,
-              srtPath: voiceOver.srtPath,
-              title: voiceOver.title,
-              description: voiceOver.description,
-            };
-            const activeKey = activeJobKey("publish_short", payload);
-            if (activeJobs.has(activeKey)) continue;
-            await deps.queue.enqueue({ type: "publish_short", payload });
-            activeJobs.add(activeKey);
-            localizedJobs += 1;
-          }
-          if (localizedJobs > 0) {
-            repairedCandidates += 1;
-            logger.warn("Repaired orphan voice-over publish jobs", {
-              candidateId: candidate.id,
-              localizedJobs,
-            });
-          }
-          // A generic publish payload cannot identify the localized media and
-          // would enter the legacy single-video path, so VO candidates never
-          // fall through to generic recovery.
+        const voiceOvers = candidate.voiceOvers ?? [];
+        if (candidate.status === "rendering" && isBilingual(voiceOvers)) {
+          const localizedJobs = await enqueueVoiceOverRenders(
+            fanOut,
+            candidate.id,
+            voiceOvers,
+          );
+          if (localizedJobs > 0) repairedCandidates += 1;
+          continue;
+        }
+        if (candidate.status === "publishing" && voiceOvers.length > 0) {
+          const localizedJobs = await enqueueVoiceOverPublishes(
+            fanOut,
+            candidate.id,
+            voiceOvers,
+          );
+          if (localizedJobs > 0) repairedCandidates += 1;
           continue;
         }
 

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createInProcessJobQueue } from "@/src/adapters/jobs/in-process-queue";
 import { createRecoverQueue } from "@/src/application/recover-queue";
 import type { ShortCandidate } from "@/src/domain/entities";
+import type { VoiceOverPackage } from "@/src/domain/voice-over";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { Logger } from "@/src/ports/logger";
 
@@ -31,6 +32,25 @@ function candidate(
     scheduledAt: null,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function voiceOverPackage(
+  language: "it" | "en",
+  overrides: Partial<VoiceOverPackage> = {},
+): VoiceOverPackage {
+  return {
+    language,
+    script: `Script ${language}`,
+    title: `Titolo ${language}`,
+    description: `Descrizione ${language}`,
+    voiceProfile: "coral",
+    audioPath: `media/voice/vo-${language}.mp3`,
+    words: [],
+    srtPath: `media/voice/vo-${language}.srt`,
+    assPath: `media/voice/vo-${language}.ass`,
+    scriptHash: `${language}-hash`,
+    ...overrides,
   };
 }
 
@@ -105,6 +125,105 @@ describe("recover queue", () => {
       "Repaired orphan candidate with recovery job",
       { candidateId: "render-orphan", status: "rendering" },
     );
+  });
+
+  it("repairs orphaned VO renders with one localized job per unrendered package", async () => {
+    const renderingCandidate: ShortCandidate = {
+      ...candidate("render-vo-orphan", "rendering"),
+      voiceOvers: [
+        voiceOverPackage("it", {
+          renderOutputPath: "media/renders/vo-it.mp4",
+        }),
+        voiceOverPackage("en"),
+      ],
+    };
+    const repository: CandidateRepository = {
+      async save() {},
+      async getById() {
+        return renderingCandidate;
+      },
+      async list() {
+        return [renderingCandidate];
+      },
+    };
+    const warn = vi.fn();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn,
+      error: vi.fn(),
+      child: () => logger,
+    };
+    const queue = createInProcessJobQueue({
+      logger,
+      idPort: { generate: () => "recovered-render-en" },
+      clock: { now: () => now },
+    });
+
+    const recover = createRecoverQueue({ queue, candidates: repository, logger });
+
+    await expect(recover()).resolves.toEqual({
+      requeuedRunning: 0,
+      repairedCandidates: 1,
+    });
+    expect(
+      queue.listJobs().map(({ type, payload }) => ({ type, payload })),
+    ).toEqual([
+      {
+        type: "render_short",
+        payload: { candidateId: "render-vo-orphan", language: "en" },
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith("Repaired orphan voice-over render jobs", {
+      candidateId: "render-vo-orphan",
+      localizedJobs: 1,
+    });
+  });
+
+  it("leaves a VO render alone when its language job is already queued", async () => {
+    const renderingCandidate: ShortCandidate = {
+      ...candidate("render-vo-active", "rendering"),
+      voiceOvers: [voiceOverPackage("it"), voiceOverPackage("en")],
+    };
+    const repository: CandidateRepository = {
+      async save() {},
+      async getById() {
+        return renderingCandidate;
+      },
+      async list() {
+        return [renderingCandidate];
+      },
+    };
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => logger,
+    };
+    let nextId = 0;
+    const queue = createInProcessJobQueue({
+      logger,
+      idPort: { generate: () => `job-${++nextId}` },
+      clock: { now: () => now },
+    });
+    await queue.enqueue({
+      type: "render_short",
+      payload: { candidateId: "render-vo-active", language: "it" },
+    });
+
+    const recover = createRecoverQueue({ queue, candidates: repository, logger });
+
+    await expect(recover()).resolves.toEqual({
+      requeuedRunning: 0,
+      repairedCandidates: 1,
+    });
+    expect(
+      queue
+        .listJobs()
+        .map(({ payload }) => payload.language)
+        .sort(),
+    ).toEqual(["en", "it"]);
   });
 
   it("repairs orphaned VO publishes with one localized job per incomplete package", async () => {
