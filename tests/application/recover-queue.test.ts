@@ -106,4 +106,81 @@ describe("recover queue", () => {
       { candidateId: "render-orphan", status: "rendering" },
     );
   });
+
+  it("repairs orphaned VO publishes with one localized job per incomplete package", async () => {
+    const voiceOverCandidate: ShortCandidate = {
+      ...candidate("publish-vo-orphan", "publishing"),
+      voiceOvers: [
+        {
+          language: "it",
+          script: "Sorpasso decisivo.",
+          title: "Sorpasso all'ultimo giro",
+          description: "La staccata decisiva.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/vo-it.mp3",
+          words: [],
+          srtPath: "media/voice/vo-it.srt",
+          assPath: "media/voice/vo-it.ass",
+          scriptHash: "it-hash",
+          renderOutputPath: "media/renders/vo-it.mp4",
+          youtubeVideoId: "youtube-it",
+          youtubeCaptionId: "caption-it",
+        },
+        {
+          language: "en",
+          script: "The decisive pass.",
+          title: "Last-lap overtake",
+          description: "The decisive braking move.",
+          voiceProfile: "coral",
+          audioPath: "media/voice/vo-en.mp3",
+          words: [],
+          srtPath: "media/voice/vo-en.srt",
+          assPath: "media/voice/vo-en.ass",
+          scriptHash: "en-hash",
+          renderOutputPath: "media/renders/vo-en.mp4",
+        },
+      ],
+    };
+    const repository: CandidateRepository = {
+      async save() {},
+      async getById() {
+        return voiceOverCandidate;
+      },
+      async list() {
+        return [voiceOverCandidate];
+      },
+    };
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => logger,
+    };
+    const queue = createInProcessJobQueue({
+      logger,
+      idPort: { generate: () => "recovered-publish-en" },
+      clock: { now: () => now },
+    });
+
+    const recover = createRecoverQueue({ queue, candidates: repository, logger });
+
+    await expect(recover()).resolves.toEqual({
+      requeuedRunning: 0,
+      repairedCandidates: 1,
+    });
+    expect(queue.listJobs()).toEqual([
+      expect.objectContaining({
+        type: "publish_short",
+        payload: {
+          candidateId: "publish-vo-orphan",
+          language: "en",
+          filePath: "media/renders/vo-en.mp4",
+          srtPath: "media/voice/vo-en.srt",
+          title: "Last-lap overtake",
+          description: "The decisive braking move.",
+        },
+      }),
+    ]);
+  });
 });

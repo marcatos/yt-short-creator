@@ -40,6 +40,9 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.voPath?.("cand-1", "it")).toBe(
       path.join(mediaRoot, "voice-overs", "cand-1", "vo-it.mp3"),
     );
+    expect(mediaStore.voPublishCheckpointPath?.("../cand-1", "it")).toBe(
+      path.join(mediaRoot, "voice-overs", "vo-publish-cand-1-it.json"),
+    );
     expect(mediaStore.brollPath("../escape.mp4")).toBe(
       path.join(mediaRoot, "broll", "escape.mp4"),
     );
@@ -69,5 +72,9 @@ describe("createFsMediaStore", () => {
     expect(fs.existsSync(path.join(mediaRoot, "broll"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "replays"))).toBe(true);
     expect(fs.readFileSync(captionPath, "utf8")).toBe("caption");
+    await expect(mediaStore.readText?.(captionPath)).resolves.toBe("caption");
+    await expect(
+      mediaStore.readText?.(path.join(mediaRoot, "missing.json")),
+    ).resolves.toBeNull();
   });
 });

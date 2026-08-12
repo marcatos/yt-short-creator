@@ -6,6 +6,7 @@ import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaStorePort } from "@/src/ports/media-store";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -31,6 +32,7 @@ type Dependencies = {
   captions?: YouTubeCaptionsPort;
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
+  mediaStore?: MediaStorePort;
 };
 
 const JOB_TYPE = "publish_short";

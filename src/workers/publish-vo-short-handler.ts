@@ -6,10 +6,15 @@ import type {
   VoiceOverLanguage,
   VoiceOverPackage,
 } from "@/src/domain/voice-over";
-import type { JobCheckpoint } from "@/src/domain/queue-control";
+import {
+  createVoiceOverPublishSidecar,
+  resolveVoiceOverUploadCheckpoint,
+  type VoiceOverUploadCheckpoint,
+} from "@/src/application/voice-over-publish-checkpoint";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
+import type { MediaStorePort } from "@/src/ports/media-store";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -30,6 +35,7 @@ type Dependencies = {
   captions?: YouTubeCaptionsPort;
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
+  mediaStore?: MediaStorePort;
 };
 
 type VoiceOverPublishPayload = {
@@ -41,41 +47,6 @@ type VoiceOverPublishPayload = {
 };
 
 const JOB_TYPE = "publish_short";
-
-type VoiceOverUploadCheckpoint = {
-  language: VoiceOverLanguage;
-  youtubeVideoId: string;
-  youtubeCaptionId?: string;
-};
-
-function uploadResultFromCheckpoint(
-  checkpoint: JobCheckpoint | null,
-  language: VoiceOverLanguage,
-): VoiceOverUploadCheckpoint | null {
-  if (
-    (checkpoint?.step !== "upload" && checkpoint?.step !== "captions") ||
-    typeof checkpoint.data !== "object" ||
-    checkpoint.data === null
-  ) {
-    return null;
-  }
-  const data = checkpoint.data as Record<string, unknown>;
-  if (
-    data.language !== language ||
-    typeof data.youtubeVideoId !== "string" ||
-    data.youtubeVideoId.length === 0
-  ) {
-    return null;
-  }
-  return {
-    language,
-    youtubeVideoId: data.youtubeVideoId,
-    ...(typeof data.youtubeCaptionId === "string" &&
-    data.youtubeCaptionId.length > 0
-      ? { youtubeCaptionId: data.youtubeCaptionId }
-      : {}),
-  };
-}
 
 export function hasVoiceOverPublishPayload(
   payload: Record<string, unknown>,
@@ -159,13 +130,21 @@ export function createPublishVoiceOverShortHandler(
     const found = await deps.candidates.getById(candidateId);
     if (!found) throw new Error(`Candidate not found: ${candidateId}`);
     let candidate: ShortCandidate = found;
-    packageForLanguage(candidate, payload.language);
-    const checkpointResult = uploadResultFromCheckpoint(
+    const initialPackage = packageForLanguage(candidate, payload.language);
+    const sidecar = createVoiceOverPublishSidecar({
+      candidateId,
+      language: payload.language,
+      mediaStore: deps.mediaStore,
+      logger: log,
+    });
+    const recoveredResult = resolveVoiceOverUploadCheckpoint(
+      initialPackage,
+      await sidecar.load(),
       ctx.checkpoint,
-      payload.language,
     );
     let accessToken: string | undefined;
-    let youtubeVideoId = checkpointResult?.youtubeVideoId;
+    let youtubeVideoId = recoveredResult?.youtubeVideoId;
+    let youtubeCaptionId = recoveredResult?.youtubeCaptionId;
 
     log.info("Voice-over Short publish started", {
       jobId: ctx.jobId,
@@ -173,12 +152,12 @@ export function createPublishVoiceOverShortHandler(
       language: payload.language,
     });
     try {
-      if (checkpointResult) {
+      if (recoveredResult) {
         candidate = await saveVoiceOverResult(
           deps,
           candidateId,
           payload.language,
-          checkpointResult,
+          recoveredResult,
         );
       }
 
@@ -205,8 +184,8 @@ export function createPublishVoiceOverShortHandler(
         const fresh =
           (await deps.candidates.getById(candidateId)) ?? candidate;
         const voiceOver = packageForLanguage(fresh, payload.language);
-        if (voiceOver.youtubeVideoId) {
-          youtubeVideoId = voiceOver.youtubeVideoId;
+        if (voiceOver.youtubeVideoId || youtubeVideoId) {
+          youtubeVideoId = voiceOver.youtubeVideoId ?? youtubeVideoId;
           ctx.setProgress(80, `Video already uploaded as ${youtubeVideoId}`);
           return;
         }
@@ -238,6 +217,10 @@ export function createPublishVoiceOverShortHandler(
           contentKind: "short",
         });
         youtubeVideoId = result.youtubeVideoId;
+        await sidecar.save({
+          language: payload.language,
+          youtubeVideoId,
+        });
         await ctx.saveCheckpoint("upload", {
           language: payload.language,
           youtubeVideoId,
@@ -264,7 +247,9 @@ export function createPublishVoiceOverShortHandler(
             `YouTube video id missing for ${payload.language} voice-over`,
           );
         }
-        if (voiceOver.youtubeCaptionId) {
+        youtubeCaptionId =
+          voiceOver.youtubeCaptionId ?? youtubeCaptionId ?? undefined;
+        if (youtubeCaptionId) {
           ctx.setProgress(100, `Caption already uploaded for ${youtubeVideoId}`);
           return;
         }
@@ -282,6 +267,12 @@ export function createPublishVoiceOverShortHandler(
           language: payload.language,
           name: "VO",
         });
+        youtubeCaptionId = caption.youtubeCaptionId;
+        await sidecar.save({
+          language: payload.language,
+          youtubeVideoId,
+          youtubeCaptionId,
+        });
         await ctx.saveCheckpoint("captions", {
           language: payload.language,
           youtubeVideoId,
@@ -289,7 +280,7 @@ export function createPublishVoiceOverShortHandler(
         } satisfies VoiceOverUploadCheckpoint);
         await saveVoiceOverResult(deps, candidateId, payload.language, {
           youtubeVideoId,
-          youtubeCaptionId: caption.youtubeCaptionId,
+          youtubeCaptionId,
         });
         ctx.setProgress(100, `Published as ${youtubeVideoId}`);
       });

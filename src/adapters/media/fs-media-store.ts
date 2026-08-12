@@ -35,6 +35,17 @@ export function createFsMediaStore(deps: {
       );
     },
 
+    voPublishCheckpointPath(
+      candidateId: string,
+      language: "it" | "en",
+    ): string {
+      return path.join(
+        mediaRoot,
+        "voice-overs",
+        `vo-publish-${path.basename(candidateId)}-${language}.json`,
+      );
+    },
+
     audioPath(candidateId: string): string {
       return path.join(mediaRoot, "audio", `${candidateId}.mp3`);
     },
@@ -46,6 +57,21 @@ export function createFsMediaStore(deps: {
         path.basename(candidateId),
         `vo-${language}.mp3`,
       );
+    },
+
+    async readText(filePath: string): Promise<string | null> {
+      try {
+        return await fs.readFile(filePath, "utf8");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          return null;
+        }
+        throw error;
+      }
     },
 
     async writeText(filePath: string, content: string): Promise<void> {

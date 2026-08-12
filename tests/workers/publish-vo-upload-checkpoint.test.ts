@@ -61,9 +61,10 @@ function candidate(): ShortCandidate {
 function makeContext(
   checkpoint: JobCheckpoint | null,
   saveCheckpoint: JobHandlerContext["saveCheckpoint"],
+  jobId = "publish-it",
 ): JobHandlerContext {
   return {
-    jobId: "publish-it",
+    jobId,
     payload: {
       candidateId: "candidate-42",
       language: "it",
@@ -84,6 +85,7 @@ function makeContext(
 function makeHarness(failAt: "video" | "caption") {
   let current = candidate();
   let checkpoint: JobCheckpoint | null = null;
+  const sidecars = new Map<string, string>();
   let failurePending = true;
   let videoUploads = 0;
   let captionUploads = 0;
@@ -166,11 +168,29 @@ function makeHarness(failAt: "video" | "caption") {
       listByChannelId: async () => [],
       upsertMany: async () => {},
     },
+    mediaStore: {
+      sourcePath: () => "",
+      renderPath: () => "",
+      audioPath: () => "",
+      brollPath: () => "",
+      replayAnalysisDir: () => "",
+      fullReplayEncodePath: () => "",
+      listBroll: async () => [],
+      ensureDirs: async () => {},
+      voPublishCheckpointPath: (candidateId, language) =>
+        `vo-publish-${candidateId}-${language}.json`,
+      readText: async (filePath) => sidecars.get(filePath) ?? null,
+      writeText: async (filePath, content) => {
+        sidecars.set(filePath, content);
+      },
+    },
   });
 
   return {
     firstRun: () => handler(makeContext(null, saveCheckpoint)),
     retry: () => handler(makeContext(checkpoint, saveCheckpoint)),
+    replacementJob: () =>
+      handler(makeContext(null, saveCheckpoint, "publish-it-replacement")),
     checkpoint: () => checkpoint,
     current: () => current,
     counts: () => ({ videoUploads, captionUploads }),
@@ -190,6 +210,23 @@ describe("publish_short VO external upload checkpoints", () => {
     });
 
     await expect(harness.retry()).resolves.toBeUndefined();
+    expect(harness.counts()).toEqual({ videoUploads: 1, captionUploads: 1 });
+    expect(harness.current().voiceOvers?.[0]).toEqual(
+      expect.objectContaining({
+        youtubeVideoId: "youtube-it",
+        youtubeCaptionId: "caption-it",
+      }),
+    );
+  });
+
+  it("recovers a video upload in a replacement job after candidate persistence fails", async () => {
+    const harness = makeHarness("video");
+
+    await expect(harness.firstRun()).rejects.toThrow(
+      "candidate save failed after video upload",
+    );
+
+    await expect(harness.replacementJob()).resolves.toBeUndefined();
     expect(harness.counts()).toEqual({ videoUploads: 1, captionUploads: 1 });
     expect(harness.current().voiceOvers?.[0]).toEqual(
       expect.objectContaining({
