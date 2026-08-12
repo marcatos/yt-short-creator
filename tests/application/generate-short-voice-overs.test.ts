@@ -90,6 +90,10 @@ async function store() {
     audioPath: () => "",
     voPath: (candidateId: string, language: "it" | "en") =>
       path.join(root, candidateId, `vo-${language}.mp3`),
+    writeText: async (filePath: string, content: string) => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, "utf8");
+    },
     brollPath: () => "",
     replayAnalysisDir: () => "",
     fullReplayEncodePath: () => "",
@@ -131,6 +135,7 @@ describe("generateShortVoiceOvers", () => {
       tts: {
         synthesize: async (input) => {
           synthesized.push(input);
+          await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
           await fs.writeFile(input.outputPath, "");
           return { durationMs: 4_000 };
         },
@@ -200,6 +205,7 @@ describe("generateShortVoiceOvers", () => {
       tts: {
         synthesize: async ({ outputPath }) => {
           synthesized.push(outputPath);
+          await fs.mkdir(path.dirname(outputPath), { recursive: true });
           await fs.writeFile(outputPath, "");
           return { durationMs: 1_000 };
         },

@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -105,6 +104,11 @@ export function createGenerateShortVoiceOvers(
       if (!appSettings.enableVoiceOverPipeline) {
         throw new Error("Voice-over pipeline is disabled in settings");
       }
+      const voPath = deps.mediaStore.voPath?.bind(deps.mediaStore);
+      const writeText = deps.mediaStore.writeText?.bind(deps.mediaStore);
+      if (!voPath || !writeText) {
+        throw new Error("Media store does not support voice-over artifacts");
+      }
 
       await deps.mediaStore.ensureDirs();
       const scriptStartedAt = performance.now();
@@ -146,8 +150,7 @@ export function createGenerateShortVoiceOvers(
           continue;
         }
 
-        const audioPath = deps.mediaStore.voPath(candidateId, language);
-        await fs.mkdir(path.dirname(audioPath), { recursive: true });
+        const audioPath = voPath(candidateId, language);
         const ttsStartedAt = performance.now();
         await deps.tts.synthesize({
           text: script,
@@ -176,8 +179,8 @@ export function createGenerateShortVoiceOvers(
         const srtPath = captionPath(audioPath, ".srt");
         const assPath = captionPath(audioPath, ".ass");
         await Promise.all([
-          fs.writeFile(srtPath, buildSrt(words), "utf8"),
-          fs.writeFile(assPath, buildAssKaraoke(words), "utf8"),
+          writeText(srtPath, buildSrt(words)),
+          writeText(assPath, buildAssKaraoke(words)),
         ]);
         packages.push({
           language,

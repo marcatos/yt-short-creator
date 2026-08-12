@@ -50,6 +50,8 @@ describe("createFsMediaStore", () => {
 
     const mediaStore = createFsMediaStore({ mediaRoot });
     await mediaStore.ensureDirs();
+    const captionPath = path.join(mediaRoot, "voice-overs", "cand-1", "vo-it.srt");
+    await mediaStore.writeText?.(captionPath, "caption");
 
     expect(fs.existsSync(path.join(mediaRoot, "sources"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "renders"))).toBe(true);
@@ -57,5 +59,6 @@ describe("createFsMediaStore", () => {
     expect(fs.existsSync(path.join(mediaRoot, "voice-overs"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "broll"))).toBe(true);
     expect(fs.existsSync(path.join(mediaRoot, "replays"))).toBe(true);
+    expect(fs.readFileSync(captionPath, "utf8")).toBe("caption");
   });
 });
