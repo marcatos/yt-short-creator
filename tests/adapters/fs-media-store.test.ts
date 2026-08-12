@@ -28,7 +28,7 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.audioPath("cand-1")).toBe(
       path.join(mediaRoot, "audio", "cand-1.mp3"),
     );
-    expect(mediaStore.voPath("cand-1", "it")).toBe(
+    expect(mediaStore.voPath?.("cand-1", "it")).toBe(
       path.join(mediaRoot, "voice-overs", "cand-1", "vo-it.mp3"),
     );
     expect(mediaStore.brollPath("../escape.mp4")).toBe(
