@@ -12,12 +12,14 @@ import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
+import { createFfmpegMediaProxy } from "@/src/adapters/media/ffmpeg-media-proxy";
 import { createFfprobeMediaDuration } from "@/src/adapters/media/ffprobe-media-duration";
 import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
 import { createFsReplayCapture } from "@/src/adapters/replay/fs-replay-capture";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
+import { createOpenAiCompatibleWhisper } from "@/src/adapters/transcription/openai-compatible-whisper";
 import { createFileSettingsRepository } from "@/src/adapters/settings/file-settings";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
@@ -185,6 +187,13 @@ export function createContainer(env: AppEnv): AppContainer {
     model: env.LLM_MODEL,
     logger,
   });
+  const transcription = createOpenAiCompatibleWhisper({
+    apiKey: env.LLM_API_KEY,
+    baseUrl: env.LLM_BASE_URL,
+    model: env.WHISPER_MODEL,
+    logger,
+  });
+  const mediaProxy = createFfmpegMediaProxy({ logger });
   const tts = createOpenAiCompatibleTts({
     apiKey: env.TTS_API_KEY,
     baseUrl: env.TTS_BASE_URL,
@@ -230,6 +239,9 @@ export function createContainer(env: AppEnv): AppContainer {
     replaySessions: repositories.replaySessions,
     candidates: repositories.candidates,
     ibtTelemetry,
+    mediaProxy,
+    transcription,
+    mediaStore,
     llm,
     id,
     clock,
