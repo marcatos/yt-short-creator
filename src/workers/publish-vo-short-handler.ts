@@ -6,6 +6,7 @@ import type {
   VoiceOverLanguage,
   VoiceOverPackage,
 } from "@/src/domain/voice-over";
+import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
@@ -40,6 +41,41 @@ type VoiceOverPublishPayload = {
 };
 
 const JOB_TYPE = "publish_short";
+
+type VoiceOverUploadCheckpoint = {
+  language: VoiceOverLanguage;
+  youtubeVideoId: string;
+  youtubeCaptionId?: string;
+};
+
+function uploadResultFromCheckpoint(
+  checkpoint: JobCheckpoint | null,
+  language: VoiceOverLanguage,
+): VoiceOverUploadCheckpoint | null {
+  if (
+    (checkpoint?.step !== "upload" && checkpoint?.step !== "captions") ||
+    typeof checkpoint.data !== "object" ||
+    checkpoint.data === null
+  ) {
+    return null;
+  }
+  const data = checkpoint.data as Record<string, unknown>;
+  if (
+    data.language !== language ||
+    typeof data.youtubeVideoId !== "string" ||
+    data.youtubeVideoId.length === 0
+  ) {
+    return null;
+  }
+  return {
+    language,
+    youtubeVideoId: data.youtubeVideoId,
+    ...(typeof data.youtubeCaptionId === "string" &&
+    data.youtubeCaptionId.length > 0
+      ? { youtubeCaptionId: data.youtubeCaptionId }
+      : {}),
+  };
+}
 
 export function hasVoiceOverPublishPayload(
   payload: Record<string, unknown>,
@@ -124,8 +160,12 @@ export function createPublishVoiceOverShortHandler(
     if (!found) throw new Error(`Candidate not found: ${candidateId}`);
     let candidate: ShortCandidate = found;
     packageForLanguage(candidate, payload.language);
+    const checkpointResult = uploadResultFromCheckpoint(
+      ctx.checkpoint,
+      payload.language,
+    );
     let accessToken: string | undefined;
-    let youtubeVideoId: string | undefined;
+    let youtubeVideoId = checkpointResult?.youtubeVideoId;
 
     log.info("Voice-over Short publish started", {
       jobId: ctx.jobId,
@@ -133,6 +173,15 @@ export function createPublishVoiceOverShortHandler(
       language: payload.language,
     });
     try {
+      if (checkpointResult) {
+        candidate = await saveVoiceOverResult(
+          deps,
+          candidateId,
+          payload.language,
+          checkpointResult,
+        );
+      }
+
       await runStep(ctx, JOB_TYPE, "prepare", async () => {
         if (candidate.status === "ready") {
           candidate = applyCandidateEvent(candidate, { type: "mark_publishing" });
@@ -189,6 +238,10 @@ export function createPublishVoiceOverShortHandler(
           contentKind: "short",
         });
         youtubeVideoId = result.youtubeVideoId;
+        await ctx.saveCheckpoint("upload", {
+          language: payload.language,
+          youtubeVideoId,
+        } satisfies VoiceOverUploadCheckpoint);
         candidate = await saveVoiceOverResult(
           deps,
           candidateId,
@@ -229,6 +282,11 @@ export function createPublishVoiceOverShortHandler(
           language: payload.language,
           name: "VO",
         });
+        await ctx.saveCheckpoint("captions", {
+          language: payload.language,
+          youtubeVideoId,
+          youtubeCaptionId: caption.youtubeCaptionId,
+        } satisfies VoiceOverUploadCheckpoint);
         await saveVoiceOverResult(deps, candidateId, payload.language, {
           youtubeVideoId,
           youtubeCaptionId: caption.youtubeCaptionId,
