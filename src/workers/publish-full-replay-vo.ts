@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { ReplaySession, YoutubePrivacy } from "@/src/domain/entities";
 import type {
   VoiceOverLanguage,
@@ -5,8 +7,10 @@ import type {
 } from "@/src/domain/voice-over";
 import {
   createVoiceOverPublishSidecar,
+  loadVoiceOverPublishSidecar,
   priorFullVoiceOverJobCheckpoints,
   resolveVoiceOverUploadCheckpoint,
+  uploadCheckpointFromJob,
   type VoiceOverUploadCheckpoint,
 } from "@/src/application/voice-over-publish-checkpoint";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
@@ -78,6 +82,33 @@ function narrationDurationMs(voiceOver: VoiceOverPackage): number | undefined {
   return lastWord && lastWord.endMs > 0 ? lastWord.endMs : undefined;
 }
 
+function recoveredPackage(input: {
+  checkpoint: VoiceOverUploadCheckpoint;
+  voiceProfile: string;
+  audioPath: string;
+}): VoiceOverPackage {
+  const parsedAudioPath = path.parse(input.audioPath);
+  return {
+    language: input.checkpoint.language,
+    script: "",
+    title: "",
+    description: "",
+    voiceProfile: input.voiceProfile,
+    audioPath: input.audioPath,
+    words: [],
+    srtPath: path.join(
+      parsedAudioPath.dir,
+      `${parsedAudioPath.name}.srt`,
+    ),
+    assPath: null,
+    scriptHash: input.checkpoint.scriptHash,
+    youtubeVideoId: input.checkpoint.youtubeVideoId,
+    ...(input.checkpoint.youtubeCaptionId
+      ? { youtubeCaptionId: input.checkpoint.youtubeCaptionId }
+      : {}),
+  };
+}
+
 /** Reloads the session so concurrent writes are not clobbered. */
 async function patchVoiceOver(
   deps: FullVoiceOverPublishDeps,
@@ -117,8 +148,12 @@ export async function runFullVoiceOverPublish(
   const voRenderPath = deps.mediaStore.fullReplayVoRenderPath?.bind(
     deps.mediaStore,
   );
+  const voPath = deps.mediaStore.fullReplayVoPath?.bind(deps.mediaStore);
   if (!voRenderPath) {
     throw new Error("Media store does not support full-race voice-over renders");
+  }
+  if (!voPath) {
+    throw new Error("Media store does not support full-race voice-over audio");
   }
   const appSettings = await deps.settings?.get();
   const priorCheckpoints = priorFullVoiceOverJobCheckpoints({
@@ -127,7 +162,99 @@ export async function runFullVoiceOverPublish(
     sessionId,
   });
 
+  const beforeGeneration = await requireSession(deps, sessionId);
+  const sidecars = await Promise.all(
+    LANGUAGES.map(async (language) => [
+      language,
+      await loadVoiceOverPublishSidecar({
+        ownerId: sessionId,
+        language,
+        sidecarPath: deps.mediaStore.fullVoPublishCheckpointPath?.(
+          sessionId,
+          language,
+        ),
+        mediaStore: deps.mediaStore,
+        logger: log,
+      }),
+    ] as const),
+  );
+  const recoveredByLanguage = new Map(sidecars);
+  let restoredCount = 0;
+  const restoredPackages = [...(beforeGeneration.fullVoiceOvers ?? [])];
+  for (const language of LANGUAGES) {
+    const existingIndex = restoredPackages.findIndex(
+      (voiceOver) => voiceOver.language === language,
+    );
+    const existing =
+      existingIndex === -1 ? undefined : restoredPackages[existingIndex];
+    const durableCandidates = [
+      recoveredByLanguage.get(language),
+      uploadCheckpointFromJob(ctx.checkpoint, language),
+      ...priorCheckpoints.map((checkpoint) =>
+        uploadCheckpointFromJob(checkpoint, language),
+      ),
+    ].filter(
+      (checkpoint): checkpoint is VoiceOverUploadCheckpoint =>
+        checkpoint !== null && checkpoint !== undefined,
+    );
+    const durable = durableCandidates[0];
+    if (!durable || existing?.youtubeVideoId) continue;
+    if (existing && existing.scriptHash !== durable.scriptHash) {
+      log.warn("Ignored full-race upload checkpoint for a different script", {
+        sessionId,
+        language,
+        packageScriptHash: existing.scriptHash,
+        checkpointScriptHash: durable.scriptHash,
+      });
+      continue;
+    }
+    const restored = existing
+      ? {
+          ...existing,
+          youtubeVideoId: durable.youtubeVideoId,
+          ...(durable.youtubeCaptionId
+            ? { youtubeCaptionId: durable.youtubeCaptionId }
+            : {}),
+        }
+      : recoveredPackage({
+          checkpoint: durable,
+          voiceProfile: appSettings?.brandVoiceProfile ?? "",
+          audioPath: voPath(sessionId, language),
+        });
+    if (existingIndex === -1) restoredPackages.push(restored);
+    else restoredPackages[existingIndex] = restored;
+    restoredCount += 1;
+    log.info("Restored full-race voice-over before generation", {
+      sessionId,
+      language,
+      scriptHash: durable.scriptHash,
+      youtubeVideoId: durable.youtubeVideoId,
+    });
+  }
+  if (restoredCount > 0) {
+    await deps.replaySessions.save({
+      ...beforeGeneration,
+      fullVoiceOvers: restoredPackages,
+      updatedAt: deps.clock.now(),
+    });
+  }
+
   await runStep(ctx, JOB_TYPE, "voice_over", async () => {
+    const settled = (await requireSession(deps, sessionId)).fullVoiceOvers ?? [];
+    if (
+      LANGUAGES.every((language) =>
+        settled.some(
+          (voiceOver) =>
+            voiceOver.language === language && voiceOver.youtubeVideoId,
+        ),
+      )
+    ) {
+      ctx.setProgress(58, "Reusing published IT/EN narration");
+      log.info("Full-race voice-over generation skipped (all published)", {
+        sessionId,
+      });
+      return;
+    }
     ctx.setProgress(58, "Writing and synthesizing IT/EN narration");
     const packages = await generate({ sessionId });
     log.info("Full-race voice-over packages ready", {

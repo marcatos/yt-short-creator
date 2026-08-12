@@ -16,6 +16,34 @@ export type VoiceOverUploadCheckpoint = {
   youtubeCaptionId?: string;
 };
 
+function parseVoiceOverUploadCheckpoint(
+  value: unknown,
+): VoiceOverUploadCheckpoint | null {
+  if (typeof value !== "object" || value === null) return null;
+  const data = value as Record<string, unknown>;
+  if (
+    (data.language !== "it" && data.language !== "en") ||
+    typeof data.scriptHash !== "string" ||
+    data.scriptHash.length === 0 ||
+    typeof data.youtubeVideoId !== "string" ||
+    data.youtubeVideoId.length === 0
+  ) {
+    return null;
+  }
+  return {
+    language: data.language,
+    scriptHash: data.scriptHash,
+    ...(typeof data.renderOutputBasename === "string"
+      ? { renderOutputBasename: data.renderOutputBasename }
+      : {}),
+    youtubeVideoId: data.youtubeVideoId,
+    ...(typeof data.youtubeCaptionId === "string" &&
+    data.youtubeCaptionId.length > 0
+      ? { youtubeCaptionId: data.youtubeCaptionId }
+      : {}),
+  };
+}
+
 /** Language-suffixed variants ("upload_it") come from the full-race handler. */
 function isUploadResultStep(step: string | undefined): boolean {
   return Boolean(
@@ -27,34 +55,16 @@ function fromJobCheckpoint(
   checkpoint: JobCheckpoint | null,
   voiceOver: VoiceOverPackage,
 ): VoiceOverUploadCheckpoint | null {
+  if (!isUploadResultStep(checkpoint?.step)) return null;
+  const data = parseVoiceOverUploadCheckpoint(checkpoint?.data);
   if (
-    !isUploadResultStep(checkpoint?.step) ||
-    typeof checkpoint?.data !== "object" ||
-    checkpoint.data === null
-  ) {
-    return null;
-  }
-  const data = checkpoint.data as Record<string, unknown>;
-  if (
+    !data ||
     data.language !== voiceOver.language ||
-    data.scriptHash !== voiceOver.scriptHash ||
-    typeof data.youtubeVideoId !== "string" ||
-    data.youtubeVideoId.length === 0
+    data.scriptHash !== voiceOver.scriptHash
   ) {
     return null;
   }
-  return {
-    language: voiceOver.language,
-    scriptHash: voiceOver.scriptHash,
-    ...(typeof data.renderOutputBasename === "string"
-      ? { renderOutputBasename: data.renderOutputBasename }
-      : {}),
-    youtubeVideoId: data.youtubeVideoId,
-    ...(typeof data.youtubeCaptionId === "string" &&
-    data.youtubeCaptionId.length > 0
-      ? { youtubeCaptionId: data.youtubeCaptionId }
-      : {}),
-  };
+  return data;
 }
 
 function merge(
@@ -156,6 +166,46 @@ export function priorFullVoiceOverJobCheckpoints(input: {
   );
 }
 
+export function uploadCheckpointFromJob(
+  checkpoint: JobCheckpoint | null,
+  language: VoiceOverLanguage,
+): VoiceOverUploadCheckpoint | null {
+  if (!isUploadResultStep(checkpoint?.step)) return null;
+  const parsed = parseVoiceOverUploadCheckpoint(checkpoint?.data);
+  return parsed?.language === language ? parsed : null;
+}
+
+export async function loadVoiceOverPublishSidecar(deps: {
+  ownerId: string;
+  language: VoiceOverLanguage;
+  sidecarPath?: string;
+  mediaStore?: MediaStorePort;
+  logger: Logger;
+}): Promise<VoiceOverUploadCheckpoint | null> {
+  if (!deps.sidecarPath || !deps.mediaStore?.readText) return null;
+  const logContext = {
+    ownerId: deps.ownerId,
+    language: deps.language,
+    sidecarPath: deps.sidecarPath,
+  };
+  try {
+    const content = await deps.mediaStore.readText(deps.sidecarPath);
+    if (!content) return null;
+    const parsed = parseVoiceOverUploadCheckpoint(JSON.parse(content));
+    if (!parsed || parsed.language !== deps.language) {
+      deps.logger.warn("Ignored invalid voice-over publish sidecar", logContext);
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    deps.logger.warn("Failed to read voice-over publish sidecar", {
+      ...logContext,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 /**
  * Publish results survive a job (or its DB row) disappearing by also living in
  * a media-store file keyed by owner + language, versioned by script hash.
@@ -181,28 +231,20 @@ export function createVoiceOverPublishSidecar(deps: {
 
   return {
     async load() {
-      if (!sidecarPath || !deps.mediaStore?.readText) return null;
-      try {
-        const content = await deps.mediaStore.readText(sidecarPath);
-        if (!content) return null;
-        const parsed = fromJobCheckpoint(
-          {
-            step: "captions",
-            data: JSON.parse(content) as Record<string, unknown>,
-          },
-          deps.voiceOver,
-        );
-        if (!parsed) {
+      const parsed = await loadVoiceOverPublishSidecar({
+        ownerId: deps.ownerId,
+        language: deps.voiceOver.language,
+        sidecarPath,
+        mediaStore: deps.mediaStore,
+        logger: deps.logger,
+      });
+      if (!parsed || parsed.scriptHash !== deps.voiceOver.scriptHash) {
+        if (parsed) {
           deps.logger.warn("Ignored invalid voice-over publish sidecar", logContext);
         }
-        return parsed;
-      } catch (error) {
-        deps.logger.warn("Failed to read voice-over publish sidecar", {
-          ...logContext,
-          error: error instanceof Error ? error.message : String(error),
-        });
         return null;
       }
+      return parsed;
     },
     async save(result) {
       if (!sidecarPath || !deps.mediaStore?.writeText) return;

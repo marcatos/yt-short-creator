@@ -99,6 +99,7 @@ type Harness = {
   uploaded: YouTubeUploadInput[];
   captioned: YouTubeCaptionUploadInput[];
   generateCalls: string[];
+  regeneratedLanguages: string[];
   checkpoints: Array<{ step: string; data?: unknown }>;
   sidecars: Map<string, string>;
 };
@@ -117,6 +118,7 @@ function harness(options: {
   const uploaded: YouTubeUploadInput[] = [];
   const captioned: YouTubeCaptionUploadInput[] = [];
   const generateCalls: string[] = [];
+  const regeneratedLanguages: string[] = [];
   const checkpoints: Array<{ step: string; data?: unknown }> = [];
   const packages = options.packages ?? [voiceOver("it"), voiceOver("en")];
 
@@ -125,8 +127,14 @@ function harness(options: {
       generateCalls.push(sessionId);
       const existing = store.session.fullVoiceOvers ?? [];
       const merged = packages.map(
-        (item) =>
-          existing.find((saved) => saved.language === item.language) ?? item,
+        (item) => {
+          const saved = existing.find(
+            (candidate) => candidate.language === item.language,
+          );
+          if (saved) return saved;
+          regeneratedLanguages.push(item.language);
+          return item;
+        },
       );
       store.session = { ...store.session, fullVoiceOvers: merged };
       return merged;
@@ -244,6 +252,7 @@ function harness(options: {
     uploaded,
     captioned,
     generateCalls,
+    regeneratedLanguages,
     checkpoints,
     sidecars,
   };
@@ -450,17 +459,17 @@ describe("publish_full_replay voice-over mode", () => {
     ]);
   });
 
-  it("recovers an upload id from the media-store sidecar and skips the mix", async () => {
+  it("recovers a sidecar before generation when the DB package was lost", async () => {
     // The job row and its checkpoint are gone (queue replaced the job), so the
-    // sidecar is the only record that IT already reached YouTube.
+    // sidecar is the only record that IT already reached YouTube. Its hash
+    // deliberately differs from a fresh generated package.
     const sidecars = new Map([
       [
         "media/replays/session-1/vo-publish-it.json",
         JSON.stringify({
           language: "it",
-          scriptHash: "hash-it",
+          scriptHash: "published-hash-A",
           youtubeVideoId: "yt-sidecar-it",
-          youtubeCaptionId: "caption-sidecar-it",
         }),
       ],
     ]);
@@ -479,20 +488,36 @@ describe("publish_full_replay voice-over mode", () => {
     expect(target.uploaded.map(({ filePath }) => filePath)).toEqual([
       "media/replays/session-1/full-youtube-en.mp4",
     ]);
-    expect(target.captioned.map(({ language }) => language)).toEqual(["en"]);
+    expect(target.regeneratedLanguages).toEqual(["en"]);
+    expect(target.captioned.map(({ language }) => language)).toEqual([
+      "it",
+      "en",
+    ]);
     expect(target.store.session.fullVideoYoutubeId).toBe("yt-sidecar-it");
+    expect(
+      target.store.session.fullVoiceOvers?.find(
+        ({ language }) => language === "it",
+      ),
+    ).toMatchObject({
+      language: "it",
+      scriptHash: "published-hash-A",
+      youtubeVideoId: "yt-sidecar-it",
+    });
     expect(
       JSON.parse(sidecars.get("media/replays/session-1/vo-publish-en.json")!),
     ).toMatchObject({
       language: "en",
       scriptHash: "hash-en",
       youtubeVideoId: "yt-1",
-      youtubeCaptionId: "caption-1",
+      youtubeCaptionId: "caption-2",
     });
   });
 
   it("ignores a sidecar written for a different script hash", async () => {
     const target = harness({
+      session: session({
+        fullVoiceOvers: [voiceOver("it"), voiceOver("en")],
+      }),
       sidecars: new Map([
         [
           "media/replays/session-1/vo-publish-it.json",
