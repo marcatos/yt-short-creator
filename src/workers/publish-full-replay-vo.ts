@@ -197,14 +197,20 @@ export async function runFullVoiceOverPublish(
       (checkpoint): checkpoint is VoiceOverUploadCheckpoint =>
         checkpoint !== null && checkpoint !== undefined,
     );
-    const durable = durableCandidates[0];
-    if (!durable || existing?.youtubeVideoId) continue;
-    if (existing && existing.scriptHash !== durable.scriptHash) {
+    if (existing?.youtubeVideoId) continue;
+    const durable = existing
+      ? durableCandidates.find(
+          (checkpoint) => checkpoint.scriptHash === existing.scriptHash,
+        )
+      : durableCandidates[0];
+    if (!durable) {
+      const stale = durableCandidates[0];
+      if (!existing || !stale) continue;
       log.warn("Ignored full-race upload checkpoint for a different script", {
         sessionId,
         language,
         packageScriptHash: existing.scriptHash,
-        checkpointScriptHash: durable.scriptHash,
+        checkpointScriptHash: stale.scriptHash,
       });
       continue;
     }

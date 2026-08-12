@@ -126,3 +126,23 @@ Status: **DONE**
 - `npx vitest run` — **48 files, 199 tests passing**
 - `npx tsc --noEmit` — unchanged pre-existing errors only; none in the files touched by this follow-up
 
+---
+
+# Review follow-up — Hash-compatible durable candidate selection
+
+Status: **DONE**
+
+## What changed
+
+- Pre-generation recovery now scans durable candidates for the first checkpoint whose `scriptHash` matches the existing language package instead of always accepting the sidecar first.
+- A stale sidecar can no longer mask a valid current or prior-job checkpoint; packages already carrying a YouTube id remain authoritative.
+
+## Regression coverage
+
+`tests/workers/publish-full-replay-vo.test.ts` covers a stale IT sidecar followed by a matching prior-job checkpoint and verifies the prior YouTube/caption ids are restored without regeneration, mixing, upload, or caption upload.
+
+## Verification
+
+- `npx vitest run tests/workers/publish-full-replay-vo.test.ts` — **11 tests passing**
+- `npx vitest run` — **48 files, 200 tests passing**
+

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type { ReplaySession } from "@/src/domain/entities";
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { VoiceOverPackage } from "@/src/domain/voice-over";
@@ -111,6 +112,7 @@ function harness(options: {
   withCaptions?: boolean;
   withVoiceOverDeps?: boolean;
   sidecars?: Map<string, string>;
+  priorJobs?: JobRecord[];
 } = {}): Harness {
   const store = { session: options.session ?? session() };
   const sidecars = options.sidecars ?? new Map<string, string>();
@@ -229,6 +231,17 @@ function harness(options: {
       async upload(input) {
         uploaded.push(input);
         return { youtubeVideoId: `yt-${uploaded.length}` };
+      },
+    },
+    queue: {
+      async enqueue() {
+        return "unused";
+      },
+      async getProgress() {
+        return null;
+      },
+      listJobs() {
+        return options.priorJobs ?? [];
       },
     },
     ...(options.withCaptions === false
@@ -534,6 +547,73 @@ describe("publish_full_replay voice-over mode", () => {
 
     expect(target.uploaded).toHaveLength(2);
     expect(target.store.session.fullVideoYoutubeId).toBe("yt-1");
+  });
+
+  it("skips a stale sidecar and recovers a matching prior-job checkpoint", async () => {
+    const target = harness({
+      session: session({
+        fullVoiceOvers: [
+          voiceOver("it"),
+          voiceOver("en", {
+            youtubeVideoId: "yt-existing-en",
+            youtubeCaptionId: "caption-existing-en",
+          }),
+        ],
+      }),
+      sidecars: new Map([
+        [
+          "media/replays/session-1/vo-publish-it.json",
+          JSON.stringify({
+            language: "it",
+            scriptHash: "stale-hash-it",
+            youtubeVideoId: "yt-stale-it",
+          }),
+        ],
+      ]),
+      priorJobs: [
+        {
+          id: "prior-job",
+          type: "publish_full_replay",
+          payload: { sessionId: "session-1", voiceOver: true },
+          status: "failed",
+          position: 0,
+          progressPct: 70,
+          progressMessage: "Uploaded IT",
+          checkpoint: {
+            step: "captions_it",
+            data: {
+              language: "it",
+              scriptHash: "hash-it",
+              youtubeVideoId: "yt-prior-it",
+              youtubeCaptionId: "caption-prior-it",
+            },
+          },
+          error: "Session save failed",
+          createdAt: now,
+          startedAt: now,
+          finishedAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+
+    await target.handler(makeCtx(target));
+
+    expect(target.generateCalls).toEqual([]);
+    expect(target.regeneratedLanguages).toEqual([]);
+    expect(target.mixed).toEqual([]);
+    expect(target.uploaded).toEqual([]);
+    expect(target.captioned).toEqual([]);
+    expect(
+      target.store.session.fullVoiceOvers?.find(
+        ({ language }) => language === "it",
+      ),
+    ).toMatchObject({
+      scriptHash: "hash-it",
+      youtubeVideoId: "yt-prior-it",
+      youtubeCaptionId: "caption-prior-it",
+    });
+    expect(target.store.session.fullVideoYoutubeId).toBe("yt-prior-it");
   });
 
   it("ducks the race only for the narration span", async () => {
