@@ -9,11 +9,17 @@ import type { Logger } from "@/src/ports/logger";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
+import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 
 import { requireStringPayload } from "./handler-utils";
 import type { JobHandler } from "./job-handler-context";
+import {
+  createPublishVoiceOverShortHandler,
+  hasVoiceOverPublishPayload,
+} from "./publish-vo-short-handler";
 import { runStep } from "./run-step";
+import { currentYouTubeAccessToken } from "./youtube-access-token";
 
 type Dependencies = {
   logger: Logger;
@@ -22,34 +28,22 @@ type Dependencies = {
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
+  captions?: YouTubeCaptionsPort;
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
 };
-
-async function currentAccessToken(
-  auth: YouTubeAuthPort,
-  now: Date,
-): Promise<string> {
-  const tokens = await auth.getStoredTokens();
-  if (!tokens) throw new Error("YouTube is not connected");
-  if (tokens.expiresAt.getTime() > now.getTime() + 60_000) {
-    return tokens.accessToken;
-  }
-  const refreshed = await auth.refreshAccessToken(tokens.refreshToken);
-  await auth.saveTokens({
-    ...tokens,
-    accessToken: refreshed.accessToken,
-    expiresAt: refreshed.expiresAt,
-  });
-  return refreshed.accessToken;
-}
 
 const JOB_TYPE = "publish_short";
 
 export function createPublishShortHandler(deps: Dependencies): JobHandler {
   const log = deps.logger.child({ jobType: JOB_TYPE });
+  const publishVoiceOver = createPublishVoiceOverShortHandler(deps);
   return async (ctx) => {
     const candidateId = requireStringPayload(ctx.payload, "candidateId");
+    if (hasVoiceOverPublishPayload(ctx.payload)) {
+      await publishVoiceOver(ctx);
+      return;
+    }
     const startedAt = performance.now();
     const found = await deps.candidates.getById(candidateId);
     if (!found) throw new Error(`Candidate not found: ${candidateId}`);
@@ -122,7 +116,10 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
         }
         ctx.setProgress(5, "Preparing YouTube upload");
         await saveJob("running", null, null);
-        accessToken = await currentAccessToken(deps.auth, deps.clock.now());
+        accessToken = await currentYouTubeAccessToken(
+          deps.auth,
+          deps.clock.now(),
+        );
       });
 
       await runStep(ctx, JOB_TYPE, "upload", async () => {
@@ -131,7 +128,8 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
           throw new Error(`Candidate has no render output: ${candidateId}`);
         }
         const token =
-          accessToken ?? (await currentAccessToken(deps.auth, deps.clock.now()));
+          accessToken ??
+          (await currentYouTubeAccessToken(deps.auth, deps.clock.now()));
         const settings = await deps.settings.get();
         let description = candidate.description;
         if (

@@ -25,6 +25,7 @@ import { createFileSettingsRepository } from "@/src/adapters/settings/file-setti
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
 import { createGoogleYouTubeUpload } from "@/src/adapters/youtube/upload";
+import { createGoogleYouTubeCaptions } from "@/src/adapters/youtube/youtube-captions";
 import {
   createApproveCandidate,
   type ApproveCandidate,
@@ -114,6 +115,7 @@ import type { RenderPort } from "@/src/ports/render";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type {
   AppSettings,
@@ -161,6 +163,7 @@ export type AppContainer = {
   render: RenderPort;
   fullVideoEncode: FullVideoEncodePort;
   upload: YouTubeUploadPort;
+  captions: YouTubeCaptionsPort;
   logger: Logger;
   clock: SystemClock;
 };
@@ -236,6 +239,7 @@ export function createContainer(env: AppEnv): AppContainer {
   });
   const catalog = new GoogleYouTubeCatalogAdapter();
   const upload = createGoogleYouTubeUpload({ logger });
+  const captions = createGoogleYouTubeCaptions({ logger });
   const runIdeation = createRunIdeation({
     llm,
     tts,
@@ -280,6 +284,7 @@ export function createContainer(env: AppEnv): AppContainer {
     render,
     fullVideoEncode,
     upload,
+    captions,
     clock,
     connectChannel: createConnectChannel({
       auth,
@@ -458,6 +463,7 @@ export function startWorkers(): void {
       settings: container.settings,
       auth: container.auth,
       upload: container.upload,
+      captions: container.captions,
       clock: container.clock,
     }),
     logger,

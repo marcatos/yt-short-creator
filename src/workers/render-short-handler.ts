@@ -2,6 +2,7 @@ import { applyCandidateEvent } from "@/src/domain/approval";
 import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
 import type { VoiceOverLanguage, VoiceOverPackage } from "@/src/domain/voice-over";
+import { createPublishVoShortPair } from "@/src/application/publish-vo-short-pair";
 import {
   isClipProvenance,
   isGenerateProvenance,
@@ -149,6 +150,11 @@ function optionalVoiceOverLanguage(
 
 export function createRenderShortHandler(deps: Dependencies): JobHandler {
   const log = deps.logger.child({ component: "RenderShortHandler" });
+  const publishVoShortPair = createPublishVoShortPair({
+    candidates: deps.candidates,
+    queue: deps.queue,
+    logger: deps.logger,
+  });
 
   return async (ctx) => {
     const candidateId = requireStringPayload(ctx.payload, "candidateId");
@@ -229,6 +235,23 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
             ),
             updatedAt: deps.clock.now(),
           };
+          const renderedLanguages = new Set(
+            (candidate.voiceOvers ?? [])
+              .filter(
+                (voiceOver) =>
+                  voiceOver.renderOutputPath && voiceOver.srtPath,
+              )
+              .map((voiceOver) => voiceOver.language),
+          );
+          if (
+            candidate.status === "rendering" &&
+            renderedLanguages.has("it") &&
+            renderedLanguages.has("en")
+          ) {
+            candidate = applyCandidateEvent(candidate, {
+              type: "render_succeeded",
+            });
+          }
         } else {
           candidate = {
             ...applyCandidateEvent(candidate, { type: "render_succeeded" }),
@@ -241,30 +264,45 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
       });
 
       let publishJobId: string | undefined;
-      if (!renderedVoiceOver) {
-        await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
-          const existingPublishJob = deps.queue.listJobs().find(
-            (job) =>
-              job.type === "publish_short" &&
-              job.payload.candidateId === candidateId &&
-              ["queued", "running", "paused", "succeeded"].includes(job.status),
+      await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
+        if (renderedVoiceOver) {
+          const readyCandidate =
+            (await deps.candidates.getById(candidateId)) ?? candidate;
+          const readyLanguages = new Set(
+            (readyCandidate.voiceOvers ?? [])
+              .filter(
+                (voiceOver) =>
+                  voiceOver.renderOutputPath && voiceOver.srtPath,
+              )
+              .map((voiceOver) => voiceOver.language),
           );
-          if (existingPublishJob) {
-            publishJobId = existingPublishJob.id;
-            log.info("publish_short enqueue skipped", {
-              jobId: ctx.jobId,
-              candidateId,
-              existingPublishJobId: existingPublishJob.id,
-              existingPublishJobStatus: existingPublishJob.status,
-            });
-            return;
+          if (readyLanguages.has("it") && readyLanguages.has("en")) {
+            const publishJobIds = await publishVoShortPair({ candidateId });
+            publishJobId = publishJobIds.join(",");
           }
-          publishJobId = await deps.queue.enqueue({
-            type: "publish_short",
-            payload: { candidateId },
+          return;
+        }
+        const existingPublishJob = deps.queue.listJobs().find(
+          (job) =>
+            job.type === "publish_short" &&
+            job.payload.candidateId === candidateId &&
+            ["queued", "running", "paused", "succeeded"].includes(job.status),
+        );
+        if (existingPublishJob) {
+          publishJobId = existingPublishJob.id;
+          log.info("publish_short enqueue skipped", {
+            jobId: ctx.jobId,
+            candidateId,
+            existingPublishJobId: existingPublishJob.id,
+            existingPublishJobStatus: existingPublishJob.status,
           });
+          return;
+        }
+        publishJobId = await deps.queue.enqueue({
+          type: "publish_short",
+          payload: { candidateId },
         });
-      }
+      });
 
       log.info("render_short completed", {
         jobId: ctx.jobId,

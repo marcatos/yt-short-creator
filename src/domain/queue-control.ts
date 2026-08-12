@@ -39,7 +39,7 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   // run atomically); this list must match handlers.ts exactly.
   assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
-  publish_short: ["prepare", "upload"],
+  publish_short: ["prepare", "upload", "captions"],
   publish_full_replay: ["encode", "upload"],
 };
 

@@ -23,6 +23,8 @@ export type VoiceOverPackage = {
   assPath: string | null;
   scriptHash: string;
   renderOutputPath?: string | null;
+  youtubeVideoId?: string | null;
+  youtubeCaptionId?: string | null;
 };
 
 export function hashVoiceScript(

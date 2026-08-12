@@ -35,4 +35,13 @@ describe("queue-control", () => {
     expect(checkpointReached({ step: "assemble" }, "assemble", "assemble_generate_preview")).toBe(true);
     expect(checkpointReached({ step: "run" }, "run", "sync_channel")).toBe(true);
   });
+
+  it("orders caption upload after the Short video upload", () => {
+    expect(
+      checkpointReached({ step: "upload" }, "captions", "publish_short"),
+    ).toBe(false);
+    expect(
+      checkpointReached({ step: "captions" }, "upload", "publish_short"),
+    ).toBe(true);
+  });
 });

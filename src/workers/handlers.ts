@@ -18,6 +18,7 @@ import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
+import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 
@@ -49,6 +50,7 @@ export type HandlerDeps = {
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
+  captions?: YouTubeCaptionsPort;
   fullVideoEncode: FullVideoEncodePort;
   clock: ClockPort;
 };

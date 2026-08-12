@@ -22,7 +22,7 @@ function logger(): Logger {
 }
 
 describe("render_short handler", () => {
-  it("renders IT and EN voice-overs independently without publishing", async () => {
+  it("renders IT and EN independently then enqueues their localized publishes", async () => {
     let candidate: ShortCandidate = {
       id: "candidate-1",
       origin: "clip",
@@ -289,7 +289,7 @@ describe("render_short handler", () => {
       voiceAssetPath: "media/voice/candidate-1-it.mp3",
       assPath: "media/voice/candidate-1-it.ass",
     });
-    expect(candidate.status).toBe("rendering");
+    expect(candidate.status).toBe("ready");
     expect(candidate.renderOutputPath).toBeNull();
     expect(candidate.voiceOvers).toEqual([
       expect.objectContaining({
@@ -308,7 +308,30 @@ describe("render_short handler", () => {
       outputPath: "media/renders/candidate-1/vo-it.mp4",
       progressPct: 100,
     });
-    expect(enqueued).toEqual([]);
+    expect(enqueued).toEqual([
+      {
+        type: "publish_short",
+        payload: {
+          candidateId: candidate.id,
+          language: "it",
+          filePath: "media/renders/candidate-1/vo-it.mp4",
+          srtPath: "media/voice/candidate-1-it.srt",
+          title: "Spinta all'ultimo giro",
+          description: "L'ultimo giro decisivo.",
+        },
+      },
+      {
+        type: "publish_short",
+        payload: {
+          candidateId: candidate.id,
+          language: "en",
+          filePath: "media/renders/candidate-1/vo-en.mp4",
+          srtPath: "media/voice/candidate-1-en.srt",
+          title: "Final-lap push",
+          description: "The decisive final lap.",
+        },
+      },
+    ]);
     expect(progress).toEqual([5, 20, 100, 5, 20, 100]);
   });
 });
