@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { MediaStorePort } from "@/src/ports/media-store";
 
-const SUBDIRS = ["sources", "renders", "audio", "broll"] as const;
+const SUBDIRS = ["sources", "renders", "audio", "broll", "replays"] as const;
 
 export function createFsMediaStore(deps: {
   mediaRoot: string;
@@ -25,6 +25,10 @@ export function createFsMediaStore(deps: {
 
     brollPath(filename: string): string {
       return path.join(mediaRoot, "broll", path.basename(filename));
+    },
+
+    replayAnalysisDir(sessionId: string): string {
+      return path.join(mediaRoot, "replays", sessionId);
     },
 
     async listBroll(): Promise<string[]> {
