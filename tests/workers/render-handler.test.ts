@@ -137,8 +137,24 @@ describe("render_short handler", () => {
         renderPath: () => "media/renders/candidate-1.mp4",
         audioPath: () => "",
         brollPath: () => "",
+        replayAnalysisDir: () => "",
+        fullReplayEncodePath: () => "",
         listBroll: async () => [],
         ensureDirs: async () => {},
+      },
+      fullVideoEncode: {
+        async encode(input) {
+          return {
+            outputPath: input.outputPath,
+            reused: true,
+            width: 2560,
+            height: 1440,
+            fps: 60,
+            videoBitrateMbps: 20,
+            encoderLabel: "test",
+            durationMs: 1,
+          };
+        },
       },
       queue: {
         async enqueue() {

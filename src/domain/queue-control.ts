@@ -40,6 +40,7 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
   publish_short: ["prepare", "upload"],
+  publish_full_replay: ["encode", "upload"],
 };
 
 function compareSteps(

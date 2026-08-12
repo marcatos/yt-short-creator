@@ -6,6 +6,8 @@ export type YouTubeUploadInput = {
   tags: string[];
   scheduledAt: Date | null;
   privacy: "public" | "unlisted" | "private";
+  /** Shorts get #Shorts appended; full race uploads must not. */
+  contentKind?: "short" | "full";
 };
 
 export type YouTubeUploadResult = {

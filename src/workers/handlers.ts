@@ -19,9 +19,11 @@ import type { SourceVideoRepository } from "@/src/ports/source-video-repository"
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 
 import { requireNumberPayload, requireStringPayload } from "./handler-utils";
 import type { JobHandlerContext, JobHandler, JobHandlers } from "./job-handler-context";
+import { createPublishFullReplayHandler } from "./publish-full-replay-handler";
 import { createPublishShortHandler } from "./publish-short-handler";
 import { createRenderShortHandler } from "./render-short-handler";
 import { runStep } from "./run-step";
@@ -47,6 +49,7 @@ export type HandlerDeps = {
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
+  fullVideoEncode: FullVideoEncodePort;
   clock: ClockPort;
 };
 
@@ -227,5 +230,14 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     ),
     render_short: createRenderShortHandler(deps),
     publish_short: createPublishShortHandler(deps),
+    publish_full_replay: createPublishFullReplayHandler({
+      logger: deps.logger,
+      replaySessions: deps.replaySessions,
+      mediaStore: deps.mediaStore,
+      fullVideoEncode: deps.fullVideoEncode,
+      auth: deps.auth,
+      upload: deps.upload,
+      clock: deps.clock,
+    }),
   };
 }

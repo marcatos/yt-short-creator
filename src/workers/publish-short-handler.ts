@@ -157,6 +157,7 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
           tags: candidate.tags,
           scheduledAt,
           privacy: scheduledAt ? "private" : settings.defaultPrivacy,
+          contentKind: "short",
         });
         youtubeVideoId = result.youtubeVideoId;
         const publishedAt = deps.clock.now();

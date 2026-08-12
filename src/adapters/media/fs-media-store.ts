@@ -31,6 +31,10 @@ export function createFsMediaStore(deps: {
       return path.join(mediaRoot, "replays", sessionId);
     },
 
+    fullReplayEncodePath(sessionId: string): string {
+      return path.join(mediaRoot, "replays", sessionId, "full-youtube.mp4");
+    },
+
     async listBroll(): Promise<string[]> {
       const brollRoot = path.join(mediaRoot, "broll");
       await fs.mkdir(brollRoot, { recursive: true });

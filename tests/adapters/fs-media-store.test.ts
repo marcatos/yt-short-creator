@@ -34,6 +34,9 @@ describe("createFsMediaStore", () => {
     expect(mediaStore.replayAnalysisDir("session-1")).toBe(
       path.join(mediaRoot, "replays", "session-1"),
     );
+    expect(mediaStore.fullReplayEncodePath("session-1")).toBe(
+      path.join(mediaRoot, "replays", "session-1", "full-youtube.mp4"),
+    );
   });
 
   it("creates sources, renders, audio, broll, and replays directories", async () => {

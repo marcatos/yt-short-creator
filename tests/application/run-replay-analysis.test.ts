@@ -71,6 +71,10 @@ function baseSession(overrides: Partial<ReplaySession> = {}): ReplaySession {
     status: "ready",
     events: [],
     racePackage: null,
+    fullVideoEncodePath: null,
+    fullVideoYoutubeId: null,
+    fullVideoPrivacy: null,
+    fullVideoPublishedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -84,6 +88,8 @@ function fakeMediaStore(): MediaStorePort {
     audioPath: () => "",
     brollPath: () => "",
     replayAnalysisDir: (sessionId) => `C:/media/replays/${sessionId}`,
+    fullReplayEncodePath: (sessionId) =>
+      `C:/media/replays/${sessionId}/full-youtube.mp4`,
     listBroll: async () => [],
     ensureDirs: async () => undefined,
   };

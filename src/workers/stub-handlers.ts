@@ -109,10 +109,30 @@ const noopDeps: HandlerDeps = {
     brollPath() {
       return "";
     },
+    replayAnalysisDir() {
+      return "";
+    },
+    fullReplayEncodePath() {
+      return "";
+    },
     async listBroll() {
       return [];
     },
     async ensureDirs() {},
+  },
+  fullVideoEncode: {
+    async encode(input) {
+      return {
+        outputPath: input.outputPath,
+        reused: true,
+        width: 2560,
+        height: 1440,
+        fps: 60,
+        videoBitrateMbps: 20,
+        encoderLabel: "stub",
+        durationMs: 1,
+      };
+    },
   },
   queue: {
     async enqueue() {

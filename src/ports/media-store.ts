@@ -5,6 +5,8 @@ export interface MediaStorePort {
   brollPath(filename: string): string;
   /** Analysis artifacts dir for a replay session (proxy, frames, audio). */
   replayAnalysisDir(sessionId: string): string;
+  /** YouTube-delivery encode of the full race for a session. */
+  fullReplayEncodePath(sessionId: string): string;
   listBroll(): Promise<string[]>;
   ensureDirs(): Promise<void>;
 }

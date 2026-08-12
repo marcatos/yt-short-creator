@@ -31,6 +31,10 @@ describe("requestReplayCapture", () => {
       status: "draft",
       events: [],
       racePackage: null,
+      fullVideoEncodePath: null,
+      fullVideoYoutubeId: null,
+      fullVideoPrivacy: null,
+      fullVideoPublishedAt: null,
       createdAt: now,
       updatedAt: now,
     };

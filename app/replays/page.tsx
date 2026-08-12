@@ -78,7 +78,18 @@ async function captureReplayAction(formData: FormData): Promise<void> {
   revalidatePath("/jobs");
 }
 
-async function manualMomentAction(formData: FormData): Promise<void> {
+async function publishFullReplayAction(formData: FormData): Promise<void> {
+  "use server";
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const privacyRaw = String(formData.get("privacy") ?? "unlisted");
+  const privacy =
+    privacyRaw === "public" || privacyRaw === "private" || privacyRaw === "unlisted"
+      ? privacyRaw
+      : "unlisted";
+  await getContainer().requestFullReplayPublish({ sessionId, privacy });
+  revalidatePath("/replays");
+  revalidatePath("/jobs");
+}
   "use server";
   const sessionId = String(formData.get("sessionId") ?? "");
   const startSec = Number(formData.get("startSec"));
@@ -226,8 +237,50 @@ export default async function ReplaysPage() {
                       Analyze AV
                     </button>
                   </form>
+                  <form
+                    action={publishFullReplayAction}
+                    style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}
+                  >
+                    <input type="hidden" name="sessionId" value={session.id} />
+                    <select
+                      name="privacy"
+                      defaultValue="unlisted"
+                      disabled={!session.racePackage}
+                      title="YouTube privacy"
+                    >
+                      <option value="unlisted">unlisted</option>
+                      <option value="public">public</option>
+                      <option value="private">private</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={!session.racePackage || !session.mediaPath}
+                    >
+                      Encode + upload full
+                    </button>
+                  </form>
                 </div>
               </div>
+
+              {session.fullVideoYoutubeId ? (
+                <p style={{ marginTop: "0.75rem" }}>
+                  Full video on YouTube:{" "}
+                  <a
+                    href={`https://youtu.be/${session.fullVideoYoutubeId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    youtu.be/{session.fullVideoYoutubeId}
+                  </a>
+                  {session.fullVideoPrivacy
+                    ? ` (${session.fullVideoPrivacy})`
+                    : ""}
+                </p>
+              ) : session.fullVideoEncodePath ? (
+                <p style={{ marginTop: "0.75rem", color: "var(--ice-dim)" }}>
+                  Delivery encode ready: {session.fullVideoEncodePath}
+                </p>
+              ) : null}
 
               {session.racePackage ? (
                 <div

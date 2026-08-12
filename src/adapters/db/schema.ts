@@ -11,6 +11,7 @@ import type {
   ReplayEvent,
   ReplayProvenance,
   ReplaySessionStatus,
+  YoutubePrivacy,
 } from "@/src/domain/entities";
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { CandidateStatus } from "@/src/domain/status";
@@ -81,6 +82,10 @@ export const replaySessions = sqliteTable("replay_sessions", {
   status: text("status").$type<ReplaySessionStatus>().notNull(),
   events: text("events", { mode: "json" }).$type<ReplayEvent[]>().notNull(),
   racePackage: text("race_package", { mode: "json" }).$type<RacePackage | null>(),
+  fullVideoEncodePath: text("full_video_encode_path"),
+  fullVideoYoutubeId: text("full_video_youtube_id"),
+  fullVideoPrivacy: text("full_video_privacy").$type<YoutubePrivacy | null>(),
+  fullVideoPublishedAt: integer("full_video_published_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

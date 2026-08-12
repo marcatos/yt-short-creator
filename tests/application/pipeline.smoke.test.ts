@@ -71,6 +71,8 @@ describe("pipeline smoke path", () => {
       renderPath: (id: string) => `media/renders/${id}.mp4`,
       audioPath: (id: string) => `media/audio/${id}.mp3`,
       brollPath: (filename: string) => `media/broll/${filename}`,
+      replayAnalysisDir: () => "media/replays/x",
+      fullReplayEncodePath: () => "media/replays/x/full-youtube.mp4",
       listBroll: async () => ["race.mp4"],
       ensureDirs: async () => {},
     };
@@ -222,6 +224,20 @@ describe("pipeline smoke path", () => {
         },
       },
       mediaStore,
+      fullVideoEncode: {
+        async encode(input) {
+          return {
+            outputPath: input.outputPath,
+            reused: true,
+            width: 2560,
+            height: 1440,
+            fps: 60,
+            videoBitrateMbps: 20,
+            encoderLabel: "test",
+            durationMs: 1,
+          };
+        },
+      },
       queue,
       settings: {
         async get() {

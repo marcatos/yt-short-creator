@@ -9,6 +9,7 @@ import type {
 } from "@/src/ports/youtube-upload";
 
 function shortDescription(input: YouTubeUploadInput): string {
+  if (input.contentKind === "full") return input.description;
   const metadata = `${input.title} ${input.description} ${input.tags.join(" ")}`;
   if (/(^|\s)#shorts\b/i.test(metadata)) return input.description;
   return input.description ? `${input.description}\n\n#Shorts` : "#Shorts";
@@ -25,6 +26,7 @@ export function createGoogleYouTubeUpload(deps: {
         filePath: input.filePath,
         scheduled: input.scheduledAt !== null,
         privacy: input.privacy,
+        contentKind: input.contentKind ?? "short",
         tagCount: input.tags.length,
       });
       try {

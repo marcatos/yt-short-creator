@@ -43,6 +43,7 @@ function fakeMediaStore(outputPath: string): MediaStorePort {
     audioPath: vi.fn(),
     brollPath: vi.fn(),
     replayAnalysisDir: vi.fn(() => "C:/media/replays/x"),
+    fullReplayEncodePath: vi.fn(() => "C:/media/replays/x/full-youtube.mp4"),
     listBroll: vi.fn(async () => []),
   };
 }

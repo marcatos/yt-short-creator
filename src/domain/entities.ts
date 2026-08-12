@@ -83,6 +83,8 @@ export type RacePackage = {
 export const DEFAULT_FOCUS_CAR_HINT =
   "White/black/green livery with pi / π mark (S.Marcato 42 Racing); hero car for all moments";
 
+export type YoutubePrivacy = "public" | "unlisted" | "private";
+
 export type ReplaySession = {
   id: string;
   /** Null for OBS / media-only sessions. */
@@ -96,6 +98,11 @@ export type ReplaySession = {
   status: ReplaySessionStatus;
   events: ReplayEvent[];
   racePackage: RacePackage | null;
+  /** Local YouTube-delivery encode of the full race (sensible bitrate). */
+  fullVideoEncodePath: string | null;
+  fullVideoYoutubeId: string | null;
+  fullVideoPrivacy: YoutubePrivacy | null;
+  fullVideoPublishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -7,6 +7,7 @@ import {
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
+import { createFfmpegFullVideoEncode } from "@/src/adapters/ffmpeg/ffmpeg-full-video-encode";
 import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
 import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
@@ -97,11 +98,16 @@ import {
   createRequestReplayCapture,
   type RequestReplayCapture,
 } from "@/src/application/request-replay-capture";
+import {
+  createRequestFullReplayPublish,
+  type RequestFullReplayPublish,
+} from "@/src/application/request-full-replay-publish";
 import { createRecoverQueue } from "@/src/application/recover-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { RenderPort } from "@/src/ports/render";
+import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
@@ -132,6 +138,7 @@ export type AppContainer = {
   attachReplayIbt: AttachReplayIbt;
   addManualReplayMoment: AddManualReplayMoment;
   requestReplayCapture: RequestReplayCapture;
+  requestFullReplayPublish: RequestFullReplayPublish;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -147,6 +154,7 @@ export type AppContainer = {
   mediaStore: MediaStorePort;
   brandPack: BrandPackPort;
   render: RenderPort;
+  fullVideoEncode: FullVideoEncodePort;
   upload: YouTubeUploadPort;
   logger: Logger;
   clock: SystemClock;
@@ -174,6 +182,7 @@ export function createContainer(env: AppEnv): AppContainer {
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
   const render = createFfmpegRender({ logger, settings });
+  const fullVideoEncode = createFfmpegFullVideoEncode({ logger, settings });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const mediaDuration = createFfprobeMediaDuration();
   const ibtTelemetry = createIbtFileTelemetry({ logger });
@@ -259,6 +268,7 @@ export function createContainer(env: AppEnv): AppContainer {
     mediaStore,
     brandPack,
     render,
+    fullVideoEncode,
     upload,
     clock,
     connectChannel: createConnectChannel({
@@ -319,6 +329,11 @@ export function createContainer(env: AppEnv): AppContainer {
       capture: replayCapture,
       mediaDuration,
       clock,
+      logger,
+    }),
+    requestFullReplayPublish: createRequestFullReplayPublish({
+      replaySessions: repositories.replaySessions,
+      queue: jobQueue,
       logger,
     }),
     approveCandidate: createApproveCandidate({
@@ -419,6 +434,7 @@ export function startWorkers(): void {
       render: container.render,
       brandPack: container.brandPack,
       mediaStore: container.mediaStore,
+      fullVideoEncode: container.fullVideoEncode,
       queue: container.jobQueue,
       settings: container.settings,
       auth: container.auth,
