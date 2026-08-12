@@ -28,6 +28,34 @@ describe("voice-over captions", () => {
     expect(ass).toMatch(/\{\\k\d+\}/);
   });
 
+  it("advances ASS one short cue at a time instead of dumping the whole script", () => {
+    const long = [
+      { text: "Qualifica", startMs: 0, endMs: 400 },
+      { text: "pessima", startMs: 400, endMs: 800 },
+      { text: "parto", startMs: 800, endMs: 1_100 },
+      { text: "diciottesimo", startMs: 1_100, endMs: 1_700 },
+      { text: "e", startMs: 3_500, endMs: 3_600 },
+      { text: "rimonto", startMs: 3_600, endMs: 4_100 },
+      { text: "fino", startMs: 4_100, endMs: 4_400 },
+      { text: "all'ottavo", startMs: 4_400, endMs: 5_000 },
+    ];
+    const ass = buildAssKaraoke(long);
+    const dialogues = ass
+      .split("\n")
+      .filter((line) => line.startsWith("Dialogue:"));
+    expect(dialogues.length).toBeGreaterThan(1);
+    expect(dialogues[0]).toContain("0:00:00.00");
+    expect(dialogues[0]).not.toContain("rimonto");
+    expect(dialogues.some((line) => line.includes("rimonto"))).toBe(true);
+  });
+
+  it("escapes ASS control characters in spoken words", () => {
+    const ass = buildAssKaraoke([
+      { text: "curva{1}", startMs: 0, endMs: 400 },
+    ]);
+    expect(ass).toContain("curva\\{1\\}");
+  });
+
   it("hashes script+voice+lang stably", () => {
     expect(hashVoiceScript("ciao", "coral", "it")).toBe(
       hashVoiceScript("ciao", "coral", "it"),

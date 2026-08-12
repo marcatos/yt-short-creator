@@ -203,17 +203,43 @@ function srtStamp(ms: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(milli).padStart(3, "0")}`;
 }
 
-/** Group words into ~1 line cues (max ~42 chars or 1.5s gap). */
-export function buildSrt(words: TimedWord[]): string {
-  if (!words.length) return "";
-  const cues: Array<{ startMs: number; endMs: number; text: string }> = [];
+function assTime(ms: number): string {
+  const cs = Math.floor(ms / 10);
+  const h = Math.floor(cs / 360_000);
+  const m = Math.floor((cs % 360_000) / 6_000);
+  const s = Math.floor((cs % 6_000) / 100);
+  const c = cs % 100;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
+}
+
+/** Escape ASS override-control characters inside spoken text. */
+export function escapeAssText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}");
+}
+
+export type CaptionCue = {
+  startMs: number;
+  endMs: number;
+  words: TimedWord[];
+};
+
+/**
+ * Group words into short on-screen cues (≈1 line / ≤42 chars, or a 1.5s gap).
+ * Shared by soft SRT and burn-in ASS so captions advance with speech.
+ */
+export function groupWordsIntoCues(words: TimedWord[]): CaptionCue[] {
+  if (!words.length) return [];
+  const cues: CaptionCue[] = [];
   let buf: TimedWord[] = [];
   const flush = () => {
     if (!buf.length) return;
     cues.push({
       startMs: buf[0]!.startMs,
       endMs: buf[buf.length - 1]!.endMs,
-      text: buf.map((w) => w.text).join(" "),
+      words: buf,
     });
     buf = [];
   };
@@ -226,14 +252,26 @@ export function buildSrt(words: TimedWord[]): string {
     buf.push(word);
   }
   flush();
+  return cues;
+}
+
+/** Soft captions: one cue at a time (same grouping as burn-in). */
+export function buildSrt(words: TimedWord[]): string {
+  const cues = groupWordsIntoCues(words);
+  if (!cues.length) return "";
   return cues
-    .map(
-      (cue, i) =>
-        `${i + 1}\n${srtStamp(cue.startMs)} --> ${srtStamp(cue.endMs)}\n${cue.text}\n`,
-    )
+    .map((cue, i) => {
+      const text = cue.words.map((w) => w.text).join(" ");
+      return `${i + 1}\n${srtStamp(cue.startMs)} --> ${srtStamp(cue.endMs)}\n${text}\n`;
+    })
     .join("\n");
 }
 
+/**
+ * Burn-in captions: one Dialogue event per cue so only the current phrase is
+ * on screen. Within the cue, `\k` highlights the active word as it is spoken
+ * (karaoke fill) without revealing the rest of the narration early.
+ */
 export function buildAssKaraoke(words: TimedWord[]): string {
   const header = `[Script Info]
 Title: S.Marcato VO
@@ -248,25 +286,21 @@ Style: Default,Arial,72,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
-  if (!words.length) return header;
-  const start = words[0]!.startMs;
-  const end = words[words.length - 1]!.endMs;
-  const assTime = (ms: number) => {
-    const cs = Math.floor(ms / 10);
-    const h = Math.floor(cs / 360_000);
-    const m = Math.floor((cs % 360_000) / 6_000);
-    const s = Math.floor((cs % 6_000) / 100);
-    const c = cs % 100;
-    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
-  };
-  let text = "";
-  let cursor = start;
-  for (const word of words) {
-    const gapCs = Math.max(0, Math.round((word.startMs - cursor) / 10));
-    if (gapCs > 0) text += `{\\k${gapCs}}`;
-    const durCs = Math.max(1, Math.round((word.endMs - word.startMs) / 10));
-    text += `{\\k${durCs}}${word.text} `;
-    cursor = word.endMs;
-  }
-  return `${header}Dialogue: 0,${assTime(start)},${assTime(end)},Default,,0,0,0,,${text.trim()}\n`;
+  const cues = groupWordsIntoCues(words);
+  if (!cues.length) return header;
+
+  const dialogues = cues.map((cue) => {
+    let text = "";
+    let cursor = cue.startMs;
+    for (const word of cue.words) {
+      const gapCs = Math.max(0, Math.round((word.startMs - cursor) / 10));
+      if (gapCs > 0) text += `{\\k${gapCs}}`;
+      const durCs = Math.max(1, Math.round((word.endMs - word.startMs) / 10));
+      text += `{\\k${durCs}}${escapeAssText(word.text)} `;
+      cursor = word.endMs;
+    }
+    return `Dialogue: 0,${assTime(cue.startMs)},${assTime(cue.endMs)},Default,,0,0,0,,${text.trim()}`;
+  });
+
+  return `${header}${dialogues.join("\n")}\n`;
 }
