@@ -90,6 +90,8 @@ async function publishFullReplayAction(formData: FormData): Promise<void> {
   revalidatePath("/replays");
   revalidatePath("/jobs");
 }
+
+async function manualMomentAction(formData: FormData): Promise<void> {
   "use server";
   const sessionId = String(formData.get("sessionId") ?? "");
   const startSec = Number(formData.get("startSec"));
