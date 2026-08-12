@@ -13,6 +13,12 @@ import type {
 
 import { duckedVoiceMixFilter, filterFilename } from "./ffmpeg-audio-filters";
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
+import { deliveryEncoderArgs } from "./ffmpeg-full-video-encode";
+
+/** 1080×1920 Shorts: prior path forced ~2 Mbps @ 30 fps; target YouTube-grade VBR. */
+const SHORT_TARGET_MBPS = 10;
+const SHORT_MAX_MBPS = 14;
+const SHORT_AUDIO_BITRATE = "192k";
 
 type FfmpegRenderDeps = {
   logger: Logger;
@@ -368,17 +374,24 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         }
         const mediaArgs =
           input.origin === "generate" ? generateArgs(input) : clipArgs(input);
+        const videoArgs = deliveryEncoderArgs(
+          encoder.codec,
+          SHORT_TARGET_MBPS,
+          SHORT_MAX_MBPS,
+        );
         await runFfmpeg(
           ffmpegPath,
           [
             "-y",
             "-hide_banner",
             ...mediaArgs,
-            ...encoder.args,
-            "-r",
-            "30",
+            ...videoArgs,
+            // Keep source frame rate (race footage is typically 60 fps).
+            // Forcing 30 fps was a major quality regression on VO Shorts.
             "-c:a",
             "aac",
+            "-b:a",
+            SHORT_AUDIO_BITRATE,
             "-movflags",
             "+faststart",
             input.outputPath,
@@ -391,6 +404,7 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
           outputPath: input.outputPath,
           videoEncoderPreference: preference,
           videoEncoder: encoder.codec,
+          targetBitrateMbps: SHORT_TARGET_MBPS,
           hasVoiceOver: Boolean(input.voiceAssetPath),
           burnsAssCaptions: Boolean(input.burnInCaptions && input.assPath),
           durationMs: Math.round(performance.now() - startedAt),

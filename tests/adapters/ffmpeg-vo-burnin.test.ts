@@ -79,6 +79,13 @@ describe("FFmpeg VO and ASS render", () => {
       "-map",
       "[aout]",
     ]);
+    expect(args).not.toContain("-r");
+    expect(args).toContain("-b:a");
+    expect(args[args.indexOf("-b:a") + 1]).toBe("192k");
+    expect(args).toContain("-crf");
+    expect(args[args.indexOf("-crf") + 1]).toBe("18");
+    expect(args).toContain("-maxrate");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe("14M");
   });
 
   it("burns ASS captions into generated shorts without game audio", async () => {
