@@ -64,7 +64,7 @@ function makeContext(
   saveCheckpoint: JobHandlerContext["saveCheckpoint"],
   jobId = "publish-it",
 ): JobHandlerContext {
-  return {
+  const ctx: JobHandlerContext = {
     jobId,
     payload: {
       candidateId: "candidate-42",
@@ -76,11 +76,15 @@ function makeContext(
     },
     checkpoint,
     setProgress() {},
-    saveCheckpoint,
+    async saveCheckpoint(step, data) {
+      await saveCheckpoint(step, data);
+      ctx.checkpoint = data === undefined ? { step } : { step, data };
+    },
     signal: new AbortController().signal,
     shouldPause: () => false,
     throwIfPausedOrCancelled() {},
   };
+  return ctx;
 }
 
 function makeHarness(
@@ -305,6 +309,23 @@ describe("publish_short VO external upload checkpoints", () => {
         youtubeCaptionId: "caption-it",
       }),
     );
+  });
+
+  it("keeps the upload ids on the job checkpoint after a clean run", async () => {
+    const harness = makeHarness(null);
+
+    await expect(harness.firstRun()).resolves.toBeUndefined();
+
+    expect(harness.checkpoint()).toEqual({
+      step: "captions",
+      data: {
+        language: "it",
+        scriptHash: "it-hash",
+        renderOutputBasename: "vo-it.mp4",
+        youtubeVideoId: "youtube-it",
+        youtubeCaptionId: "caption-it",
+      },
+    });
   });
 
   it("recovers from a prior failed job when sidecar persistence fails", async () => {

@@ -275,19 +275,23 @@ function makeCtx(
   target: Harness,
   overrides: Partial<JobHandlerContext> = {},
 ): JobHandlerContext {
-  return {
+  const ctx: JobHandlerContext = {
     jobId: "job-1",
     payload: { sessionId: "session-1", privacy: "unlisted", voiceOver: true },
     checkpoint: null,
     setProgress() {},
     async saveCheckpoint(step, data) {
       target.checkpoints.push({ step, data });
+      // The queue stores one checkpoint row per job: a save replaces the
+      // previous step and its data, exactly like the SQLite adapter.
+      ctx.checkpoint = data === undefined ? { step } : { step, data };
     },
     signal: new AbortController().signal,
     shouldPause: () => false,
     throwIfPausedOrCancelled() {},
     ...overrides,
   };
+  return ctx;
 }
 
 describe("publish_full_replay voice-over mode", () => {
@@ -401,15 +405,40 @@ describe("publish_full_replay voice-over mode", () => {
       "voice_over",
       "mix_it",
       "upload_it",
-      "upload_it",
-      "captions_it",
       "captions_it",
       "mix_en",
       "upload_en",
-      "upload_en",
-      "captions_en",
       "captions_en",
     ]);
+  });
+
+  it("keeps the upload ids on the job checkpoint after every step", async () => {
+    const target = harness();
+    const ctx = makeCtx(target);
+
+    await target.handler(ctx);
+
+    expect(
+      target.checkpoints.filter(({ step }) => step === "upload_it"),
+    ).toEqual([
+      {
+        step: "upload_it",
+        data: {
+          language: "it",
+          scriptHash: "hash-it",
+          youtubeVideoId: "yt-1",
+        },
+      },
+    ]);
+    expect(ctx.checkpoint).toEqual({
+      step: "captions_en",
+      data: {
+        language: "en",
+        scriptHash: "hash-en",
+        youtubeVideoId: "yt-2",
+        youtubeCaptionId: "caption-2",
+      },
+    });
   });
 
   it("skips work already recorded on the session packages", async () => {

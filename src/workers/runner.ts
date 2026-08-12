@@ -9,6 +9,7 @@ import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 
 import type { JobHandlers } from "./handlers";
+import type { JobHandlerContext } from "./job-handler-context";
 
 type RunnerDeps = {
   queue: DurableJobQueue;
@@ -64,20 +65,26 @@ export function createWorkerRunner(deps: RunnerDeps): WorkerRunner {
           }
         };
 
+        // Mirrors the store so handlers (and runStep) can read back what they
+        // just checkpointed without another queue round-trip.
+        const ctx: JobHandlerContext = {
+          jobId: job.id,
+          payload: job.payload,
+          checkpoint: job.checkpoint,
+          setProgress: (pct, message) => {
+            deps.queue.setProgress(job.id, pct, message);
+          },
+          saveCheckpoint: async (step, data) => {
+            await deps.queue.saveCheckpoint(job.id, step, data);
+            ctx.checkpoint = data === undefined ? { step } : { step, data };
+          },
+          signal: controller.signal,
+          shouldPause: () => deps.queue.isPauseRequested(job.id),
+          throwIfPausedOrCancelled,
+        };
+
         try {
-          await handler({
-            jobId: job.id,
-            payload: job.payload,
-            checkpoint: job.checkpoint,
-            setProgress: (pct, message) => {
-              deps.queue.setProgress(job.id, pct, message);
-            },
-            saveCheckpoint: (step, data) =>
-              deps.queue.saveCheckpoint(job.id, step, data),
-            signal: controller.signal,
-            shouldPause: () => deps.queue.isPauseRequested(job.id),
-            throwIfPausedOrCancelled,
-          });
+          await handler(ctx);
           const durationMs = deps.clock.now().getTime() - startedAt.getTime();
           if (controller.signal.aborted) {
             deps.queue.markCancelled(job.id);

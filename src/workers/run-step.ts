@@ -20,6 +20,11 @@ export async function runStep(
     return;
   }
   await fn();
-  await ctx.saveCheckpoint(step);
+  // `fn` may have checkpointed this same step with recovery data (an upload
+  // id, for example). The store replaces the whole checkpoint row, so saving
+  // the bare marker again would erase that data.
+  if (ctx.checkpoint?.step !== step) {
+    await ctx.saveCheckpoint(step);
+  }
   ctx.throwIfPausedOrCancelled();
 }
