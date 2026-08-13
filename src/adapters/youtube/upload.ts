@@ -64,8 +64,9 @@ export function createGoogleYouTubeUpload(deps: {
               }),
             },
           },
+          // googleapis MethodOptions typings omit gaxios upload knobs we need
+          // for multi‑GB full-race files.
           {
-            // Large full-race uploads can exceed default HTTP timeouts.
             timeout: 0,
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
@@ -84,7 +85,7 @@ export function createGoogleYouTubeUpload(deps: {
                 });
               }
             },
-          },
+          } as Record<string, unknown>,
         );
         const youtubeVideoId = response.data.id;
         if (!youtubeVideoId) {
