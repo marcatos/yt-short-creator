@@ -59,10 +59,13 @@ export function createCreateReplaySession(
       status: mediaPath ? "ready" : "draft",
       events: [],
       racePackage: null,
+      raceAnalysis: null,
       fullVideoEncodePath: null,
       fullVideoYoutubeId: null,
       fullVideoPrivacy: null,
       fullVideoPublishedAt: null,
+      deliveryAssets: null,
+      publishManualChecklist: null,
       createdAt: now,
       updatedAt: now,
     };

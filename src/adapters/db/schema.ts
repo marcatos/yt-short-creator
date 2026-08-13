@@ -13,9 +13,11 @@ import type {
   ReplaySessionStatus,
   YoutubePrivacy,
 } from "@/src/domain/entities";
+import type { RaceAnalysis } from "@/src/domain/race-analysis";
 import type { JobCheckpoint } from "@/src/domain/queue-control";
 import type { CandidateStatus } from "@/src/domain/status";
 import type { VoiceOverPackage } from "@/src/domain/voice-over";
+import type { DeliveryAssetBundle } from "@/src/domain/youtube-metadata";
 
 export const channels = sqliteTable("channels", {
   id: text("id").primaryKey(),
@@ -86,6 +88,7 @@ export const replaySessions = sqliteTable("replay_sessions", {
   status: text("status").$type<ReplaySessionStatus>().notNull(),
   events: text("events", { mode: "json" }).$type<ReplayEvent[]>().notNull(),
   racePackage: text("race_package", { mode: "json" }).$type<RacePackage | null>(),
+  raceAnalysis: text("race_analysis", { mode: "json" }).$type<RaceAnalysis | null>(),
   fullVideoEncodePath: text("full_video_encode_path"),
   fullVideoYoutubeId: text("full_video_youtube_id"),
   fullVideoPrivacy: text("full_video_privacy").$type<YoutubePrivacy | null>(),
@@ -93,6 +96,12 @@ export const replaySessions = sqliteTable("replay_sessions", {
   fullVoiceOvers: text("full_voice_overs", { mode: "json" }).$type<
     VoiceOverPackage[] | null
   >(),
+  deliveryAssets: text("delivery_assets", { mode: "json" }).$type<
+    DeliveryAssetBundle | null
+  >(),
+  publishManualChecklist: text("publish_manual_checklist", {
+    mode: "json",
+  }).$type<string[] | null>(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

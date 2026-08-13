@@ -57,6 +57,13 @@
       "when": 1786600000000,
       "tag": "0007_replay_full_voice_overs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786650000000,
+      "tag": "0008_race_analysis_delivery",
+      "breakpoints": true
     }
   ]
 }

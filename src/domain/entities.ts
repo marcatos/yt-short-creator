@@ -1,5 +1,7 @@
+import type { RaceAnalysis } from "./race-analysis";
 import type { CandidateStatus } from "./status";
 import type { VoiceOverPackage } from "./voice-over";
+import type { DeliveryAssetBundle } from "./youtube-metadata";
 
 export type CandidateOrigin = "clip" | "generate" | "replay";
 
@@ -98,14 +100,24 @@ export type ReplaySession = {
   durationSec: number | null;
   status: ReplaySessionStatus;
   events: ReplayEvent[];
+  /** @deprecated Prefer raceAnalysis; kept for legacy VO/publish bridges. */
   racePackage: RacePackage | null;
+  /** Structured FASE A analysis (verified facts + storylines + Short scores). */
+  raceAnalysis?: RaceAnalysis | null;
   /** Local YouTube-delivery encode of the full race (sensible bitrate). */
   fullVideoEncodePath: string | null;
   fullVideoYoutubeId: string | null;
   fullVideoPrivacy: YoutubePrivacy | null;
   fullVideoPublishedAt: Date | null;
-  /** Bilingual narration packages for the full-race upload pair. */
+  /** Bilingual narration packages for the full-race upload. */
   fullVoiceOvers?: VoiceOverPackage[] | null;
+  /** Packaged multi-language delivery assets (single-master model). */
+  deliveryAssets?: DeliveryAssetBundle | null;
+  /**
+   * Remaining Studio steps after best-effort API publish
+   * (e.g. attach secondary audio track).
+   */
+  publishManualChecklist?: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

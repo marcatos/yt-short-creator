@@ -144,6 +144,9 @@ const sampleReplaySession: ReplaySession = {
       youtubeCaptionId: "caption-full-it",
     },
   ],
+  raceAnalysis: null,
+  deliveryAssets: null,
+  publishManualChecklist: null,
   createdAt: now,
   updatedAt: now,
 };
