@@ -112,6 +112,11 @@ const metadata: YouTubeVideoMetadata[] = [
     durationSec: 125,
     publishedAt: new Date("2026-08-10T12:00:00.000Z"),
     thumbnailUrl: "https://i.ytimg.com/vi/video-1/default.jpg",
+    statistics: {
+      viewCount: 1200,
+      likeCount: 40,
+      commentCount: 8,
+    },
   },
 ];
 
@@ -168,7 +173,7 @@ describe("YouTube channel use cases", () => {
       title: "Old title",
       durationSec: 100,
       localMediaPath: "media/video-1.mp4",
-      analyticsSnapshot: { views: 42 },
+      analyticsSnapshot: { viewCount: 42, likeCount: 1, commentCount: 0 },
       publishedAt: null,
       syncedAt: new Date("2026-08-10T10:00:00.000Z"),
     });
@@ -192,7 +197,11 @@ describe("YouTube channel use cases", () => {
         title: "Race highlights",
         durationSec: 125,
         localMediaPath: "media/video-1.mp4",
-        analyticsSnapshot: { views: 42 },
+        analyticsSnapshot: {
+          viewCount: 1200,
+          likeCount: 40,
+          commentCount: 8,
+        },
         publishedAt: new Date("2026-08-10T12:00:00.000Z"),
         syncedAt: now,
       },

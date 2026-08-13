@@ -162,7 +162,11 @@ export type Channel = {
   connectedAt: Date;
 };
 
-export type AnalyticsSnapshot = Record<string, unknown>;
+export type AnalyticsSnapshot = {
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+};
 
 export type SourceVideo = {
   id: string;

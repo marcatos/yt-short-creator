@@ -53,7 +53,7 @@ const sampleSourceVideo: SourceVideo = {
   title: "Race Highlights",
   durationSec: 600,
   localMediaPath: "media/sources/sv-1.mp4",
-  analyticsSnapshot: { views: 1200 },
+  analyticsSnapshot: { viewCount: 1200, likeCount: 10, commentCount: 2 },
   publishedAt: now,
   syncedAt: now,
 };

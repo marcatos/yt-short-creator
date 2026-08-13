@@ -90,16 +90,19 @@ export function createSyncChannel({
           title: video.title,
           durationSec: video.durationSec,
           localMediaPath: existing?.localMediaPath ?? null,
-          analyticsSnapshot: existing?.analyticsSnapshot ?? null,
+          analyticsSnapshot:
+            video.statistics ?? existing?.analyticsSnapshot ?? null,
           publishedAt: video.publishedAt,
           syncedAt,
         };
       });
 
       await sourceVideos.upsertMany(videos);
+      const withStats = videos.filter((video) => video.analyticsSnapshot).length;
       log.info("YouTube channel sync completed", {
         channelId,
         videoCount: videos.length,
+        videosWithStats: withStats,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return videos;

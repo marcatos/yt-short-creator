@@ -44,6 +44,23 @@ function thumbnailUrl(
   );
 }
 
+function parseCount(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function videoStatistics(
+  statistics: youtube_v3.Schema$VideoStatistics | undefined,
+): { viewCount: number; likeCount: number; commentCount: number } | null {
+  if (!statistics) return null;
+  return {
+    viewCount: parseCount(statistics.viewCount),
+    likeCount: parseCount(statistics.likeCount),
+    commentCount: parseCount(statistics.commentCount),
+  };
+}
+
 function createClient(accessToken: string): youtube_v3.Youtube {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -90,7 +107,7 @@ async function getVideoDetails(
     const responses = await Promise.all(
       batches.slice(index, index + MAX_CONCURRENT_VIDEO_REQUESTS).map((id) =>
         youtube.videos.list({
-          part: ["snippet", "contentDetails"],
+          part: ["snippet", "contentDetails", "statistics"],
           id,
           maxResults: VIDEO_BATCH_SIZE,
         }),
@@ -170,6 +187,7 @@ export class GoogleYouTubeCatalogAdapter implements YouTubeCatalogPort {
           durationSec: parseDurationSeconds(video.contentDetails?.duration),
           publishedAt: new Date(publishedAt),
           thumbnailUrl: thumbnailUrl(video.snippet?.thumbnails),
+          statistics: videoStatistics(video.statistics),
         },
       ];
     });
