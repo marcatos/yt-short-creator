@@ -59,12 +59,14 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   // Windows/tsx can drop an unresolved Promise; keep explicit handles alive.
+  // An unresolved Promise alone does NOT keep Node's event loop running when
+  // the job queue is empty (claimNext is just awaiting a wake Promise).
   if (process.stdin.isTTY) {
     process.stdin.resume();
   }
   setInterval(() => {
     log.debug("Worker process heartbeat", { pid: process.pid });
-  }, 60_000).unref();
+  }, 60_000);
 
   await new Promise<void>(() => {
     /* run until signal */
