@@ -11,9 +11,60 @@ import type {
   VideoEncoderPreference,
 } from "@/src/ports/settings-repository";
 
+import { probeMediaDurationSec } from "@/src/adapters/media/ffprobe-duration";
+
 import { duckedVoiceMixFilter, filterFilename } from "./ffmpeg-audio-filters";
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
 import { deliveryEncoderArgs } from "./ffmpeg-full-video-encode";
+
+/**
+ * When narration outlasts the approved clip window, extend into following
+ * (then preceding) source footage so the VO is not hard-cut mid-sentence.
+ */
+export function extendClipWindowForVoiceOver(input: {
+  startMs: number;
+  endMs: number;
+  voiceDurationMs: number;
+  sourceDurationMs?: number;
+}): { startMs: number; endMs: number } {
+  const clipMs = input.endMs - input.startMs;
+  if (input.voiceDurationMs <= clipMs) {
+    return { startMs: input.startMs, endMs: input.endMs };
+  }
+
+  let startMs = input.startMs;
+  let endMs = input.startMs + input.voiceDurationMs;
+  const sourceMs = input.sourceDurationMs;
+  if (sourceMs !== undefined && Number.isFinite(sourceMs) && sourceMs > 0) {
+    if (endMs > sourceMs) {
+      const overflow = endMs - sourceMs;
+      endMs = sourceMs;
+      startMs = Math.max(0, startMs - overflow);
+    }
+  }
+  if (endMs <= startMs) {
+    return { startMs: input.startMs, endMs: input.endMs };
+  }
+  return { startMs, endMs };
+}
+
+async function resolveVoiceDurationMs(
+  input: RenderInput,
+  ffprobePath: string,
+): Promise<number | undefined> {
+  if (
+    input.voiceDurationMs !== undefined &&
+    Number.isFinite(input.voiceDurationMs) &&
+    input.voiceDurationMs > 0
+  ) {
+    return Math.round(input.voiceDurationMs);
+  }
+  if (!input.voiceAssetPath) return undefined;
+  const seconds = await probeMediaDurationSec(input.voiceAssetPath, ffprobePath);
+  if (seconds === null) return undefined;
+  // probeMediaDurationSec rounds to whole seconds; keep at least that floor.
+  return Math.max(1_000, Math.round(seconds * 1_000));
+}
 
 /** 1080×1920 Shorts: prior path forced ~2 Mbps @ 30 fps; target YouTube-grade VBR. */
 const SHORT_TARGET_MBPS = 10;
@@ -106,39 +157,42 @@ function voiceMixFilter(
   input: RenderInput,
   gameAudioLabel: string,
   voiceInputIndex: number,
+  voiceDurationMs?: number,
 ): string[] {
   if (!input.voiceAssetPath) return [];
   return duckedVoiceMixFilter({
     sourceAudioLabel: gameAudioLabel,
     voiceAudioLabel: `${voiceInputIndex}:a`,
     voiceDuckDb: input.voiceDuckDb,
+    voiceDurationMs,
   });
 }
 
-function clipArgs(input: RenderInput): string[] {
+function clipArgs(
+  input: RenderInput,
+  window: { startMs: number; endMs: number },
+  voiceDurationMs?: number,
+): string[] {
   if (input.segments && input.segments.length >= 2) {
-    return multiSegmentClipArgs(input);
+    return multiSegmentClipArgs(input, voiceDurationMs);
   }
 
-  if (input.startMs === undefined || input.endMs === undefined) {
-    throw new Error("Clip render requires startMs and endMs");
-  }
-  if (input.endMs <= input.startMs) {
+  if (window.endMs <= window.startMs) {
     throw new Error("Clip render endMs must be greater than startMs");
   }
 
-  const durationMs = input.endMs - input.startMs;
+  const durationMs = window.endMs - window.startMs;
   const filterParts = [
     `${scaleAndCrop("0:v", input.crop?.focusX)}[base]`,
     ...brandedVideoFilter(input, "base", "1:v"),
   ];
   if (input.voiceAssetPath) {
-    filterParts.push(...voiceMixFilter(input, "0:a", 2));
+    filterParts.push(...voiceMixFilter(input, "0:a", 2, voiceDurationMs));
   }
 
   return [
     "-ss",
-    seconds(input.startMs),
+    seconds(window.startMs),
     "-t",
     seconds(durationMs),
     "-i",
@@ -159,10 +213,27 @@ function clipArgs(input: RenderInput): string[] {
   ];
 }
 
-function multiSegmentClipArgs(input: RenderInput): string[] {
-  const segments = input.segments ?? [];
+function multiSegmentClipArgs(
+  input: RenderInput,
+  voiceDurationMs?: number,
+): string[] {
+  const segments = [...(input.segments ?? [])];
   if (segments.length < 2) {
     throw new Error("Multi-segment render requires at least 2 segments");
+  }
+
+  if (voiceDurationMs !== undefined && voiceDurationMs > 0) {
+    const totalMs = segments.reduce(
+      (sum, segment) => sum + Math.max(0, segment.endMs - segment.startMs),
+      0,
+    );
+    if (voiceDurationMs > totalMs) {
+      const last = segments[segments.length - 1]!;
+      segments[segments.length - 1] = {
+        ...last,
+        endMs: last.endMs + (voiceDurationMs - totalMs),
+      };
+    }
   }
 
   const args: string[] = [];
@@ -209,7 +280,7 @@ function multiSegmentClipArgs(input: RenderInput): string[] {
   );
   filterParts.push(
     ...brandedVideoFilter(input, "vcat", `${logoIndex}:v`),
-    ...voiceMixFilter(input, "acat", voiceIndex),
+    ...voiceMixFilter(input, "acat", voiceIndex, voiceDurationMs),
   );
 
   return [
@@ -372,8 +443,46 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         if (options?.signal?.aborted) {
           throw new JobCancelledError();
         }
-        const mediaArgs =
-          input.origin === "generate" ? generateArgs(input) : clipArgs(input);
+        const voiceDurationMs = await resolveVoiceDurationMs(input, "ffprobe");
+        let mediaArgs: string[];
+        if (input.origin === "generate") {
+          mediaArgs = generateArgs(input);
+        } else {
+          if (
+            (input.startMs === undefined || input.endMs === undefined) &&
+            !(input.segments && input.segments.length >= 2)
+          ) {
+            throw new Error("Clip render requires startMs and endMs");
+          }
+          const sourceSeconds = await probeMediaDurationSec(
+            input.sourceMediaPath,
+            "ffprobe",
+          );
+          const window =
+            input.startMs !== undefined && input.endMs !== undefined
+              ? extendClipWindowForVoiceOver({
+                  startMs: input.startMs,
+                  endMs: input.endMs,
+                  voiceDurationMs: voiceDurationMs ?? 0,
+                  sourceDurationMs:
+                    sourceSeconds !== null ? sourceSeconds * 1_000 : undefined,
+                })
+              : { startMs: 0, endMs: 0 };
+          if (
+            voiceDurationMs &&
+            input.startMs !== undefined &&
+            input.endMs !== undefined &&
+            window.endMs - window.startMs > input.endMs - input.startMs
+          ) {
+            logger.info("Extending clip window to fit voice-over", {
+              candidateId: input.candidateId,
+              originalMs: input.endMs - input.startMs,
+              extendedMs: window.endMs - window.startMs,
+              voiceDurationMs,
+            });
+          }
+          mediaArgs = clipArgs(input, window, voiceDurationMs);
+        }
         const videoArgs = deliveryEncoderArgs(
           encoder.codec,
           SHORT_TARGET_MBPS,

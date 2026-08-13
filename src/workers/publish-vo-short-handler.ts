@@ -359,9 +359,29 @@ export function createPublishVoiceOverShortHandler(
             ? { message: error.message, stack: error.stack }
             : String(error),
       };
-      state === "failed"
-        ? log.error("Voice-over Short publish failed", context)
-        : log.info(`Voice-over Short publish ${state}`, context);
+      if (state === "failed") {
+        log.error("Voice-over Short publish failed", context);
+        try {
+          const fresh =
+            (await deps.candidates.getById(candidateId)) ?? candidate;
+          if (fresh.status === "publishing") {
+            const failed = applyCandidateEvent(fresh, {
+              type: "publish_failed",
+            });
+            await deps.candidates.save(failed);
+          }
+        } catch (statusError) {
+          log.warn("Unable to mark candidate failed after publish error", {
+            candidateId,
+            error:
+              statusError instanceof Error
+                ? statusError.message
+                : String(statusError),
+          });
+        }
+      } else {
+        log.info(`Voice-over Short publish ${state}`, context);
+      }
       throw error;
     }
   };

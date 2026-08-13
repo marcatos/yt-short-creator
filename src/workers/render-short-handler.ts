@@ -54,6 +54,9 @@ async function renderInputForCandidate(
   if (voiceOver && !voRenderPath) {
     throw new Error("Media store does not support voice-over render paths");
   }
+  const voiceDurationMs = voiceOver?.words.length
+    ? voiceOver.words[voiceOver.words.length - 1]!.endMs
+    : undefined;
   const common = {
     candidateId: candidate.id,
     origin: candidate.origin,
@@ -63,6 +66,7 @@ async function renderInputForCandidate(
     logoPath: brand.logoStackedPath,
     accentColor: brand.accentHex,
     voiceAssetPath: voiceOver?.audioPath,
+    voiceDurationMs,
     assPath: settings.shortsBurnInCaptions
       ? (voiceOver?.assPath ?? undefined)
       : undefined,

@@ -57,15 +57,21 @@ describe("FFmpeg VO and ASS render", () => {
       logoPath: "C:/brand/logo.png",
       accentColor: "#E10600",
       voiceAssetPath: "C:/media/vo-it.mp3",
+      voiceDurationMs: 8_000,
       assPath: "C:/media/captions-it.ass",
       burnInCaptions: true,
       voiceDuckDb: -12,
     });
 
-    const args = childProcessMocks.spawn.mock.calls[0]?.[1] as string[];
+    const ffmpegCall = childProcessMocks.spawn.mock.calls.find(
+      (call) =>
+        Array.isArray(call[1]) &&
+        (call[1] as string[]).includes("-filter_complex"),
+    );
+    const args = ffmpegCall?.[1] as string[];
     const filter = args[args.indexOf("-filter_complex") + 1];
     expect(args).toContain("C:/media/vo-it.mp3");
-    expect(filter).toContain("[0:a]volume=0.251189[ga]");
+    expect(filter).toContain("[0:a]volume='if(lt(t,8.000),0.251189,");
     expect(filter).toContain("[2:a]volume=1[va]");
     expect(filter).toContain(
       "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
@@ -86,6 +92,41 @@ describe("FFmpeg VO and ASS render", () => {
     expect(args[args.indexOf("-crf") + 1]).toBe("18");
     expect(args).toContain("-maxrate");
     expect(args[args.indexOf("-maxrate") + 1]).toBe("14M");
+  });
+
+  it("extends the clip -t when narration outlasts the approved window", async () => {
+    const child = new FakeChildProcess();
+    childProcessMocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    });
+    const render = createFfmpegRender({
+      logger: logger(),
+      videoEncoderPreference: "libx264",
+    });
+
+    await render.render({
+      candidateId: "candidate-vo-long",
+      origin: "clip",
+      sourceMediaPath: "C:/media/race.mp4",
+      outputPath: "C:/out/short-long.mp4",
+      startMs: 1_000,
+      endMs: 9_000,
+      logoPath: "C:/brand/logo.png",
+      accentColor: "#E10600",
+      voiceAssetPath: "C:/media/vo-it.mp3",
+      voiceDurationMs: 18_000,
+    });
+
+    const ffmpegCall = childProcessMocks.spawn.mock.calls.find(
+      (call) =>
+        Array.isArray(call[1]) &&
+        (call[1] as string[]).includes("-filter_complex"),
+    );
+    const args = ffmpegCall?.[1] as string[];
+    // start 1s, narration 18s → -t 18.000 (not the original 8s window)
+    expect(args[args.indexOf("-ss") + 1]).toBe("1.000");
+    expect(args[args.indexOf("-t") + 1]).toBe("18.000");
   });
 
   it("burns ASS captions into generated shorts without game audio", async () => {
@@ -118,7 +159,11 @@ describe("FFmpeg VO and ASS render", () => {
       ],
     });
 
-    const args = childProcessMocks.spawn.mock.calls[0]?.[1] as string[];
+    const args = childProcessMocks.spawn.mock.calls.find(
+      (call) =>
+        Array.isArray(call[1]) &&
+        (call[1] as string[]).includes("-filter_complex"),
+    )?.[1] as string[];
     const filter = args[args.indexOf("-filter_complex") + 1];
     expect(filter).toContain(
       "ass=filename='C\\:/media/generated-en.ass'[outv]",

@@ -32,6 +32,8 @@ const MAX_SHORTS = 16;
 const MIN_SHORTS = 10;
 const VISION_CHUNK_SIZE = 24;
 const MIN_WINDOW_MS = 8_000;
+/** Short candidates with VO need room for 8–25s narration; prefer 15s+. */
+const MIN_SHORT_CANDIDATE_MS = 15_000;
 const MAX_WINDOW_MS = 60_000;
 
 const analysisSchema = z.object({
@@ -797,7 +799,7 @@ export function createRunReplayAnalysis(
             !Number.isFinite(maxEndMs) || window.endMs <= maxEndMs;
           return (
             endOk &&
-            durationMs >= MIN_WINDOW_MS &&
+            durationMs >= MIN_SHORT_CANDIDATE_MS &&
             durationMs <= MAX_WINDOW_MS
           );
         })

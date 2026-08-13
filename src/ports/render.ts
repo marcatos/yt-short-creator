@@ -15,6 +15,11 @@ export type RenderInput = {
   segments?: ReplaySegment[];
   crop?: ClipCrop;
   voiceAssetPath?: string;
+  /**
+   * Narration length in ms. When longer than the clip window, the renderer
+   * extends into surrounding source footage so VO is not cut mid-sentence.
+   */
+  voiceDurationMs?: number;
   assPath?: string;
   voiceDuckDb?: number;
   timeline?: GenerateTimelineEntry[];
