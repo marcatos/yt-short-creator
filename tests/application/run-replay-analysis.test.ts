@@ -125,26 +125,74 @@ function fakeTranscription(): TranscriptionPort {
   };
 }
 
-function tenWindows() {
+function tenShortCandidates() {
   return Array.from({ length: 10 }, (_, index) => {
     const startMs = 10_000 + index * 12_000;
     return {
+      shortScore: 0.9 - index * 0.02,
       startMs,
       endMs: startMs + 15_000,
-      title: `Momento ${index + 1}`,
-      description: `Descrizione ${index + 1}`,
-      tags: ["racing"],
-      score: 0.9 - index * 0.02,
-      hookReason: `Hook ${index + 1}`,
+      hook: `Hook ${index + 1}`,
+      story: `Story ${index + 1}`,
+      payoff: `Payoff ${index + 1}`,
+      recommendedTitleIt: `Momento ${index + 1}`,
+      recommendedTitleEn: `Moment ${index + 1}`,
+      requiresLocalizedRender: false,
       segments:
         index === 0
           ? [
               { startMs: 10_000, endMs: 18_000 },
               { startMs: 40_000, endMs: 47_000 },
             ]
-          : [],
+          : undefined,
+      tags: ["racing"],
+      descriptionIt: `Descrizione ${index + 1}`,
+      descriptionEn: `Description ${index + 1}`,
     };
   });
+}
+
+function raceAnalysisLlmFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    focusCarHint: "pi livery",
+    context: {
+      simulator: "iRacing",
+      track: "Imola",
+      car: "GR86",
+      durationSec: 180,
+    },
+    results: {
+      qualiResult: null,
+      startPosition: null,
+      finishPosition: null,
+      fieldSize: null,
+      positionsGained: null,
+    },
+    recurringRivals: [],
+    events: [],
+    timeline: [
+      {
+        startMs: 0,
+        endMs: 20_000,
+        summary: "Start",
+        involvingFocusCar: true,
+      },
+    ],
+    storylines: [
+      {
+        kind: "main",
+        summary: "Battaglia al T1",
+        whyWatch: "Battaglia ravvicinata al T1",
+      },
+    ],
+    mainStoryline: "Partenza tesa, poi battaglia al T1",
+    whyWatch: "C'è una battaglia ravvicinata al T1",
+    potentialHooks: ["Battaglia T1"],
+    shortCandidates: tenShortCandidates(),
+    narrativeIt: "Partenza tesa, poi battaglia al T1.",
+    audioTranscript: "engine noise",
+    ...overrides,
+  };
 }
 
 describe("runReplayAnalysis", () => {
@@ -197,25 +245,10 @@ describe("runReplayAnalysis", () => {
           }
           packageCalls += 1;
           return JSON.stringify({
-            racePackage: {
-              focusCarHint: "pi livery",
-              transcript: "Partenza tesa, poi battaglia al T1.",
-              timeline: [
-                {
-                  startMs: 0,
-                  endMs: 20_000,
-                  summary: "Start",
-                  involvingFocusCar: true,
-                },
-              ],
-              fullVideo: {
-                title: "Imola: battaglia da brividi",
-                description: "Gara completa S.Marcato 42",
-                tags: ["iRacing", "Imola"],
-              },
-              audioTranscript: "engine noise",
-            },
-            windows: tenWindows(),
+            raceAnalysis: raceAnalysisLlmFixture({
+              narrativeIt: "Partenza tesa, poi battaglia al T1.",
+              potentialHooks: ["Imola: battaglia da brividi"],
+            }),
           });
         },
       },
@@ -234,6 +267,7 @@ describe("runReplayAnalysis", () => {
     expect(proposed[0]?.origin).toBe("replay");
     expect(visionCalls).toBeGreaterThan(0);
     expect(packageCalls).toBe(1);
+    expect(sessions.session.raceAnalysis?.context.track).toBe("Imola");
     expect(sessions.session.racePackage?.fullVideo.title).toContain("Imola");
     expect(sessions.session.status).toBe("ready");
     expect(
@@ -270,18 +304,10 @@ describe("runReplayAnalysis", () => {
             return JSON.stringify({ moments: [] });
           }
           return JSON.stringify({
-            racePackage: {
-              focusCarHint: "pi",
-              transcript: "Narrativa vision-only",
-              timeline: [],
-              fullVideo: {
-                title: "Titolo",
-                description: "Desc",
-                tags: ["iRacing"],
-              },
-              audioTranscript: "",
-            },
-            windows: tenWindows(),
+            raceAnalysis: raceAnalysisLlmFixture({
+              narrativeIt: "Narrativa vision-only",
+              mainStoryline: "Vision-only story",
+            }),
           });
         },
       },
@@ -297,6 +323,7 @@ describe("runReplayAnalysis", () => {
 
     const proposed = await run({ sessionId: "session-1" });
     expect(proposed).toHaveLength(10);
+    expect(sessions.session.raceAnalysis?.narrativeIt).toContain("vision");
     expect(sessions.session.racePackage?.transcript).toContain("vision");
   });
 });

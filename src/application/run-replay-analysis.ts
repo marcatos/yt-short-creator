@@ -1,11 +1,17 @@
 import type {
-  RacePackage,
   RaceTimelineEntry,
   ReplayEvent,
   ReplaySegment,
   ShortCandidate,
 } from "@/src/domain/entities";
 import { DEFAULT_FOCUS_CAR_HINT as FOCUS_CAR_DEFAULT } from "@/src/domain/entities";
+import {
+  computePositionsGained,
+  raceAnalysisLlmSchema,
+  raceAnalysisToRacePackage,
+  type RaceAnalysis,
+  type ShortSegmentAnalysis,
+} from "@/src/domain/race-analysis";
 import {
   selectTelemetryEvents,
   windowAroundEvent,
@@ -28,44 +34,8 @@ const VISION_CHUNK_SIZE = 24;
 const MIN_WINDOW_MS = 8_000;
 const MAX_WINDOW_MS = 60_000;
 
-const segmentSchema = z.object({
-  startMs: z.number().int().nonnegative(),
-  endMs: z.number().int().positive(),
-});
-
-const clipWindowSchema = z.object({
-  startMs: z.number().int().nonnegative(),
-  endMs: z.number().int().positive(),
-  title: z.string().trim().min(1),
-  description: z.string().trim().min(1),
-  tags: z.array(z.string().trim().min(1)).max(12),
-  score: z.number().min(0).max(1),
-  hookReason: z.string().trim().min(1),
-  segments: z.array(segmentSchema).max(4).default([]),
-});
-
-const timelineEntrySchema = z.object({
-  startMs: z.number().int().nonnegative(),
-  endMs: z.number().int().nonnegative(),
-  summary: z.string().trim().min(1),
-  involvingFocusCar: z.boolean(),
-});
-
-const racePackageSchema = z.object({
-  focusCarHint: z.string().trim().min(1),
-  transcript: z.string().trim().min(1),
-  timeline: z.array(timelineEntrySchema).max(80),
-  fullVideo: z.object({
-    title: z.string().trim().min(1).max(100),
-    description: z.string().trim().min(1),
-    tags: z.array(z.string().trim().min(1)).max(20),
-  }),
-  audioTranscript: z.string(),
-});
-
 const analysisSchema = z.object({
-  racePackage: racePackageSchema,
-  windows: z.array(clipWindowSchema).min(MIN_SHORTS).max(MAX_SHORTS),
+  raceAnalysis: raceAnalysisLlmSchema,
 });
 
 const visionChunkSchema = z.object({
@@ -79,24 +49,108 @@ const visionChunkSchema = z.object({
   ),
 });
 
+const nullableStringSchema = { type: ["string", "null"] } as const;
+const nullableIntSchema = { type: ["integer", "null"] } as const;
+
 const responseJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["racePackage", "windows"],
+  required: ["raceAnalysis"],
   properties: {
-    racePackage: {
+    raceAnalysis: {
       type: "object",
       additionalProperties: false,
       required: [
         "focusCarHint",
-        "transcript",
+        "context",
+        "results",
+        "recurringRivals",
+        "events",
         "timeline",
-        "fullVideo",
+        "storylines",
+        "mainStoryline",
+        "whyWatch",
+        "potentialHooks",
+        "shortCandidates",
+        "narrativeIt",
         "audioTranscript",
       ],
       properties: {
         focusCarHint: { type: "string" },
-        transcript: { type: "string" },
+        context: {
+          type: "object",
+          additionalProperties: false,
+          required: ["simulator", "track", "car", "durationSec"],
+          properties: {
+            simulator: nullableStringSchema,
+            track: nullableStringSchema,
+            car: nullableStringSchema,
+            durationSec: nullableIntSchema,
+          },
+        },
+        results: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "qualiResult",
+            "startPosition",
+            "finishPosition",
+            "fieldSize",
+            "positionsGained",
+          ],
+          properties: {
+            qualiResult: nullableStringSchema,
+            startPosition: nullableIntSchema,
+            finishPosition: nullableIntSchema,
+            fieldSize: nullableIntSchema,
+            positionsGained: nullableIntSchema,
+          },
+        },
+        recurringRivals: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string" },
+        },
+        events: {
+          type: "array",
+          maxItems: 120,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "kind",
+              "startMs",
+              "endMs",
+              "summary",
+              "involvingFocusCar",
+              "confidence",
+            ],
+            properties: {
+              kind: {
+                type: "string",
+                enum: [
+                  "overtake",
+                  "incident",
+                  "mistake",
+                  "battle",
+                  "tyre",
+                  "strategy",
+                  "pace_change",
+                  "defense",
+                  "other",
+                ],
+              },
+              startMs: { type: "integer", minimum: 0 },
+              endMs: { type: "integer", minimum: 0 },
+              summary: { type: "string" },
+              involvingFocusCar: { type: "boolean" },
+              confidence: {
+                type: "string",
+                enum: ["verified", "inferred", "unknown"],
+              },
+            },
+          },
+        },
         timeline: {
           type: "array",
           maxItems: 80,
@@ -112,58 +166,83 @@ const responseJsonSchema = {
             },
           },
         },
-        fullVideo: {
-          type: "object",
-          additionalProperties: false,
-          required: ["title", "description", "tags"],
-          properties: {
-            title: { type: "string" },
-            description: { type: "string" },
-            tags: { type: "array", items: { type: "string" }, maxItems: 20 },
-          },
-        },
-        audioTranscript: { type: "string" },
-      },
-    },
-    windows: {
-      type: "array",
-      minItems: MIN_SHORTS,
-      maxItems: MAX_SHORTS,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "startMs",
-          "endMs",
-          "title",
-          "description",
-          "tags",
-          "score",
-          "hookReason",
-          "segments",
-        ],
-        properties: {
-          startMs: { type: "integer", minimum: 0 },
-          endMs: { type: "integer", minimum: 1 },
-          title: { type: "string" },
-          description: { type: "string" },
-          tags: { type: "array", items: { type: "string" }, maxItems: 12 },
-          score: { type: "number", minimum: 0, maximum: 1 },
-          hookReason: { type: "string" },
-          segments: {
-            type: "array",
-            maxItems: 4,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["startMs", "endMs"],
-              properties: {
-                startMs: { type: "integer", minimum: 0 },
-                endMs: { type: "integer", minimum: 1 },
-              },
+        storylines: {
+          type: "array",
+          maxItems: 8,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "summary", "whyWatch"],
+            properties: {
+              kind: { type: "string", enum: ["main", "secondary", "final"] },
+              summary: { type: "string" },
+              whyWatch: { type: "string" },
             },
           },
         },
+        mainStoryline: { type: "string" },
+        whyWatch: { type: "string" },
+        potentialHooks: {
+          type: "array",
+          maxItems: 12,
+          items: { type: "string" },
+        },
+        shortCandidates: {
+          type: "array",
+          minItems: 1,
+          maxItems: MAX_SHORTS,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "shortScore",
+              "startMs",
+              "endMs",
+              "hook",
+              "story",
+              "payoff",
+              "recommendedTitleIt",
+              "recommendedTitleEn",
+              "requiresLocalizedRender",
+              "tags",
+              "descriptionIt",
+              "descriptionEn",
+            ],
+            properties: {
+              shortScore: { type: "number", minimum: 0, maximum: 1 },
+              startMs: { type: "integer", minimum: 0 },
+              endMs: { type: "integer", minimum: 1 },
+              hook: { type: "string" },
+              story: { type: "string" },
+              payoff: { type: "string" },
+              recommendedTitleIt: { type: "string" },
+              recommendedTitleEn: { type: "string" },
+              requiresLocalizedRender: { type: "boolean" },
+              segments: {
+                type: "array",
+                maxItems: 6,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["startMs", "endMs"],
+                  properties: {
+                    startMs: { type: "integer", minimum: 0 },
+                    endMs: { type: "integer", minimum: 1 },
+                  },
+                },
+              },
+              tags: {
+                type: "array",
+                maxItems: 12,
+                items: { type: "string" },
+              },
+              descriptionIt: { type: "string" },
+              descriptionEn: { type: "string" },
+            },
+          },
+        },
+        narrativeIt: { type: "string" },
+        audioTranscript: { type: "string" },
       },
     },
   },
@@ -596,16 +675,17 @@ export function createRunReplayAnalysis(
       const packageStarted = performance.now();
       const response = await deps.llm.complete({
         system: [
-          "Sei l'editor del canale YouTube di Simone Marcato (pilota #42, livrea bianco-nero-verde con π).",
-          "Scrivi metadata e Shorts in italiano, catchy, orientati al traffico.",
-          "Stile: prima persona del pilota. Fatti concreti (posizioni, errori, strategia, gestione gomme). Niente commento terziario tipo 'hero car'.",
-          "NON trattare 'S.Marcato 42 Racing' come brand da ripetere in ogni titolo/descrizione/VO: 42 è il numero di gara, Marcato è il cognome.",
-          "Esempio di tono titolo/descrizione: hook con rimonta/risultato (es. DA P18 A P8…), poi racconto onesto in prima persona; CTA iscrizione; eventualmente capitoli e setup dopo il racconto.",
-          `Auto focus (pilota/vettura): ${focusCarHint}.`,
-          "Usa SOLO timestamp presenti nelle note vision/telemetria; non inventare secondi fuori range.",
-          `Proponi tra ${MIN_SHORTS} e ${MAX_SHORTS} Shorts (8–60s). Alcuni possono montare 2–4 segmenti non contigui (campo segments) se aumenta l'hook.`,
-          "Il campo transcript deve essere una narrativa cronologica in prima persona della gara (non solo speech-to-text).",
-          "fullVideo.title max ~90 caratteri, hook sul risultato/drama (non iniziare con il nome del pilota/team); description: racconto gara in prima persona + CTA + hashtag (capitoli/setup opzionali dopo).",
+          "Sei l'analista editoriale del canale YouTube di Simone Marcato (pilota #42).",
+          "FASE A — Race Analysis: estrai la STORIA interessante della gara, non una descrizione passiva.",
+          "Stile narrativo (narrativeIt, storylines, hook/story/payoff): prima persona del pilota. Fatti concreti.",
+          "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria.",
+          "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
+          "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
+          "whyWatch deve rispondere: perché uno sconosciuto guarderebbe questo video? NON perché è una gara di Simone.",
+          "shortScore: immediatezza, comprensione senza contesto, qualità sorpasso, rischio, vicinanza, tensione, payoff, hook.",
+          "requiresLocalizedRender=true SOLO se lo Short ha bisogno di testo burned-in in lingua (caption dinamiche IT/EN diverse).",
+          `Proponi tra ${MIN_SHORTS} e ${MAX_SHORTS} shortCandidates (15–45s tipici, max 60s). segments opzionali non contigui.`,
+          `Focus car: ${focusCarHint}.`,
         ].join(" "),
         user: [
           `Titolo sessione: ${session.title}`,
@@ -637,32 +717,66 @@ export function createRunReplayAnalysis(
       });
 
       const parsed = analysisSchema.parse(JSON.parse(response));
-      log.info("Race package + shorts drafted", {
+      const llmAnalysis = parsed.raceAnalysis;
+      const positionsGained =
+        llmAnalysis.results.positionsGained ??
+        computePositionsGained(
+          llmAnalysis.results.startPosition,
+          llmAnalysis.results.finishPosition,
+        );
+
+      const raceAnalysis: RaceAnalysis = {
+        ...llmAnalysis,
+        version: 1,
+        focusCarHint: llmAnalysis.focusCarHint || focusCarHint,
+        context: {
+          ...llmAnalysis.context,
+          track: llmAnalysis.context.track || trackName || null,
+          durationSec:
+            llmAnalysis.context.durationSec ??
+            (durationSec > 0 ? durationSec : null),
+        },
+        results: {
+          ...llmAnalysis.results,
+          positionsGained,
+        },
+        timeline: mergeTelemetryIntoTimeline(
+          llmAnalysis.timeline,
+          telemetryEvents,
+        ),
+        audioTranscript:
+          audioTranscriptText || llmAnalysis.audioTranscript || "",
+      };
+
+      const racePackage = raceAnalysisToRacePackage(raceAnalysis);
+
+      log.info("Race analysis drafted", {
         sessionId,
-        windowCount: parsed.windows.length,
-        timelineCount: parsed.racePackage.timeline.length,
+        shortCount: raceAnalysis.shortCandidates.length,
+        timelineCount: raceAnalysis.timeline.length,
+        whyWatch: raceAnalysis.whyWatch.slice(0, 120),
         durationMs: Math.round(performance.now() - packageStarted),
       });
 
-      const racePackage: RacePackage = {
-        ...parsed.racePackage,
-        focusCarHint: parsed.racePackage.focusCarHint || focusCarHint,
-        audioTranscript:
-          audioTranscriptText || parsed.racePackage.audioTranscript || "",
-        timeline: mergeTelemetryIntoTimeline(
-          parsed.racePackage.timeline,
-          telemetryEvents,
-        ),
-      };
+      if (deps.mediaStore.replayDeliveryDir && deps.mediaStore.writeText) {
+        const deliveryDir = deps.mediaStore.replayDeliveryDir(sessionId);
+        const analysisPath = `${deliveryDir.replace(/\\/g, "/")}/race_analysis.json`;
+        await deps.mediaStore.writeText(
+          analysisPath,
+          JSON.stringify(raceAnalysis, null, 2),
+        );
+      }
 
       const now = deps.clock.now();
       const llmEvents: ReplayEvent[] = [];
-      let candidates: ShortCandidate[] = parsed.windows
+      let candidates: ShortCandidate[] = raceAnalysis.shortCandidates
         .map((window) => {
           const normalized = normalizeSegments(
             window.startMs,
             window.endMs,
-            window.segments.length >= 2 ? window.segments : undefined,
+            window.segments && window.segments.length >= 2
+              ? window.segments
+              : undefined,
             Number.isFinite(maxEndMs) ? maxEndMs : window.endMs,
           );
           const clamped = clampWindow(
@@ -686,9 +800,13 @@ export function createRunReplayAnalysis(
             durationMs <= MAX_WINDOW_MS
           );
         })
-        .map((window) => {
+        .map((window: ShortSegmentAnalysis & {
+          startMs: number;
+          endMs: number;
+          segments?: ReplaySegment[];
+        }) => {
           const score = boostScoreNearTelemetry(
-            window.score,
+            window.shortScore,
             window.startMs,
             window.endMs,
             telemetryEvents,
@@ -699,24 +817,35 @@ export function createRunReplayAnalysis(
             startMs: window.startMs,
             endMs: window.endMs,
             score,
-            title: window.title,
-            hookReason: window.hookReason,
-            payload: window.segments ? { segments: window.segments } : undefined,
+            title: window.recommendedTitleIt,
+            hookReason: window.hook,
+            payload: {
+              ...(window.segments ? { segments: window.segments } : {}),
+              requiresLocalizedRender: window.requiresLocalizedRender,
+              recommendedTitleEn: window.recommendedTitleEn,
+              story: window.story,
+              payoff: window.payoff,
+            },
           };
           llmEvents.push(event);
           return {
             id: deps.id.generate(),
             origin: "replay" as const,
             status: "proposed" as const,
-            title: window.title,
-            description: [window.description, "#Shorts", "#iRacing"].join("\n"),
+            title: window.recommendedTitleIt,
+            description: [
+              window.descriptionIt,
+              window.hook,
+              "#Shorts",
+              "#iRacing",
+            ].join("\n"),
             tags: [...window.tags, "Shorts", "iRacing"].slice(0, 12),
             score,
             provenance: {
               replaySessionId: sessionId,
               startMs: window.startMs,
               endMs: window.endMs,
-              hookReason: window.hookReason,
+              hookReason: window.hook,
               eventType: "llm_moment" as const,
               crop: { mode: "center_vertical" as const, focusX: 0.5 },
               ...(window.segments ? { segments: window.segments } : {}),
@@ -790,6 +919,7 @@ export function createRunReplayAnalysis(
         durationSec,
         events: [...telemetryEvents, ...llmEvents],
         racePackage,
+        raceAnalysis,
         status: "ready",
         updatedAt: deps.clock.now(),
       });
@@ -799,7 +929,7 @@ export function createRunReplayAnalysis(
         source: "av",
         proposedCount: candidates.length,
         telemetryEventCount: telemetryEvents.length,
-        transcriptChars: racePackage.transcript.length,
+        transcriptChars: raceAnalysis.narrativeIt.length,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return candidates;

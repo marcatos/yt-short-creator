@@ -81,17 +81,21 @@ describe("replay pipeline smoke", () => {
     };
 
     let idCounter = 0;
-    const windows = Array.from({ length: 10 }, (_, index) => {
+    const shortCandidates = Array.from({ length: 10 }, (_, index) => {
       const startMs = 5_000 + index * 10_000;
       return {
+        shortScore: 0.91 - index * 0.01,
         startMs,
         endMs: startMs + 15_000,
-        title: index === 0 ? "Monza dive" : `Moment ${index + 1}`,
-        description: "Late brake pass",
+        hook: "Late dive",
+        story: "Late brake pass",
+        payoff: "Overtake completes",
+        recommendedTitleIt: index === 0 ? "Monza dive" : `Moment ${index + 1}`,
+        recommendedTitleEn: index === 0 ? "Monza dive" : `Moment ${index + 1}`,
+        requiresLocalizedRender: false,
         tags: ["iRacing"],
-        score: 0.91 - index * 0.01,
-        hookReason: "Late dive",
-        segments: [],
+        descriptionIt: "Late brake pass",
+        descriptionEn: "Late brake pass",
       };
     });
 
@@ -155,18 +159,38 @@ describe("replay pipeline smoke", () => {
             });
           }
           return JSON.stringify({
-            racePackage: {
+            raceAnalysis: {
               focusCarHint: "pi",
-              transcript: "Gara a Monza",
-              timeline: [],
-              fullVideo: {
-                title: "Monza race",
-                description: "Full race",
-                tags: ["iRacing"],
+              context: {
+                simulator: "iRacing",
+                track: "Monza",
+                car: null,
+                durationSec: 120,
               },
+              results: {
+                qualiResult: null,
+                startPosition: null,
+                finishPosition: null,
+                fieldSize: null,
+                positionsGained: null,
+              },
+              recurringRivals: [],
+              events: [],
+              timeline: [],
+              storylines: [
+                {
+                  kind: "main",
+                  summary: "Gara a Monza",
+                  whyWatch: "Late dive at Monza",
+                },
+              ],
+              mainStoryline: "Gara a Monza",
+              whyWatch: "Late dive at Monza",
+              potentialHooks: ["Monza dive"],
+              shortCandidates,
+              narrativeIt: "Gara a Monza",
               audioTranscript: "",
             },
-            windows,
           });
         },
       },
