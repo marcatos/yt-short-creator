@@ -167,6 +167,9 @@ export function createFfmpegMediaProxy(
       });
 
       const durationSec = await probeMediaDurationSec(mediaPath, ffprobePath);
+      if (durationSec == null || !(durationSec > 0)) {
+        throw new Error(`Unable to probe media duration: ${mediaPath}`);
+      }
 
       // Analysis only needs audio + sampled frames. Skip a full proxy re-encode
       // of huge OBS masters (often 100+ Mbps) — that path is optional/cached later.
