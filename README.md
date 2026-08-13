@@ -32,8 +32,8 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
    Open [http://localhost:3000](http://localhost:3000).
 
    Jobs are enqueued by the UI and executed by the worker process so Next stays
-   responsive on large OBS masters. Optional escape hatch: `WORKERS_IN_NEXT=1`
-   (not recommended — freezes the UI under heavy jobs).
+   responsive on large OBS masters. Do not embed workers in Next — that freezes
+   the UI under heavy jobs.
 
 ## Environment variables
 
