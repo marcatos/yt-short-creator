@@ -191,6 +191,20 @@ describe("SqliteJobQueue", () => {
     connection.connection.close();
   });
 
+  it("wakes claimNext when another process enqueues via SQLite", async () => {
+    const dbPath = createDbPath();
+    const waiter = createQueue(dbPath);
+    const claimPromise = waiter.queue.claimNext();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const enqueuer = createQueue(dbPath);
+    const jobId = await enqueuer.queue.enqueue({ type: "cross_process", payload: {} });
+    enqueuer.connection.close();
+
+    await expect(claimPromise).resolves.toMatchObject({ id: jobId, type: "cross_process" });
+    waiter.connection.close();
+  }, 5_000);
+
   it("claims with a bounded ordered SQL query", async () => {
     const dbPath = createDbPath();
     const sqlite = new Database(dbPath);

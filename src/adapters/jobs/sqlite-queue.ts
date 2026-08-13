@@ -32,12 +32,31 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
     wake = null;
   }
 
+  // Cross-process enqueue (Next.js / CLI) cannot call notifyWaiter in this
+  // process — poll SQLite so workers wake without a daemon restart.
+  const CROSS_PROCESS_POLL_MS = 1_000;
+
   function waitForWork(): Promise<void> {
     if (readQueuedForClaim(deps.db, queueLogger)) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
-      wake = resolve;
+      const done = () => {
+        if (poll) {
+          clearInterval(poll);
+          poll = null;
+        }
+        if (wake === done) {
+          wake = null;
+        }
+        resolve();
+      };
+      let poll: ReturnType<typeof setInterval> | null = setInterval(() => {
+        if (readQueuedForClaim(deps.db, queueLogger)) {
+          done();
+        }
+      }, CROSS_PROCESS_POLL_MS);
+      wake = done;
     });
   }
 
