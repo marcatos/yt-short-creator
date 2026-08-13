@@ -204,6 +204,7 @@ const responseJsonSchema = {
               "recommendedTitleIt",
               "recommendedTitleEn",
               "requiresLocalizedRender",
+              "segments",
               "tags",
               "descriptionIt",
               "descriptionEn",

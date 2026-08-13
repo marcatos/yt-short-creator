@@ -161,7 +161,7 @@ export const shortSegmentAnalysisSchema = z.object({
       }),
     )
     .max(6)
-    .optional(),
+    .default([]),
   tags: z.array(z.string().trim().min(1)).max(12),
   descriptionIt: z.string().trim().min(1),
   descriptionEn: z.string().trim().min(1),
