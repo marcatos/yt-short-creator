@@ -5,6 +5,7 @@ import type {
   RunIdeation,
 } from "@/src/application/run-ideation";
 import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
+import type { RunReplayDirectorCapture } from "@/src/application/run-replay-director-capture";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
@@ -41,6 +42,7 @@ export type HandlerDeps = {
   runClipAnalysis: RunClipAnalysis;
   runReplayAnalysis: RunReplayAnalysis;
   requestReplayCapture: RequestReplayCapture;
+  runReplayDirectorCapture: RunReplayDirectorCapture;
   runIdeation: RunIdeation;
   assembleGeneratePreview: AssembleGeneratePreview;
   candidates: CandidateRepository;
@@ -73,7 +75,9 @@ function singleStep(
   return (ctx) => runStep(ctx, jobType, step, () => fn(ctx));
 }
 
-export function createHandlers(deps: HandlerDeps): JobHandlers {
+export function createHandlers(
+  deps: HandlerDeps,
+): JobHandlers & { director_capture_replay: JobHandler } {
   const handlerLogger = deps.logger.child({ component: "JobHandlers" });
 
   return {
@@ -187,6 +191,34 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
         durationMs: Math.round(performance.now() - startedAt),
       });
     }),
+    director_capture_replay: singleStep(
+      "director_capture_replay",
+      "capture",
+      async (ctx) => {
+        const sessionId = requireStringPayload(ctx.payload, "sessionId");
+        const startedAt = performance.now();
+        handlerLogger.info("director_capture_replay started", {
+          jobId: ctx.jobId,
+          sessionId,
+        });
+        ctx.setProgress(
+          5,
+          "Director mode: seeking incidents/events and recording highlight shots",
+        );
+        const result = await deps.runReplayDirectorCapture({ sessionId });
+        ctx.setProgress(
+          100,
+          `Directed ${result.candidates.length} highlight candidates from ${result.session.mediaPath}`,
+        );
+        handlerLogger.info("director_capture_replay completed", {
+          jobId: ctx.jobId,
+          sessionId,
+          mediaPath: result.session.mediaPath,
+          candidateCount: result.candidates.length,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      },
+    ),
     ideate: singleStep("ideate", "run", async (ctx) => {
       const channelId = requireStringPayload(ctx.payload, "channelId");
       const count = requireNumberPayload(ctx.payload, "count");

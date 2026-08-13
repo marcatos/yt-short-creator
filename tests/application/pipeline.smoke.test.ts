@@ -165,6 +165,9 @@ describe("pipeline smoke path", () => {
       requestReplayCapture: async ({ sessionId }) => {
         throw new Error(`unused capture ${sessionId}`);
       },
+      runReplayDirectorCapture: async ({ sessionId }) => {
+        throw new Error(`unused director ${sessionId}`);
+      },
       runIdeation,
       assembleGeneratePreview: async ({ candidateId }) => {
         const candidate = candidates.get(candidateId);

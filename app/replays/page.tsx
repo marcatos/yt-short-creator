@@ -96,6 +96,18 @@ async function publishFullReplayAction(formData: FormData): Promise<void> {
   revalidatePath("/jobs");
 }
 
+async function directorCaptureAction(formData: FormData): Promise<void> {
+  "use server";
+  const sessionId = String(formData.get("sessionId") ?? "");
+  await getContainer().jobQueue.enqueue({
+    type: "director_capture_replay",
+    payload: { sessionId },
+  });
+  revalidatePath("/replays");
+  revalidatePath("/candidates");
+  revalidatePath("/jobs");
+}
+
 async function manualMomentAction(formData: FormData): Promise<void> {
   "use server";
   const sessionId = String(formData.get("sessionId") ?? "");
@@ -129,11 +141,16 @@ export default async function ReplaysPage() {
           Race sources
         </p>
         <h1 style={{ marginBottom: "0.5rem" }}>Replay sessions</h1>
-        <p style={{ color: "var(--ice-dim)", maxWidth: "42rem" }}>
+        <p style={{ color: "var(--ice-dim)", maxWidth: "46rem" }}>
           Attach an OBS <code>.mkv</code>/<code>.mp4</code> for AV analysis
-          (transcript + YouTube title/description + Shorts), or use a{" "}
-          <code>.rpy</code> with Auto-record. Analyze builds a lightweight proxy
-          and never re-reads the full 2K file once cached.
+          (transcript + YouTube title/description + Shorts). For a{" "}
+          <code>.rpy</code>, use{" "}
+          <strong>Director capture</strong> for ReplayDirector-style highlight
+          shots (seek events, switch cameras, stitch a reel), or{" "}
+          <strong>Auto-record</strong> for a continuous take. Requires{" "}
+          <em>Options → Enable video and screen capture</em> in iRacing. AV
+          analysis builds a lightweight proxy and never re-reads the full 2K
+          file once cached.
         </p>
       </header>
 
@@ -232,6 +249,10 @@ export default async function ReplaysPage() {
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <form action={directorCaptureAction}>
+                    <input type="hidden" name="sessionId" value={session.id} />
+                    <button type="submit">Director capture</button>
+                  </form>
                   <form action={captureReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
                     <button type="submit" disabled={!session.rpyPath}>

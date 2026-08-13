@@ -47,6 +47,9 @@ const noopDeps: HandlerDeps = {
   async requestReplayCapture({ sessionId }) {
     throw new Error(`Replay session not found: ${sessionId}`);
   },
+  async runReplayDirectorCapture({ sessionId }) {
+    throw new Error(`Replay session not found: ${sessionId}`);
+  },
   async runIdeation() {
     return [];
   },

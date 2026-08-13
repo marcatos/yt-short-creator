@@ -6,6 +6,7 @@ import {
   createRepositories,
   type DbRepositories,
 } from "@/src/adapters/db/repositories";
+import { createFfmpegConcat } from "@/src/adapters/ffmpeg/ffmpeg-concat";
 import { createFfmpegRender } from "@/src/adapters/ffmpeg/ffmpeg-render";
 import { createFfmpegFullVideoEncode } from "@/src/adapters/ffmpeg/ffmpeg-full-video-encode";
 import { createFfmpegFullVoMix } from "@/src/adapters/ffmpeg/ffmpeg-full-vo-mix";
@@ -113,6 +114,10 @@ import {
   type GenerateFullVoiceOvers,
 } from "@/src/application/generate-full-voice-overs";
 import { createRecoverQueue } from "@/src/application/recover-queue";
+import {
+  createRunReplayDirectorCapture,
+  type RunReplayDirectorCapture,
+} from "@/src/application/run-replay-director-capture";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -153,6 +158,7 @@ export type AppContainer = {
   requestFullReplayPublish: RequestFullReplayPublish;
   generateShortVoiceOvers: GenerateShortVoiceOvers;
   generateFullVoiceOvers: GenerateFullVoiceOvers;
+  runReplayDirectorCapture: RunReplayDirectorCapture;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -209,9 +215,11 @@ export function createContainer(env: AppEnv): AppContainer {
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const mediaDuration = createFfprobeMediaDuration();
   const ibtTelemetry = createIbtFileTelemetry({ logger });
+  const videoConcat = createFfmpegConcat({ logger });
   const replayCapture = createFsReplayCapture({
     logger,
     videosDir: env.IRACING_VIDEOS_DIR || undefined,
+    concat: videoConcat,
   });
   const llm = createOpenAiCompatibleLlm({
     apiKey: env.LLM_API_KEY,
@@ -384,6 +392,17 @@ export function createContainer(env: AppEnv): AppContainer {
       clock,
       logger,
     }),
+    runReplayDirectorCapture: createRunReplayDirectorCapture({
+      replaySessions: repositories.replaySessions,
+      candidates: repositories.candidates,
+      capture: replayCapture,
+      ibtTelemetry,
+      mediaDuration,
+      id,
+      clock,
+      logger,
+      mediaRoot: env.MEDIA_ROOT,
+    }),
     approveCandidate: createApproveCandidate({
       candidates: repositories.candidates,
       queue: jobQueue,
@@ -475,6 +494,7 @@ export function startWorkers(): void {
       runClipAnalysis: container.runClipAnalysis,
       runReplayAnalysis: container.runReplayAnalysis,
       requestReplayCapture: container.requestReplayCapture,
+      runReplayDirectorCapture: container.runReplayDirectorCapture,
       runIdeation: container.runIdeation,
       assembleGeneratePreview: container.assembleGeneratePreview,
       candidates: container.repositories.candidates,
