@@ -217,9 +217,165 @@
   box-shadow: 0 0 0.8rem #54c99e;
 }
 
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.list-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--silver);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.list-toolbar-meta {
+  color: var(--ice-dim);
+  font-size: 0.75rem;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: center;
+  min-height: 0;
+  padding: 0.55rem 0.7rem;
+}
+
+.job-card.compact-row {
+  padding: 0.55rem 0.7rem;
+}
+
+.compact-thumb {
+  aspect-ratio: 9 / 16;
+  width: 4.2rem;
+  overflow: hidden;
+  background: #1d1d22;
+  display: grid;
+  place-items: center;
+}
+
+.compact-thumb video,
+.compact-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.compact-thumb-fallback {
+  color: var(--ice-dim);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.compact-copy {
+  min-width: 0;
+}
+
+.compact-title {
+  margin: 0.2rem 0 0.15rem !important;
+  font-size: 0.95rem !important;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.85rem;
+  color: var(--silver);
+  font-size: 0.72rem;
+}
+
+.compact-dates strong {
+  color: var(--ice);
+  font-weight: 600;
+}
+
+.compact-progress {
+  height: 0.35rem;
+  margin: 0.45rem 0 0.25rem;
+}
+
+.compact-empty {
+  min-height: 10rem;
+}
+
+.library-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+}
+
+.library-row {
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+}
+
+.library-thumb {
+  aspect-ratio: 16 / 9;
+  width: 7.5rem;
+}
+
+.library-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  color: var(--silver);
+  font-size: 0.74rem;
+}
+
+.library-stats strong {
+  color: var(--ice);
+}
+
+.library-ideas {
+  margin-top: 2.5rem;
+}
+
+.library-footer {
+  margin-top: 2rem;
+}
+
+.library-toolbar {
+  margin-bottom: 0;
+}
+
+.muted {
+  color: var(--ice-dim);
+}
+
 @media (max-width: 760px) {
   .candidate-row {
     grid-template-columns: 4rem minmax(0, 1fr);
+  }
+
+  .compact-row,
+  .job-card.compact-row,
+  .library-row {
+    grid-template-columns: 4rem minmax(0, 1fr);
+  }
+
+  .library-thumb {
+    width: 4.8rem;
+    aspect-ratio: 16 / 9;
+  }
+
+  .score-block,
+  .job-actions {
+    grid-column: 1 / -1;
   }
 
   .score-block {

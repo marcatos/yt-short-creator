@@ -136,6 +136,7 @@ function makeHarness(
       getPublishJobById: async () => null,
       getRenderJobByCandidateId: async () => null,
       getPublishJobByCandidateId: async () => null,
+      listPublishJobsByCandidateIds: async () => [],
     },
     queue: {
       enqueue: async () => "unused",

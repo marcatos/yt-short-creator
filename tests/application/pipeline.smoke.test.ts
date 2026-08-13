@@ -207,6 +207,9 @@ describe("pipeline smoke path", () => {
             publishJobs.find((job) => job.candidateId === candidateId) ?? null
           );
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render(input) {

@@ -114,3 +114,11 @@ function statusGroup(job: JobRecord): number {
   }
   return 2;
 }
+
+export function clearTerminalJobs(db: Queryable): number {
+  const result = db
+    .delete(queueJobs)
+    .where(inArray(queueJobs.status, TERMINAL_STATUSES))
+    .run();
+  return result.changes;
+}

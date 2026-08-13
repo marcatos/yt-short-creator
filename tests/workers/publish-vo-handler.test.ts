@@ -118,6 +118,7 @@ describe("publish_short bilingual VO flow", () => {
         getPublishJobById: async () => null,
         getRenderJobByCandidateId: async () => null,
         getPublishJobByCandidateId: async () => null,
+      listPublishJobsByCandidateIds: async () => [],
       },
       queue: {
         enqueue: async () => "unused",
@@ -268,6 +269,7 @@ describe("publish_short bilingual VO flow", () => {
         getPublishJobById: async () => null,
         getRenderJobByCandidateId: async () => null,
         getPublishJobByCandidateId: async () => null,
+      listPublishJobsByCandidateIds: async () => [],
       },
       queue: {
         enqueue: async () => "unused",

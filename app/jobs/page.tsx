@@ -1,10 +1,22 @@
 import { JobProgress } from "@/app/components/JobProgress";
+import { presentJobList } from "@/src/application/present-job-list";
 import { getContainer } from "@/src/lib/container";
 
 export const dynamic = "force-dynamic";
 
-export default function JobsPage() {
-  const jobs = getContainer().jobQueue.listJobs();
+export default async function JobsPage() {
+  const container = getContainer();
+  const jobs = container.jobQueue.listJobs();
+  const candidateIds = jobs.flatMap((job) => {
+    const id = job.payload.candidateId;
+    return typeof id === "string" ? [id] : [];
+  });
+  const candidates =
+    await container.repositories.candidates.listByIds(candidateIds);
+  const titleByCandidateId = new Map(
+    candidates.map((candidate) => [candidate.id, candidate.title]),
+  );
+
   return (
     <main className="page-shell">
       <header className="page-heading">
@@ -14,24 +26,7 @@ export default function JobsPage() {
         </div>
         <span className="live-indicator">Live polling</span>
       </header>
-      <JobProgress
-        initialJobs={jobs.map((job) => ({
-          id: job.id,
-          type: job.type,
-          candidateId:
-            typeof job.payload.candidateId === "string"
-              ? job.payload.candidateId
-              : null,
-          status: job.status,
-          checkpointStep: job.checkpoint?.step ?? null,
-          position: job.position,
-          progressPct: job.progressPct,
-          message: job.progressMessage,
-          createdAt: job.createdAt.toISOString(),
-          startedAt: job.startedAt?.toISOString() ?? null,
-          finishedAt: job.finishedAt?.toISOString() ?? null,
-        }))}
-      />
+      <JobProgress initialJobs={presentJobList(jobs, titleByCandidateId)} />
     </main>
   );
 }

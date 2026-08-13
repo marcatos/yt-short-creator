@@ -11,6 +11,7 @@ import {
   readQueuedForClaim,
 } from "@/src/adapters/jobs/sqlite-queue-observability";
 import {
+  clearTerminalJobs,
   insertJob,
   listJobsByDisplayOrder,
   loadJobs,
@@ -297,6 +298,12 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
 
     listJobs() {
       return listJobsByDisplayOrder(deps.db);
+    },
+
+    clearTerminalJobs() {
+      const cleared = clearTerminalJobs(deps.db);
+      queueLogger.info("Terminal jobs cleared", { cleared });
+      return cleared;
     },
 
     async recoverOnBoot() {

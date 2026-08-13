@@ -40,6 +40,10 @@ class MemoryCandidateRepository implements CandidateRepository {
     return this.items.find((candidate) => candidate.id === id) ?? null;
   }
 
+  async listByIds(ids: string[]): Promise<ShortCandidate[]> {
+    return this.items.filter((candidate) => ids.includes(candidate.id));
+  }
+
   async list(): Promise<ShortCandidate[]> {
     return this.items;
   }

@@ -281,6 +281,22 @@ export function createInProcessJobQueue(deps: InProcessQueueDeps): InProcessJobQ
       return Array.from(jobs.values()).reverse();
     },
 
+    clearTerminalJobs() {
+      let cleared = 0;
+      for (const [id, job] of jobs) {
+        if (
+          job.status === "succeeded" ||
+          job.status === "failed" ||
+          job.status === "cancelled"
+        ) {
+          jobs.delete(id);
+          cleared += 1;
+        }
+      }
+      queueLogger.info("Terminal jobs cleared", { cleared });
+      return cleared;
+    },
+
     async recoverOnBoot() {
       const requeuedRunning = recoverRunningJobs(
         jobs,

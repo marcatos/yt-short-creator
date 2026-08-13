@@ -15,6 +15,8 @@ function job(id: string, status: string, position: number): JobView {
     id,
     type: "render",
     candidateId: null,
+    title: null,
+    previewUrl: null,
     status,
     position,
     checkpointStep: null,

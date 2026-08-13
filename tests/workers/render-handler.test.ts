@@ -150,6 +150,9 @@ describe("render_short handler", () => {
         async getPublishJobByCandidateId() {
           return null;
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render(input) {

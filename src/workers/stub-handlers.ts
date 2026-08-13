@@ -61,6 +61,9 @@ const noopDeps: HandlerDeps = {
     async getById() {
       return null;
     },
+    async listByIds() {
+      return [];
+    },
     async list() {
       return [];
     },
@@ -79,6 +82,9 @@ const noopDeps: HandlerDeps = {
     },
     async getPublishJobByCandidateId() {
       return null;
+    },
+    async listPublishJobsByCandidateIds() {
+      return [];
     },
   },
   render: {

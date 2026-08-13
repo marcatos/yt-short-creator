@@ -67,6 +67,9 @@ describe("recover queue", () => {
       async getById(id) {
         return candidates.find((item) => item.id === id) ?? null;
       },
+      async listByIds(ids) {
+        return candidates.filter((item) => ids.includes(item.id));
+      },
       async list() {
         return candidates;
       },
@@ -142,6 +145,9 @@ describe("recover queue", () => {
       async getById() {
         return renderingCandidate;
       },
+      async listByIds() {
+        return [renderingCandidate];
+      },
       async list() {
         return [renderingCandidate];
       },
@@ -189,6 +195,9 @@ describe("recover queue", () => {
       async save() {},
       async getById() {
         return renderingCandidate;
+      },
+      async listByIds() {
+        return [renderingCandidate];
       },
       async list() {
         return [renderingCandidate];
@@ -264,6 +273,9 @@ describe("recover queue", () => {
       async save() {},
       async getById() {
         return voiceOverCandidate;
+      },
+      async listByIds() {
+        return [voiceOverCandidate];
       },
       async list() {
         return [voiceOverCandidate];

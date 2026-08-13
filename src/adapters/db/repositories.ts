@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type {
   Channel,
@@ -382,6 +382,18 @@ export class DrizzleCandidateRepository implements CandidateRepository {
     return rows[0] ? toShortCandidate(rows[0]) : null;
   }
 
+  async listByIds(ids: string[]): Promise<ShortCandidate[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(ids)];
+    const rows = await this.db
+      .select()
+      .from(shortCandidates)
+      .where(inArray(shortCandidates.id, uniqueIds));
+    return rows.map(toShortCandidate);
+  }
+
   async list(filter: {
     status?: string;
     origin?: string;
@@ -503,6 +515,20 @@ export class DrizzleJobRepository implements JobRepository {
       .where(eq(publishJobs.candidateId, candidateId))
       .limit(1);
     return rows[0] ? toPublishJob(rows[0]) : null;
+  }
+
+  async listPublishJobsByCandidateIds(
+    candidateIds: string[],
+  ): Promise<PublishJob[]> {
+    if (candidateIds.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(candidateIds)];
+    const rows = await this.db
+      .select()
+      .from(publishJobs)
+      .where(inArray(publishJobs.candidateId, uniqueIds));
+    return rows.map(toPublishJob);
   }
 }
 

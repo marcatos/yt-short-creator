@@ -217,6 +217,9 @@ describe("candidate approval publishing flow", () => {
         async getPublishJobByCandidateId() {
           return null;
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render() {

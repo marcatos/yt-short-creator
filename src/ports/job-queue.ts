@@ -44,5 +44,7 @@ export interface DurableJobQueue extends InspectableJobQueue {
   reorder(orderedIds: string[]): Promise<void>;
   move(jobId: string, to: "top" | "bottom"): Promise<void>;
   getJob(jobId: string): JobRecord | undefined;
+  /** Deletes succeeded/failed/cancelled jobs. Returns how many rows were removed. */
+  clearTerminalJobs(): number;
   recoverOnBoot(): Promise<{ requeuedRunning: number }>;
 }

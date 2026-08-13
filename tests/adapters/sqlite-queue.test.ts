@@ -236,4 +236,25 @@ describe("SqliteJobQueue", () => {
     );
     expect(claimQuery?.params).toEqual(["queued", 1]);
   });
+
+  it("clears only terminal jobs from the queue", async () => {
+    const dbPath = createDbPath();
+    const { connection, queue } = createQueue(dbPath);
+    const activeId = await queue.enqueue({ type: "render", payload: {} });
+    const doneId = await queue.enqueue({ type: "publish", payload: {} });
+    const failedId = await queue.enqueue({ type: "analyze", payload: {} });
+    const cancelledId = await queue.enqueue({ type: "sync", payload: {} });
+    queue.markRunning(activeId);
+    queue.markSucceeded(doneId);
+    queue.markFailed(failedId, new Error("boom"));
+    queue.markCancelled(cancelledId);
+
+    expect(queue.clearTerminalJobs()).toBe(3);
+    expect(queue.getJob(activeId)?.status).toBe("running");
+    expect(queue.getJob(doneId)).toBeUndefined();
+    expect(queue.getJob(failedId)).toBeUndefined();
+    expect(queue.getJob(cancelledId)).toBeUndefined();
+    expect(queue.listJobs().map((job) => job.id)).toEqual([activeId]);
+    connection.close();
+  });
 });

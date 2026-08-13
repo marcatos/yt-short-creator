@@ -149,6 +149,9 @@ function makeHandlers(options: {
       async getPublishJobByCandidateId() {
         return null;
       },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
     },
     render: {
       async render(input) {
@@ -633,6 +636,9 @@ describe("download_source_video handler checkpoints", () => {
         async getPublishJobByCandidateId() {
           return null;
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render(input) {
@@ -819,6 +825,9 @@ describe("download_source_video handler checkpoints", () => {
         async getPublishJobByCandidateId() {
           return null;
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render(input) {

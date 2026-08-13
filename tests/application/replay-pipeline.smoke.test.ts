@@ -289,6 +289,9 @@ describe("replay pipeline smoke", () => {
             publishJobs.find((job) => job.candidateId === candidateId) ?? null
           );
         },
+    async listPublishJobsByCandidateIds() {
+      return [];
+    },
       },
       render: {
         async render(input) {

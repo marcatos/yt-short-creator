@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+
+import { formatListDateTime } from "@/app/lib/format";
 
 export type JobView = {
   id: string;
   type: string;
   candidateId: string | null;
+  title: string | null;
+  previewUrl: string | null;
   status: string;
   checkpointStep: string | null;
   position: number;
@@ -18,17 +22,23 @@ export type JobView = {
 };
 
 type JobAction = "pause" | "resume" | "cancel" | "top" | "bottom";
-type JobPayload = Omit<JobView, "progressPct"> & {
+type JobPayload = Omit<JobView, "progressPct" | "title" | "previewUrl"> & {
   progressPct?: number;
   pct?: number;
+  title?: string | null;
+  previewUrl?: string | null;
 };
 
 const POLLED_STATUSES = new Set(["queued", "running", "paused"]);
 const REORDERABLE_STATUSES = new Set(["queued", "paused"]);
+const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
+const HIDE_COMPLETED_KEY = "jobs.hideCompleted";
 
 export function normalizeJob(job: JobPayload): JobView {
   return {
     ...job,
+    title: job.title ?? null,
+    previewUrl: job.previewUrl ?? null,
     progressPct:
       typeof job.progressPct === "number"
         ? job.progressPct
@@ -78,12 +88,44 @@ function eta(job: JobView): string | null {
   return `${Math.max(1, Math.round(remaining / 1000))}s ETA`;
 }
 
+function endDateLabel(job: JobView): { label: string; value: string } {
+  if (job.finishedAt) {
+    return { label: "Fine", value: formatListDateTime(job.finishedAt) };
+  }
+  if (job.status === "running" && job.startedAt) {
+    return { label: "Avviato", value: formatListDateTime(job.startedAt) };
+  }
+  return { label: "Fine", value: "—" };
+}
+
+function readHideCompleted(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(HIDE_COMPLETED_KEY) === "1";
+}
+
 export function JobProgress({ initialJobs }: { initialJobs: JobView[] }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [draggedJobId, setDraggedJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hideCompleted, setHideCompleted] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const shouldPoll = jobs.some((job) => POLLED_STATUSES.has(job.status));
+
+  useEffect(() => {
+    setHideCompleted(readHideCompleted());
+  }, []);
+
+  const visibleJobs = useMemo(
+    () =>
+      hideCompleted
+        ? jobs.filter((job) => !TERMINAL_STATUSES.has(job.status))
+        : jobs,
+    [hideCompleted, jobs],
+  );
+  const terminalCount = jobs.filter((job) =>
+    TERMINAL_STATUSES.has(job.status),
+  ).length;
 
   const refreshJobs = useCallback(async () => {
     const response = await fetch("/api/jobs", { cache: "no-store" });
@@ -120,6 +162,41 @@ export function JobProgress({ initialJobs }: { initialJobs: JobView[] }) {
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [refreshJobs, shouldPoll]);
+
+  function toggleHideCompleted() {
+    setHideCompleted((current) => {
+      const next = !current;
+      window.localStorage.setItem(HIDE_COMPLETED_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
+
+  async function clearTerminal() {
+    if (
+      !window.confirm(
+        `Eliminare definitivamente ${terminalCount} job completati/falliti/cancellati dalla coda?`,
+      )
+    ) {
+      return;
+    }
+    setClearing(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/jobs/clear-terminal", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(`Clear failed (${response.status})`);
+      }
+      await refreshJobs();
+    } catch (clearError) {
+      setError(
+        clearError instanceof Error ? clearError.message : "Clear failed",
+      );
+    } finally {
+      setClearing(false);
+    }
+  }
 
   async function postAction(jobId: string, action: JobAction) {
     setPendingJobId(jobId);
@@ -178,98 +255,141 @@ export function JobProgress({ initialJobs }: { initialJobs: JobView[] }) {
     }
   }
 
-  if (jobs.length === 0) {
-    return (
-      <section className="empty-panel">
-        <span className="stripe-mark" aria-hidden="true" />
-        <h2>No jobs yet</h2>
-        <p>Approved candidates will appear here while rendering and publishing.</p>
-      </section>
-    );
-  }
-
   return (
     <div className="jobs-list">
+      <div className="list-toolbar">
+        <label className="list-toggle">
+          <input
+            checked={hideCompleted}
+            onChange={toggleHideCompleted}
+            type="checkbox"
+          />
+          Nascondi completati
+        </label>
+        <button
+          className="button button-secondary"
+          disabled={clearing || terminalCount === 0}
+          onClick={() => void clearTerminal()}
+          type="button"
+        >
+          {clearing ? "Pulizia…" : `Pulisci coda (${terminalCount})`}
+        </button>
+      </div>
       {error ? (
         <p className="job-error" role="alert">
           {error}
         </p>
       ) : null}
-      {jobs.map((job) => {
+      {jobs.length === 0 ? (
+        <section className="empty-panel">
+          <span className="stripe-mark" aria-hidden="true" />
+          <h2>No jobs yet</h2>
+          <p>
+            Approved candidates will appear here while rendering and publishing.
+          </p>
+        </section>
+      ) : null}
+      {jobs.length > 0 && visibleJobs.length === 0 ? (
+        <section className="empty-panel compact-empty">
+          <h2>Coda attiva vuota</h2>
+          <p>I job completati sono nascosti. Disattiva il filtro per rivederli.</p>
+        </section>
+      ) : null}
+      {visibleJobs.map((job) => {
         const reorderable = REORDERABLE_STATUSES.has(job.status);
+        const end = endDateLabel(job);
+        const heading =
+          job.title || job.message || "Waiting for worker";
         return (
-        <article
-          className={`job-card${draggedJobId === job.id ? " is-dragging" : ""}`}
-          key={job.id}
-          draggable={reorderable}
-          onDragStart={(event) => {
-            if (!reorderable) return;
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("text/plain", job.id);
-            setDraggedJobId(job.id);
-          }}
-          onDragEnd={() => setDraggedJobId(null)}
-          onDragOver={(event) => {
-            if (reorderable && draggedJobId && draggedJobId !== job.id) {
+          <article
+            className={`job-card compact-row${draggedJobId === job.id ? " is-dragging" : ""}`}
+            key={job.id}
+            draggable={reorderable}
+            onDragStart={(event) => {
+              if (!reorderable) return;
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", job.id);
+              setDraggedJobId(job.id);
+            }}
+            onDragEnd={() => setDraggedJobId(null)}
+            onDragOver={(event) => {
+              if (reorderable && draggedJobId && draggedJobId !== job.id) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }
+            }}
+            onDrop={(event) => {
               event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            const draggedId =
-              draggedJobId || event.dataTransfer.getData("text/plain");
-            if (reorderable && draggedId && draggedId !== job.id) {
-              void reorder(draggedId, job.id);
-            }
-          }}
-        >
-          <div className="job-heading">
-            <div>
-              <p className="eyebrow">{job.type.replaceAll("_", " ")}</p>
-              <h2>{job.message || "Waiting for worker"}</h2>
-              {job.checkpointStep ? (
-                <p className="job-checkpoint">
-                  {job.status} @ {job.checkpointStep}
-                </p>
-              ) : null}
-            </div>
-            <span className={`chip status-${job.status}`}>{job.status}</span>
-          </div>
-          <div
-            className="progress-track"
-            role="progressbar"
-            aria-valuenow={job.progressPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={`${job.type} progress`}
+              const draggedId =
+                draggedJobId || event.dataTransfer.getData("text/plain");
+              if (reorderable && draggedId && draggedId !== job.id) {
+                void reorder(draggedId, job.id);
+              }
+            }}
           >
-            <span style={{ width: `${job.progressPct}%` }} />
-          </div>
-          <div className="job-meta">
-            <strong>{job.progressPct}%</strong>
-            <span>{duration(job)}</span>
-            {eta(job) ? <span>{eta(job)}</span> : null}
-            {job.candidateId ? (
-              <Link href={`/candidates/${job.candidateId}`}>Candidate</Link>
-            ) : null}
-          </div>
-          {jobActionsFor(job.status).length > 0 ? (
-            <div className="job-actions" aria-label={`Controls for ${job.type}`}>
-              {jobActionsFor(job.status).map((action) => (
-                <button
-                  className="job-action"
-                  disabled={pendingJobId === job.id}
-                  key={action}
-                  onClick={() => void postAction(job.id, action)}
-                  type="button"
-                >
-                  {action}
-                </button>
-              ))}
+            <div className="compact-thumb" aria-hidden={!job.previewUrl}>
+              {job.previewUrl ? (
+                <video muted playsInline preload="metadata" src={job.previewUrl} />
+              ) : (
+                <span className="compact-thumb-fallback">JOB</span>
+              )}
             </div>
-          ) : null}
-        </article>
+            <div className="compact-copy">
+              <div className="chip-row">
+                <span className="chip">{job.type.replaceAll("_", " ")}</span>
+                <span className={`chip status-${job.status}`}>{job.status}</span>
+              </div>
+              <h2 className="compact-title">{heading}</h2>
+              <div className="compact-dates">
+                <span>
+                  Creato <strong>{formatListDateTime(job.createdAt)}</strong>
+                </span>
+                <span>
+                  {end.label} <strong>{end.value}</strong>
+                </span>
+                <span>{duration(job)}</span>
+                {eta(job) ? <span>{eta(job)}</span> : null}
+                {job.candidateId ? (
+                  <Link href={`/candidates/${job.candidateId}`}>Candidate</Link>
+                ) : null}
+              </div>
+              <div
+                className="progress-track compact-progress"
+                role="progressbar"
+                aria-valuenow={job.progressPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${job.type} progress`}
+              >
+                <span style={{ width: `${job.progressPct}%` }} />
+              </div>
+              <div className="job-meta">
+                <strong>{job.progressPct}%</strong>
+                {job.checkpointStep ? (
+                  <span>
+                    {job.status} @ {job.checkpointStep}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            {jobActionsFor(job.status).length > 0 ? (
+              <div className="job-actions" aria-label={`Controls for ${job.type}`}>
+                {jobActionsFor(job.status).map((action) => (
+                  <button
+                    className="job-action"
+                    disabled={pendingJobId === job.id}
+                    key={action}
+                    onClick={() => void postAction(job.id, action)}
+                    type="button"
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="job-actions" />
+            )}
+          </article>
         );
       })}
     </div>

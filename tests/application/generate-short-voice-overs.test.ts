@@ -26,6 +26,9 @@ class MemoryCandidates implements CandidateRepository {
   async getById(id: string) {
     return this.candidate.id === id ? this.candidate : null;
   }
+  async listByIds(ids: string[]) {
+    return ids.includes(this.candidate.id) ? [this.candidate] : [];
+  }
   async list() {
     return [this.candidate];
   }
@@ -421,6 +424,7 @@ describe("generateShortVoiceOvers", () => {
       save: async (value) => {
         saved = value;
       },
+      listByIds: async () => [],
       list: async () => [],
     };
     const generate = createGenerateShortVoiceOvers({

@@ -11,4 +11,7 @@ export interface JobRepository {
   getPublishJobByCandidateId(
     candidateId: string,
   ): Promise<PublishJob | null>;
+  listPublishJobsByCandidateIds(
+    candidateIds: string[],
+  ): Promise<PublishJob[]>;
 }
