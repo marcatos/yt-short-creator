@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "workers": "tsx scripts/run-workers.ts",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",

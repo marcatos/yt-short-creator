@@ -19,7 +19,9 @@ export function createDb(dbPath: string): DbConnection {
   fs.mkdirSync(dir, { recursive: true });
 
   const sqlite = new Database(dbPath);
+  // WAL + busy timeout: Next (enqueue) and `npm run workers` share one DB file.
   sqlite.pragma("journal_mode = WAL");
+  sqlite.pragma("busy_timeout = 5000");
   sqlite.pragma("foreign_keys = ON");
 
   const db = drizzle(sqlite, { schema });

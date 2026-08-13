@@ -21,14 +21,19 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 
 2. Set `BRAND_ROOT` to the absolute path of your `smarcato42-racing` checkout (see `.env.example`).
 
-3. Install dependencies and run the dev server:
+3. Install dependencies, then run **two** processes (UI + workers):
 
    ```bash
    npm install
-   npm run dev
+   npm run dev        # Terminal A — localhost UI only
+   npm run workers    # Terminal B — FFmpeg / YouTube / analysis jobs
    ```
 
    Open [http://localhost:3000](http://localhost:3000).
+
+   Jobs are enqueued by the UI and executed by the worker process so Next stays
+   responsive on large OBS masters. Optional escape hatch: `WORKERS_IN_NEXT=1`
+   (not recommended — freezes the UI under heavy jobs).
 
 ## Environment variables
 
@@ -65,7 +70,8 @@ Run this checklist against a test channel before accepting a release:
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start Next.js dev server |
+| `npm run dev` | Start Next.js UI (does **not** run heavy job workers) |
+| `npm run workers` | Dedicated worker process for render/upload/analysis |
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm test` | Run Vitest |
