@@ -19,6 +19,8 @@ export type JobView = {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  waitingForYoutubeDailyLimit?: boolean;
+  youtubeDailyLimitRetryAfter?: string | null;
 };
 
 type JobAction = "pause" | "resume" | "cancel" | "top" | "bottom";
@@ -45,6 +47,8 @@ export function normalizeJob(job: JobPayload): JobView {
         : typeof job.pct === "number"
           ? job.pct
           : 0,
+    waitingForYoutubeDailyLimit: Boolean(job.waitingForYoutubeDailyLimit),
+    youtubeDailyLimitRetryAfter: job.youtubeDailyLimitRetryAfter ?? null,
   };
 }
 
@@ -86,6 +90,13 @@ function eta(job: JobView): string | null {
   const elapsed = Date.now() - new Date(job.startedAt).getTime();
   const remaining = elapsed * ((100 - job.progressPct) / job.progressPct);
   return `${Math.max(1, Math.round(remaining / 1000))}s ETA`;
+}
+
+function statusLabel(job: JobView): string {
+  if (job.waitingForYoutubeDailyLimit) {
+    return "waiting for YouTube daily upload limit";
+  }
+  return job.status;
 }
 
 function endDateLabel(job: JobView): { label: string; value: string } {
@@ -337,7 +348,9 @@ export function JobProgress({ initialJobs }: { initialJobs: JobView[] }) {
             <div className="compact-copy">
               <div className="chip-row">
                 <span className="chip">{job.type.replaceAll("_", " ")}</span>
-                <span className={`chip status-${job.status}`}>{job.status}</span>
+                <span className={`chip status-${job.status}`}>
+                  {statusLabel(job)}
+                </span>
               </div>
               <h2 className="compact-title">{heading}</h2>
               <div className="compact-dates">

@@ -70,13 +70,18 @@ describe("Jobs UI model", () => {
       createElement(JobProgress, {
         initialJobs: [
           { ...job("running", "running", 0), checkpointStep: "render" },
-          job("paused", "paused", 1),
+          {
+            ...job("paused", "paused", 1),
+            waitingForYoutubeDailyLimit: true,
+            youtubeDailyLimitRetryAfter: "2026-08-13T15:00:00.000Z",
+          },
           job("queued", "queued", 2),
         ],
       }),
     );
 
     expect(markup).toContain("running @ render");
+    expect(markup).toContain("waiting for YouTube daily upload limit");
     expect(markup).toContain(">pause<");
     expect(markup).toContain(">resume<");
     expect(markup).toContain(">top<");

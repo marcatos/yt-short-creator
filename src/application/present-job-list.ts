@@ -1,4 +1,7 @@
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
+import {
+  isYoutubeDailyUploadLimitCheckpoint,
+} from "@/src/domain/youtube-upload-limit";
 
 export type JobListItem = {
   id: string;
@@ -14,6 +17,8 @@ export type JobListItem = {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  waitingForYoutubeDailyLimit: boolean;
+  youtubeDailyLimitRetryAfter: string | null;
 };
 
 function candidateIdFromPayload(
@@ -36,6 +41,12 @@ export function presentJobListItem(
   const title =
     (candidateId ? titleByCandidateId.get(candidateId) : null) ??
     titleFromPayload(job.payload);
+  const limitCheckpoint = isYoutubeDailyUploadLimitCheckpoint(job.checkpoint?.data)
+    ? job.checkpoint.data
+    : null;
+  const waitingForYoutubeDailyLimit =
+    Boolean(limitCheckpoint) &&
+    (job.status === "paused" || job.status === "queued");
 
   return {
     id: job.id,
@@ -47,10 +58,18 @@ export function presentJobListItem(
     checkpointStep: job.checkpoint?.step ?? null,
     position: job.position,
     progressPct: job.progressPct,
-    message: job.progressMessage,
+    message: waitingForYoutubeDailyLimit
+      ? `Waiting for YouTube daily upload limit${
+          limitCheckpoint
+            ? ` (retry after ${limitCheckpoint.retryAfter})`
+            : ""
+        }`
+      : job.progressMessage,
     createdAt: job.createdAt.toISOString(),
     startedAt: job.startedAt?.toISOString() ?? null,
     finishedAt: job.finishedAt?.toISOString() ?? null,
+    waitingForYoutubeDailyLimit,
+    youtubeDailyLimitRetryAfter: limitCheckpoint?.retryAfter ?? null,
   };
 }
 
