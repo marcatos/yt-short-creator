@@ -100,8 +100,13 @@ export function createPublishFullReplayHandler(
         const session = await deps.replaySessions.getById(sessionId);
         if (!session) throw new Error(`Replay session not found: ${sessionId}`);
         const packageMeta = session.racePackage?.fullVideo;
-        if (!packageMeta?.title) {
-          throw new Error("Missing racePackage.fullVideo metadata");
+        const analysisTitle = session.raceAnalysis?.potentialHooks[0];
+        const title =
+          packageMeta?.title ||
+          analysisTitle ||
+          session.raceAnalysis?.mainStoryline;
+        if (!title) {
+          throw new Error("Missing race analysis / racePackage metadata");
         }
         const filePath = encodePath || session.fullVideoEncodePath;
         if (!filePath) {
@@ -126,11 +131,11 @@ export function createPublishFullReplayHandler(
           deps.clock.now(),
         );
         const description = [
-          packageMeta.description,
+          packageMeta?.description || session.raceAnalysis?.whyWatch || "",
           "",
-          session.racePackage?.transcript
-            ? `---\nTranscript di gara\n${session.racePackage.transcript}`
-            : null,
+          session.raceAnalysis?.narrativeIt ||
+            session.racePackage?.transcript ||
+            null,
         ]
           .filter(Boolean)
           .join("\n");
@@ -138,12 +143,13 @@ export function createPublishFullReplayHandler(
         const result = await deps.upload.upload({
           accessToken,
           filePath,
-          title: packageMeta.title.slice(0, 100),
+          title: title.slice(0, 100),
           description,
-          tags: packageMeta.tags.slice(0, 15),
+          tags: (packageMeta?.tags ?? ["iRacing", "simracing"]).slice(0, 15),
           scheduledAt: null,
           privacy,
           contentKind: "full",
+          defaultLanguage: "it",
         });
 
         await deps.replaySessions.save({

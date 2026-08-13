@@ -1,22 +1,14 @@
 import path from "node:path";
 
-import type { ReplaySession, YoutubePrivacy } from "@/src/domain/entities";
+import type { YoutubePrivacy } from "@/src/domain/entities";
 import type {
   VoiceOverLanguage,
   VoiceOverPackage,
 } from "@/src/domain/voice-over";
-import {
-  createVoiceOverPublishSidecar,
-  loadVoiceOverPublishSidecar,
-  priorFullVoiceOverJobCheckpoints,
-  resolveVoiceOverUploadCheckpoint,
-  uploadCheckpointFromJob,
-  type VoiceOverUploadCheckpoint,
-} from "@/src/application/voice-over-publish-checkpoint";
+import type { PackageFullDeliveryAssets } from "@/src/application/package-full-delivery-assets";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
 import type { ClockPort } from "@/src/ports/clock";
 import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
-import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
@@ -37,230 +29,52 @@ export type FullVoiceOverPublishDeps = {
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
   captions?: YouTubeCaptionsPort;
-  queue?: InspectableJobQueue;
   generateFullVoiceOvers?: GenerateFullVoiceOvers;
   fullVoMix?: FullVoMixPort;
+  packageFullDeliveryAssets?: PackageFullDeliveryAssets;
   clock: ClockPort;
+  /** Unused by single-master path; kept for handler typing compatibility. */
+  queue?: unknown;
 };
 
 const JOB_TYPE = "publish_full_replay";
 const LANGUAGES: VoiceOverLanguage[] = ["it", "en"];
 
-/** Progress bands per language so the pair reports one continuous bar. */
-const LANGUAGE_PROGRESS: Record<VoiceOverLanguage, { mix: number; upload: number; captions: number }> = {
-  it: { mix: 62, upload: 70, captions: 78 },
-  en: { mix: 82, upload: 90, captions: 100 },
-};
-
 function packageFor(
-  session: ReplaySession,
+  voiceOvers: VoiceOverPackage[] | null | undefined,
   language: VoiceOverLanguage,
 ): VoiceOverPackage {
-  const voiceOver = (session.fullVoiceOvers ?? []).find(
+  const voiceOver = (voiceOvers ?? []).find(
     (item) => item.language === language,
   );
   if (!voiceOver) {
-    throw new Error(
-      `Full-race voice-over package "${language}" not found for session: ${session.id}`,
-    );
+    throw new Error(`Full-race voice-over package "${language}" not found`);
   }
   return voiceOver;
 }
 
-async function requireSession(
-  deps: FullVoiceOverPublishDeps,
-  sessionId: string,
-): Promise<ReplaySession> {
-  const session = await deps.replaySessions.getById(sessionId);
-  if (!session) throw new Error(`Replay session not found: ${sessionId}`);
-  return session;
-}
-
-/** Narration length drives the duck release so the race is not left 12 dB down. */
-function narrationDurationMs(voiceOver: VoiceOverPackage): number | undefined {
-  const lastWord = voiceOver.words[voiceOver.words.length - 1];
-  return lastWord && lastWord.endMs > 0 ? lastWord.endMs : undefined;
-}
-
-function recoveredPackage(input: {
-  checkpoint: VoiceOverUploadCheckpoint;
-  voiceProfile: string;
-  audioPath: string;
-}): VoiceOverPackage {
-  const parsedAudioPath = path.parse(input.audioPath);
-  return {
-    language: input.checkpoint.language,
-    script: "",
-    title: "",
-    description: "",
-    voiceProfile: input.voiceProfile,
-    audioPath: input.audioPath,
-    words: [],
-    srtPath: path.join(
-      parsedAudioPath.dir,
-      `${parsedAudioPath.name}.srt`,
-    ),
-    assPath: null,
-    scriptHash: input.checkpoint.scriptHash,
-    youtubeVideoId: input.checkpoint.youtubeVideoId,
-    ...(input.checkpoint.youtubeCaptionId
-      ? { youtubeCaptionId: input.checkpoint.youtubeCaptionId }
-      : {}),
-  };
-}
-
-/** Reloads the session so concurrent writes are not clobbered. */
-async function patchVoiceOver(
-  deps: FullVoiceOverPublishDeps,
-  sessionId: string,
-  language: VoiceOverLanguage,
-  patch: Partial<VoiceOverPackage>,
-  sessionPatch: Partial<ReplaySession> = {},
-): Promise<ReplaySession> {
-  const fresh = await requireSession(deps, sessionId);
-  packageFor(fresh, language);
-  const updated: ReplaySession = {
-    ...fresh,
-    ...sessionPatch,
-    fullVoiceOvers: (fresh.fullVoiceOvers ?? []).map((voiceOver) =>
-      voiceOver.language === language ? { ...voiceOver, ...patch } : voiceOver,
-    ),
-    updatedAt: deps.clock.now(),
-  };
-  await deps.replaySessions.save(updated);
-  return updated;
-}
-
+/**
+ * Single-master publish: one YouTube video + localizations + captions.
+ * Mixed IT/EN audio tracks stay on disk for Studio multi-audio attachment.
+ */
 export async function runFullVoiceOverPublish(
   ctx: JobHandlerContext,
   deps: FullVoiceOverPublishDeps,
   input: { sessionId: string; privacy: YoutubePrivacy; encodePath: string },
 ): Promise<void> {
   const { sessionId, privacy } = input;
-  const log = deps.logger.child({ component: "PublishFullReplayVoiceOver" });
-  const generate = deps.generateFullVoiceOvers;
-  const mixer = deps.fullVoMix;
-  if (!generate || !mixer) {
-    throw new Error(
-      "Full-race voice-over publishing requires the voice-over generator and mixer adapters",
-    );
-  }
-  const voRenderPath = deps.mediaStore.fullReplayVoRenderPath?.bind(
-    deps.mediaStore,
-  );
-  const voPath = deps.mediaStore.fullReplayVoPath?.bind(deps.mediaStore);
-  if (!voRenderPath) {
-    throw new Error("Media store does not support full-race voice-over renders");
-  }
-  if (!voPath) {
-    throw new Error("Media store does not support full-race voice-over audio");
-  }
-  const appSettings = await deps.settings?.get();
-  const priorCheckpoints = priorFullVoiceOverJobCheckpoints({
-    jobs: deps.queue?.listJobs() ?? [],
-    currentJobId: ctx.jobId,
-    sessionId,
+  const log = deps.logger.child({
+    component: "PublishFullReplaySingleMaster",
   });
-
-  const beforeGeneration = await requireSession(deps, sessionId);
-  const sidecars = await Promise.all(
-    LANGUAGES.map(async (language) => [
-      language,
-      await loadVoiceOverPublishSidecar({
-        ownerId: sessionId,
-        language,
-        sidecarPath: deps.mediaStore.fullVoPublishCheckpointPath?.(
-          sessionId,
-          language,
-        ),
-        mediaStore: deps.mediaStore,
-        logger: log,
-      }),
-    ] as const),
-  );
-  const recoveredByLanguage = new Map(sidecars);
-  let restoredCount = 0;
-  const restoredPackages = [...(beforeGeneration.fullVoiceOvers ?? [])];
-  for (const language of LANGUAGES) {
-    const existingIndex = restoredPackages.findIndex(
-      (voiceOver) => voiceOver.language === language,
+  const generate = deps.generateFullVoiceOvers;
+  const packageAssets = deps.packageFullDeliveryAssets;
+  if (!generate || !packageAssets) {
+    throw new Error(
+      "Single-master publish requires VO generator and delivery packaging",
     );
-    const existing =
-      existingIndex === -1 ? undefined : restoredPackages[existingIndex];
-    const durableCandidates = [
-      recoveredByLanguage.get(language),
-      uploadCheckpointFromJob(ctx.checkpoint, language),
-      ...priorCheckpoints.map((checkpoint) =>
-        uploadCheckpointFromJob(checkpoint, language),
-      ),
-    ].filter(
-      (checkpoint): checkpoint is VoiceOverUploadCheckpoint =>
-        checkpoint !== null && checkpoint !== undefined,
-    );
-    if (existing?.youtubeVideoId) continue;
-    const durable = existing
-      ? durableCandidates.find(
-          (checkpoint) => checkpoint.scriptHash === existing.scriptHash,
-        )
-      : durableCandidates[0];
-    if (!durable) {
-      const stale = durableCandidates[0];
-      if (!existing || !stale) continue;
-      log.warn("Ignored full-race upload checkpoint for a different script", {
-        sessionId,
-        language,
-        packageScriptHash: existing.scriptHash,
-        checkpointScriptHash: stale.scriptHash,
-      });
-      continue;
-    }
-    const restored = existing
-      ? {
-          ...existing,
-          youtubeVideoId: durable.youtubeVideoId,
-          ...(durable.youtubeCaptionId
-            ? { youtubeCaptionId: durable.youtubeCaptionId }
-            : {}),
-        }
-      : recoveredPackage({
-          checkpoint: durable,
-          voiceProfile: appSettings?.brandVoiceProfile ?? "",
-          audioPath: voPath(sessionId, language),
-        });
-    if (existingIndex === -1) restoredPackages.push(restored);
-    else restoredPackages[existingIndex] = restored;
-    restoredCount += 1;
-    log.info("Restored full-race voice-over before generation", {
-      sessionId,
-      language,
-      scriptHash: durable.scriptHash,
-      youtubeVideoId: durable.youtubeVideoId,
-    });
-  }
-  if (restoredCount > 0) {
-    await deps.replaySessions.save({
-      ...beforeGeneration,
-      fullVoiceOvers: restoredPackages,
-      updatedAt: deps.clock.now(),
-    });
   }
 
   await runStep(ctx, JOB_TYPE, "voice_over", async () => {
-    const settled = (await requireSession(deps, sessionId)).fullVoiceOvers ?? [];
-    if (
-      LANGUAGES.every((language) =>
-        settled.some(
-          (voiceOver) =>
-            voiceOver.language === language && voiceOver.youtubeVideoId,
-        ),
-      )
-    ) {
-      ctx.setProgress(58, "Reusing published IT/EN narration");
-      log.info("Full-race voice-over generation skipped (all published)", {
-        sessionId,
-      });
-      return;
-    }
     ctx.setProgress(58, "Writing and synthesizing IT/EN narration");
     const packages = await generate({ sessionId });
     log.info("Full-race voice-over packages ready", {
@@ -269,214 +83,194 @@ export async function runFullVoiceOverPublish(
     });
   });
 
-  for (const language of LANGUAGES) {
-    const progress = LANGUAGE_PROGRESS[language];
-    const label = language.toUpperCase();
-    const current = await requireSession(deps, sessionId);
-    const sidecar = createVoiceOverPublishSidecar({
-      ownerId: sessionId,
-      voiceOver: packageFor(current, language),
-      sidecarPath: deps.mediaStore.fullVoPublishCheckpointPath?.(
-        sessionId,
-        language,
-      ),
-      mediaStore: deps.mediaStore,
-      logger: log,
-    });
-    const recovered = resolveVoiceOverUploadCheckpoint(
-      packageFor(current, language),
-      await sidecar.load(),
-      ctx.checkpoint,
-      priorCheckpoints,
-    );
-    if (recovered?.youtubeVideoId) {
-      await patchVoiceOver(
-        deps,
-        sessionId,
-        language,
-        {
-          youtubeVideoId: recovered.youtubeVideoId,
-          ...(recovered.youtubeCaptionId
-            ? { youtubeCaptionId: recovered.youtubeCaptionId }
-            : {}),
-        },
-        language === "it" && !current.fullVideoYoutubeId
-          ? { fullVideoYoutubeId: recovered.youtubeVideoId }
-          : {},
+  await runStep(ctx, JOB_TYPE, "package_assets", async () => {
+    ctx.setProgress(65, "Packaging master + multi-language audio assets");
+    const session = await deps.replaySessions.getById(sessionId);
+    if (!session?.raceAnalysis) {
+      throw new Error(
+        "Race analysis required before packaging delivery assets",
       );
-      log.info("Recovered full-race voice-over upload from checkpoint", {
-        sessionId,
-        language,
-        youtubeVideoId: recovered.youtubeVideoId,
-      });
     }
+    if (!session.fullVoiceOvers?.length) {
+      throw new Error("Voice-overs missing before packaging");
+    }
+    const bundle = await packageAssets({
+      sessionId,
+      masterSourcePath: input.encodePath,
+      voiceOvers: session.fullVoiceOvers,
+      analysis: session.raceAnalysis,
+    });
+    log.info("Delivery assets ready", {
+      sessionId,
+      masterVideoPath: bundle.masterVideoPath,
+      checklist: bundle.metadata.manualStudioChecklist.length,
+    });
+  });
 
-    await runStep(ctx, JOB_TYPE, `mix_${language}`, async () => {
-      const voiceOver = packageFor(
-        await requireSession(deps, sessionId),
-        language,
+  await runStep(ctx, JOB_TYPE, "upload", async () => {
+    const session = await deps.replaySessions.getById(sessionId);
+    if (!session) throw new Error(`Replay session not found: ${sessionId}`);
+    if (session.fullVideoYoutubeId) {
+      ctx.setProgress(
+        80,
+        `Already on YouTube as ${session.fullVideoYoutubeId}`,
       );
-      // A recovered upload means the narrated encode already reached YouTube;
-      // re-mixing a 40-minute race for it would burn hours for nothing.
-      if (voiceOver.youtubeVideoId) {
+      return;
+    }
+    const it = packageFor(session.fullVoiceOvers, "it");
+    const masterPath =
+      session.deliveryAssets?.masterVideoPath ?? input.encodePath;
+    ctx.setProgress(72, "Uploading language-neutral master to YouTube");
+    const accessToken = await currentYouTubeAccessToken(
+      deps.auth,
+      deps.clock.now(),
+    );
+    const result = await deps.upload.upload({
+      accessToken,
+      filePath: masterPath,
+      title: it.title.slice(0, 100),
+      description: it.description,
+      tags: (session.racePackage?.fullVideo.tags ?? ["iRacing", "simracing"]).slice(
+        0,
+        15,
+      ),
+      scheduledAt: null,
+      privacy,
+      contentKind: "full",
+      defaultLanguage: "it",
+      defaultAudioLanguage: "it",
+    });
+    await deps.replaySessions.save({
+      ...session,
+      fullVideoYoutubeId: result.youtubeVideoId,
+      fullVideoPrivacy: privacy,
+      fullVideoPublishedAt: deps.clock.now(),
+      fullVoiceOvers: (session.fullVoiceOvers ?? []).map((voiceOver) =>
+        voiceOver.language === "it"
+          ? { ...voiceOver, youtubeVideoId: result.youtubeVideoId }
+          : voiceOver,
+      ),
+      updatedAt: deps.clock.now(),
+    });
+    await ctx.saveCheckpoint("upload", {
+      youtubeVideoId: result.youtubeVideoId,
+    });
+    log.info("Single-master full race uploaded", {
+      sessionId,
+      youtubeVideoId: result.youtubeVideoId,
+    });
+  });
+
+  await runStep(ctx, JOB_TYPE, "localizations", async () => {
+    const session = await deps.replaySessions.getById(sessionId);
+    if (!session?.fullVideoYoutubeId) {
+      throw new Error("Missing YouTube video id before localizations");
+    }
+    const it = packageFor(session.fullVoiceOvers, "it");
+    const en = packageFor(session.fullVoiceOvers, "en");
+    if (!deps.upload.updateLocalizations) {
+      log.warn("Upload adapter cannot set localizations; leaving Studio checklist");
+      return;
+    }
+    ctx.setProgress(85, "Setting IT/EN title and description localizations");
+    const accessToken = await currentYouTubeAccessToken(
+      deps.auth,
+      deps.clock.now(),
+    );
+    await deps.upload.updateLocalizations({
+      accessToken,
+      youtubeVideoId: session.fullVideoYoutubeId,
+      defaultLanguage: "it",
+      localizations: {
+        it: { title: it.title, description: it.description },
+        en: { title: en.title, description: en.description },
+      },
+    });
+    await deps.replaySessions.save({
+      ...session,
+      fullVoiceOvers: (session.fullVoiceOvers ?? []).map((voiceOver) =>
+        voiceOver.language === "en"
+          ? { ...voiceOver, youtubeVideoId: session.fullVideoYoutubeId }
+          : voiceOver,
+      ),
+      updatedAt: deps.clock.now(),
+    });
+    log.info("Localizations applied", {
+      sessionId,
+      youtubeVideoId: session.fullVideoYoutubeId,
+    });
+  });
+
+  for (const language of LANGUAGES) {
+    const step = `captions_${language}` as const;
+    await runStep(ctx, JOB_TYPE, step, async () => {
+      const session = await deps.replaySessions.getById(sessionId);
+      if (!session?.fullVideoYoutubeId) {
+        throw new Error("Missing YouTube video id before captions");
+      }
+      const voiceOver = packageFor(session.fullVoiceOvers, language);
+      if (voiceOver.youtubeCaptionId) {
         ctx.setProgress(
-          progress.mix,
-          `${label} already published as ${voiceOver.youtubeVideoId}`,
+          language === "it" ? 92 : 100,
+          `${language.toUpperCase()} captions already uploaded`,
         );
-        log.info("Full-race voice-over mix skipped (already published)", {
+        return;
+      }
+      if (!voiceOver.srtPath || !deps.captions) {
+        log.warn("Skipping captions upload", {
           sessionId,
           language,
-          youtubeVideoId: voiceOver.youtubeVideoId,
+          hasSrt: Boolean(voiceOver.srtPath),
+          hasCaptionsAdapter: Boolean(deps.captions),
         });
         return;
       }
-      if (voiceOver.renderOutputPath) {
-        ctx.setProgress(
-          progress.mix,
-          `Reusing ${label} narrated encode`,
-        );
-        return;
-      }
-      ctx.setProgress(progress.mix, `Mixing ${label} narration onto the race`);
-      const outputPath = voRenderPath(sessionId, language);
-      const voiceDurationMs = narrationDurationMs(voiceOver);
-      const result = await mixer.mix({
-        videoPath: input.encodePath,
-        voiceAudioPath: voiceOver.audioPath,
-        outputPath,
-        voiceDuckDb: appSettings?.voiceDuckDb,
-        ...(voiceDurationMs === undefined ? {} : { voiceDurationMs }),
-        burnInCaptions: appSettings?.fullBurnInCaptions ?? false,
-        ...(voiceOver.srtPath ? { subtitlesPath: voiceOver.srtPath } : {}),
-      });
-      await patchVoiceOver(deps, sessionId, language, {
-        renderOutputPath: result.outputPath,
-      });
-      log.info("Full-race voice-over mix done", {
-        sessionId,
-        language,
-        outputPath: result.outputPath,
-        burnedInCaptions: result.burnedInCaptions,
-        durationMs: result.durationMs,
-      });
-    });
-
-    await runStep(ctx, JOB_TYPE, `upload_${language}`, async () => {
-      const session = await requireSession(deps, sessionId);
-      const voiceOver = packageFor(session, language);
-      if (voiceOver.youtubeVideoId) {
-        if (language === "it" && !session.fullVideoYoutubeId) {
-          await patchVoiceOver(
-            deps,
-            sessionId,
-            language,
-            {},
-            { fullVideoYoutubeId: voiceOver.youtubeVideoId },
-          );
-        }
-        ctx.setProgress(
-          progress.upload,
-          `${label} already on YouTube as ${voiceOver.youtubeVideoId}`,
-        );
-        return;
-      }
-      if (!voiceOver.renderOutputPath) {
-        throw new Error(`Missing ${language} narrated encode for ${sessionId}`);
-      }
-      ctx.setProgress(progress.upload, `Uploading ${label} full race`);
-      const result = await deps.upload.upload({
-        accessToken: await currentYouTubeAccessToken(
-          deps.auth,
-          deps.clock.now(),
-        ),
-        filePath: voiceOver.renderOutputPath,
-        title: voiceOver.title.slice(0, 100),
-        description: voiceOver.description,
-        tags: (session.racePackage?.fullVideo.tags ?? []).slice(0, 15),
-        scheduledAt: null,
-        privacy,
-        contentKind: "full",
-      });
-      const checkpoint: VoiceOverUploadCheckpoint = {
-        language,
-        scriptHash: voiceOver.scriptHash,
-        youtubeVideoId: result.youtubeVideoId,
-      };
-      await ctx.saveCheckpoint(`upload_${language}`, checkpoint);
-      await sidecar.save(checkpoint);
-      await patchVoiceOver(
-        deps,
-        sessionId,
-        language,
-        { youtubeVideoId: result.youtubeVideoId },
-        // The narrated Italian upload becomes the session's canonical full
-        // video so the silent path never publishes the race a second time.
-        language === "it" && !session.fullVideoYoutubeId
-          ? { fullVideoYoutubeId: result.youtubeVideoId }
-          : {},
+      ctx.setProgress(
+        language === "it" ? 92 : 98,
+        `Uploading ${language.toUpperCase()} soft captions`,
       );
-      log.info("Full-race voice-over uploaded", {
-        sessionId,
-        language,
-        youtubeVideoId: result.youtubeVideoId,
-        privacy,
-      });
-    });
-
-    await runStep(ctx, JOB_TYPE, `captions_${language}`, async () => {
-      if (!deps.captions) {
-        throw new Error("YouTube captions adapter is not configured");
-      }
-      const voiceOver = packageFor(
-        await requireSession(deps, sessionId),
-        language,
+      const accessToken = await currentYouTubeAccessToken(
+        deps.auth,
+        deps.clock.now(),
       );
-      if (voiceOver.youtubeCaptionId) {
-        ctx.setProgress(progress.captions, `${label} captions already uploaded`);
-        return;
-      }
-      if (!voiceOver.youtubeVideoId) {
-        throw new Error(`YouTube video id missing for ${language} full race`);
-      }
-      if (!voiceOver.srtPath) {
-        throw new Error(`Missing ${language} SRT for ${sessionId}`);
-      }
-      ctx.setProgress(progress.captions, `Uploading ${label} captions`);
       const caption = await deps.captions.upload({
-        accessToken: await currentYouTubeAccessToken(
-          deps.auth,
-          deps.clock.now(),
-        ),
-        youtubeVideoId: voiceOver.youtubeVideoId,
+        accessToken,
+        youtubeVideoId: session.fullVideoYoutubeId,
+        language,
         filePath: voiceOver.srtPath,
-        language,
-        name: "VO",
+        name: path.basename(voiceOver.srtPath),
       });
-      const captionsCheckpoint: VoiceOverUploadCheckpoint = {
-        language,
-        scriptHash: voiceOver.scriptHash,
-        youtubeVideoId: voiceOver.youtubeVideoId,
-        youtubeCaptionId: caption.youtubeCaptionId,
-      };
-      await ctx.saveCheckpoint(`captions_${language}`, captionsCheckpoint);
-      await sidecar.save(captionsCheckpoint);
-      await patchVoiceOver(
-        deps,
+      await deps.replaySessions.save({
+        ...session,
+        fullVoiceOvers: (session.fullVoiceOvers ?? []).map((item) =>
+          item.language === language
+            ? { ...item, youtubeCaptionId: caption.youtubeCaptionId }
+            : item,
+        ),
+        updatedAt: deps.clock.now(),
+      });
+      log.info("Captions uploaded", {
         sessionId,
         language,
-        { youtubeCaptionId: caption.youtubeCaptionId },
-        language === "en"
-          ? {
-              fullVideoPrivacy: privacy,
-              fullVideoPublishedAt: deps.clock.now(),
-            }
-          : {},
-      );
-      log.info("Full-race voice-over captions uploaded", {
-        sessionId,
-        language,
-        youtubeCaptionId: caption.youtubeCaptionId,
+        captionId: caption.youtubeCaptionId,
       });
     });
   }
+
+  const finalSession = await deps.replaySessions.getById(sessionId);
+  const checklist =
+    finalSession?.publishManualChecklist ??
+    finalSession?.deliveryAssets?.metadata.manualStudioChecklist ??
+    [];
+  ctx.setProgress(
+    100,
+    checklist.length
+      ? `Published ${finalSession?.fullVideoYoutubeId}; Studio: ${checklist.length} step(s) remain`
+      : `Published ${finalSession?.fullVideoYoutubeId}`,
+  );
+  log.info("Single-master full-race publish completed", {
+    sessionId,
+    youtubeVideoId: finalSession?.fullVideoYoutubeId ?? null,
+    manualChecklistCount: checklist.length,
+  });
 }

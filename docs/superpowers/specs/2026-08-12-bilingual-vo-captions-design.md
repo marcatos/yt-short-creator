@@ -13,7 +13,7 @@ Add catchy, brand-consistent artificial voice-over in **Italian and English**, w
 | Decision | Choice |
 |----------|--------|
 | Scope | Shorts **and** full race videos |
-| Language delivery | **Two uploads per piece** (IT + EN), not multi-audio |
+| Language delivery | **Superseded for full-race (2026-08-13):** single master + multi-language assets. See [`2026-08-13-multilingual-single-master-design.md`](./2026-08-13-multilingual-single-master-design.md). Dual upload remains only for Shorts Case B (burned-in language). |
 | Captions | Soft subs (`.srt`) for YouTube **and** burn-in on Shorts by default |
 | Voice stack (v1) | OpenAI-compatible TTS already in repo + Whisper word timestamps |
 | Voice identity | Single fixed brand `voiceProfile` for both IT and EN |

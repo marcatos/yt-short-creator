@@ -91,12 +91,41 @@ export function createFsMediaStore(deps: {
       return path.join(mediaRoot, "replays", sessionId, "full-youtube.mp4");
     },
 
+    fullReplayMasterPath(sessionId: string): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        "delivery",
+        "master_video.mp4",
+      );
+    },
+
+    replayDeliveryDir(sessionId: string): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        "delivery",
+      );
+    },
+
     fullReplayVoPath(sessionId: string, language: "it" | "en"): string {
       return path.join(
         mediaRoot,
         "replays",
         path.basename(sessionId),
         `vo-${language}.mp3`,
+      );
+    },
+
+    fullReplayMixedAudioPath(sessionId: string, language: "it" | "en"): string {
+      return path.join(
+        mediaRoot,
+        "replays",
+        path.basename(sessionId),
+        "delivery",
+        `audio_${language}.m4a`,
       );
     },
 

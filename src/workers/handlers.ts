@@ -24,6 +24,7 @@ import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
+import type { PackageFullDeliveryAssets } from "@/src/application/package-full-delivery-assets";
 
 import { requireNumberPayload, requireStringPayload } from "./handler-utils";
 import type { JobHandlerContext, JobHandler, JobHandlers } from "./job-handler-context";
@@ -58,6 +59,7 @@ export type HandlerDeps = {
   fullVideoEncode: FullVideoEncodePort;
   fullVoMix?: FullVoMixPort;
   generateFullVoiceOvers?: GenerateFullVoiceOvers;
+  packageFullDeliveryAssets?: PackageFullDeliveryAssets;
   clock: ClockPort;
 };
 
@@ -275,6 +277,7 @@ export function createHandlers(
       fullVideoEncode: deps.fullVideoEncode,
       fullVoMix: deps.fullVoMix,
       generateFullVoiceOvers: deps.generateFullVoiceOvers,
+      packageFullDeliveryAssets: deps.packageFullDeliveryAssets,
       settings: deps.settings,
       captions: deps.captions,
       queue: deps.queue,

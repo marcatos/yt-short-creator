@@ -37,4 +37,22 @@ export type FullVoMixResult = {
 
 export interface FullVoMixPort {
   mix(input: FullVoMixInput): Promise<FullVoMixResult>;
+  /**
+   * Mix engine + VO into a standalone audio file (no video) for YouTube
+   * multi-audio / Studio attachment alongside a language-neutral master.
+   */
+  mixAudioTrack?(input: FullVoAudioMixInput): Promise<FullVoAudioMixResult>;
 }
+
+export type FullVoAudioMixInput = {
+  videoPath: string;
+  voiceAudioPath: string;
+  outputPath: string;
+  voiceDuckDb?: number;
+  voiceDurationMs?: number;
+};
+
+export type FullVoAudioMixResult = {
+  outputPath: string;
+  durationMs: number;
+};

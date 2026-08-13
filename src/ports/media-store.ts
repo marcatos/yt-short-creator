@@ -15,9 +15,15 @@ export interface MediaStorePort {
   replayAnalysisDir(sessionId: string): string;
   /** YouTube-delivery encode of the full race for a session. */
   fullReplayEncodePath(sessionId: string): string;
+  /** Language-neutral master used for single-video multi-language publish. */
+  fullReplayMasterPath?(sessionId: string): string;
+  /** Delivery artifact directory (analysis JSON, audio mixes, metadata). */
+  replayDeliveryDir?(sessionId: string): string;
   /** Narration audio for one language of a full-race session. */
   fullReplayVoPath?(sessionId: string, language: "it" | "en"): string;
-  /** Delivery encode with the narration mixed in, per language. */
+  /** Full mixed audio track (engine + VO) for one language — Studio multi-audio. */
+  fullReplayMixedAudioPath?(sessionId: string, language: "it" | "en"): string;
+  /** Delivery encode with the narration mixed in, per language (legacy dual upload). */
   fullReplayVoRenderPath?(sessionId: string, language: "it" | "en"): string;
   /** Durable publish result for one language of a full-race session. */
   fullVoPublishCheckpointPath?(

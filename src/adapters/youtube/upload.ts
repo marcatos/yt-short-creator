@@ -50,6 +50,12 @@ export function createGoogleYouTubeUpload(deps: {
                 description: shortDescription(input),
                 tags: input.tags,
                 categoryId: "2",
+                ...(input.defaultLanguage
+                  ? { defaultLanguage: input.defaultLanguage }
+                  : {}),
+                ...(input.defaultAudioLanguage
+                  ? { defaultAudioLanguage: input.defaultAudioLanguage }
+                  : {}),
               },
               status: {
                 privacyStatus: input.scheduledAt ? "private" : input.privacy,
@@ -102,6 +108,61 @@ export function createGoogleYouTubeUpload(deps: {
         log.error("YouTube resumable upload failed", {
           filePath: input.filePath,
           fileSizeBytes,
+          durationMs: Math.round(performance.now() - startedAt),
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+        });
+        throw error;
+      }
+    },
+
+    async updateLocalizations(input) {
+      const startedAt = performance.now();
+      log.info("YouTube localizations update started", {
+        youtubeVideoId: input.youtubeVideoId,
+        languages: Object.keys(input.localizations),
+      });
+      try {
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: input.accessToken });
+        const youtube = google.youtube({ version: "v3", auth });
+        const listed = await youtube.videos.list({
+          part: ["snippet", "localizations"],
+          id: [input.youtubeVideoId],
+        });
+        const video = listed.data.items?.[0];
+        if (!video?.snippet) {
+          throw new Error(
+            `YouTube video not found for localizations: ${input.youtubeVideoId}`,
+          );
+        }
+        const defaultLoc = input.localizations[input.defaultLanguage];
+        if (defaultLoc) {
+          video.snippet.title = defaultLoc.title;
+          video.snippet.description = defaultLoc.description;
+        }
+        video.snippet.defaultLanguage = input.defaultLanguage;
+        video.localizations = {
+          ...(video.localizations ?? {}),
+          ...input.localizations,
+        };
+        await youtube.videos.update({
+          part: ["snippet", "localizations"],
+          requestBody: {
+            id: input.youtubeVideoId,
+            snippet: video.snippet,
+            localizations: video.localizations,
+          },
+        });
+        log.info("YouTube localizations update completed", {
+          youtubeVideoId: input.youtubeVideoId,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      } catch (error) {
+        log.error("YouTube localizations update failed", {
+          youtubeVideoId: input.youtubeVideoId,
           durationMs: Math.round(performance.now() - startedAt),
           error:
             error instanceof Error

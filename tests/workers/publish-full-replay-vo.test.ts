@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import type { ReplaySession } from "@/src/domain/entities";
-import type { JobCheckpoint } from "@/src/domain/queue-control";
+import type { RaceAnalysis } from "@/src/domain/race-analysis";
 import type { VoiceOverPackage } from "@/src/domain/voice-over";
-import type { FullVoMixInput } from "@/src/ports/full-vo-mix";
+import type { DeliveryAssetBundle } from "@/src/domain/youtube-metadata";
 import type { Logger } from "@/src/ports/logger";
-import type { AppSettings } from "@/src/ports/settings-repository";
 import type { YouTubeCaptionUploadInput } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadInput } from "@/src/ports/youtube-upload";
+import type { YouTubeLocalizationUpdateInput } from "@/src/ports/youtube-upload";
 import type { JobHandlerContext } from "@/src/workers/job-handler-context";
 import { createPublishFullReplayHandler } from "@/src/workers/publish-full-replay-handler";
 
-const now = new Date("2026-08-12T21:00:00.000Z");
+const now = new Date("2026-08-13T10:00:00.000Z");
 
 function logger(): Logger {
   const instance: Logger = {
@@ -25,6 +24,57 @@ function logger(): Logger {
   return instance;
 }
 
+function analysis(): RaceAnalysis {
+  return {
+    version: 1,
+    focusCarHint: "pi",
+    context: {
+      simulator: "iRacing",
+      track: "Oschersleben",
+      car: "GR86",
+      durationSec: 900,
+    },
+    results: {
+      qualiResult: "both laps invalid",
+      startPosition: 18,
+      finishPosition: 8,
+      fieldSize: 20,
+      positionsGained: 10,
+    },
+    recurringRivals: [],
+    events: [],
+    timeline: [],
+    storylines: [
+      {
+        kind: "main",
+        summary: "P18 to P8",
+        whyWatch: "Starts P18 finishes P8",
+      },
+    ],
+    mainStoryline: "Quali disaster → P18 → P8",
+    whyWatch: "Parte P18 arriva P8",
+    potentialHooks: ["P18 → P8"],
+    shortCandidates: [
+      {
+        shortScore: 0.9,
+        startMs: 0,
+        endMs: 20_000,
+        hook: "h",
+        story: "s",
+        payoff: "p",
+        recommendedTitleIt: "IT",
+        recommendedTitleEn: "EN",
+        requiresLocalizedRender: false,
+        tags: [],
+        descriptionIt: "d",
+        descriptionEn: "d",
+      },
+    ],
+    narrativeIt: "Parto P18.",
+    audioTranscript: "",
+  };
+}
+
 function voiceOver(
   language: "it" | "en",
   overrides: Partial<VoiceOverPackage> = {},
@@ -32,11 +82,11 @@ function voiceOver(
   return {
     language,
     script: `Script ${language}`,
-    title: `Titolo ${language}`,
-    description: `Descrizione ${language}`,
+    title: `Title ${language}`,
+    description: `Description ${language}`,
     voiceProfile: "coral",
     audioPath: `media/replays/session-1/vo-${language}.mp3`,
-    words: [{ text: "via", startMs: 0, endMs: 200 }],
+    words: [{ text: "go", startMs: 0, endMs: 200 }],
     srtPath: `media/replays/session-1/vo-${language}.srt`,
     assPath: null,
     scriptHash: `hash-${language}`,
@@ -53,7 +103,7 @@ function session(overrides: Partial<ReplaySession> = {}): ReplaySession {
     trackName: "Oschersleben",
     focusCarIdx: null,
     title: "Race",
-    durationSec: 2_400,
+    durationSec: 900,
     status: "ready",
     events: [],
     racePackage: {
@@ -63,655 +113,206 @@ function session(overrides: Partial<ReplaySession> = {}): ReplaySession {
       fullVideo: {
         title: "Titolo gara",
         description: "Desc",
-        tags: ["iRacing", "simracing"],
+        tags: ["iRacing"],
       },
       audioTranscript: "",
     },
+    raceAnalysis: analysis(),
     fullVideoEncodePath: null,
     fullVideoYoutubeId: null,
     fullVideoPrivacy: null,
     fullVideoPublishedAt: null,
     fullVoiceOvers: null,
+    deliveryAssets: null,
+    publishManualChecklist: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
   };
 }
 
-function settings(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    brandRoot: "brand",
-    logLevel: "INFO",
-    defaultPrivacy: "unlisted",
-    videoEncoderPreference: "auto_igpu",
-    brandVoiceProfile: "coral",
-    italianVoiceProfile: "ash",
-    shortsBurnInCaptions: true,
-    fullBurnInCaptions: false,
-    voiceDuckDb: -12,
-    enableVoiceOverPipeline: true,
-    ...overrides,
-  };
-}
-
-type Harness = {
-  handler: ReturnType<typeof createPublishFullReplayHandler>;
-  store: { session: ReplaySession };
-  mixed: FullVoMixInput[];
-  uploaded: YouTubeUploadInput[];
-  captioned: YouTubeCaptionUploadInput[];
-  generateCalls: string[];
-  regeneratedLanguages: string[];
+function fakeCtx(): JobHandlerContext & {
   checkpoints: Array<{ step: string; data?: unknown }>;
-  sidecars: Map<string, string>;
-};
-
-function harness(options: {
-  session?: ReplaySession;
-  settings?: AppSettings;
-  packages?: VoiceOverPackage[];
-  withCaptions?: boolean;
-  withVoiceOverDeps?: boolean;
-  sidecars?: Map<string, string>;
-  priorJobs?: JobRecord[];
-} = {}): Harness {
-  const store = { session: options.session ?? session() };
-  const sidecars = options.sidecars ?? new Map<string, string>();
-  const mixed: FullVoMixInput[] = [];
-  const uploaded: YouTubeUploadInput[] = [];
-  const captioned: YouTubeCaptionUploadInput[] = [];
-  const generateCalls: string[] = [];
-  const regeneratedLanguages: string[] = [];
+} {
   const checkpoints: Array<{ step: string; data?: unknown }> = [];
-  const packages = options.packages ?? [voiceOver("it"), voiceOver("en")];
-
-  const voiceOverDeps = {
-    generateFullVoiceOvers: async ({ sessionId }: { sessionId: string }) => {
-      generateCalls.push(sessionId);
-      const existing = store.session.fullVoiceOvers ?? [];
-      const merged = packages.map(
-        (item) => {
-          const saved = existing.find(
-            (candidate) => candidate.language === item.language,
-          );
-          if (saved) return saved;
-          regeneratedLanguages.push(item.language);
-          return item;
-        },
-      );
-      store.session = { ...store.session, fullVoiceOvers: merged };
-      return merged;
-    },
-    fullVoMix: {
-      async mix(input: FullVoMixInput) {
-        mixed.push(input);
-        return {
-          outputPath: input.outputPath,
-          burnedInCaptions: Boolean(
-            input.burnInCaptions && input.subtitlesPath,
-          ),
-          durationMs: 10,
-        };
-      },
-    },
-  };
-
-  const handler = createPublishFullReplayHandler({
-    logger: logger(),
-    replaySessions: {
-      async save(value) {
-        store.session = value;
-      },
-      async getById(id) {
-        return store.session.id === id ? store.session : null;
-      },
-      async list() {
-        return [store.session];
-      },
-    },
-    mediaStore: {
-      sourcePath: () => "",
-      renderPath: () => "",
-      audioPath: () => "",
-      brollPath: () => "",
-      replayAnalysisDir: () => "media/replays/session-1",
-      fullReplayEncodePath: () => "media/replays/session-1/full-youtube.mp4",
-      fullReplayVoPath: (sessionId, language) =>
-        `media/replays/${sessionId}/vo-${language}.mp3`,
-      fullReplayVoRenderPath: (sessionId, language) =>
-        `media/replays/${sessionId}/full-youtube-${language}.mp4`,
-      fullVoPublishCheckpointPath: (sessionId, language) =>
-        `media/replays/${sessionId}/vo-publish-${language}.json`,
-      readText: async (filePath) => sidecars.get(filePath) ?? null,
-      writeText: async (filePath, content) => {
-        sidecars.set(filePath, content);
-      },
-      listBroll: async () => [],
-      ensureDirs: async () => {},
-    },
-    fullVideoEncode: {
-      async encode(input) {
-        return {
-          outputPath: input.outputPath,
-          reused: true,
-          width: 2560,
-          height: 1440,
-          fps: 60,
-          videoBitrateMbps: 20,
-          encoderLabel: "test",
-          durationMs: 1,
-        };
-      },
-    },
-    settings: {
-      async get() {
-        return options.settings ?? settings();
-      },
-      async save() {},
-    },
-    auth: {
-      async getAuthorizationUrl() {
-        return "";
-      },
-      async exchangeCode() {
-        throw new Error("unused");
-      },
-      async refreshAccessToken() {
-        throw new Error("unused");
-      },
-      async getStoredTokens() {
-        return {
-          accessToken: "access-token",
-          refreshToken: "refresh-token",
-          expiresAt: new Date(now.getTime() + 3_600_000),
-        };
-      },
-      async saveTokens() {},
-    },
-    upload: {
-      async upload(input) {
-        uploaded.push(input);
-        return { youtubeVideoId: `yt-${uploaded.length}` };
-      },
-    },
-    queue: {
-      async enqueue() {
-        return "unused";
-      },
-      async getProgress() {
-        return null;
-      },
-      listJobs() {
-        return options.priorJobs ?? [];
-      },
-    },
-    ...(options.withCaptions === false
-      ? {}
-      : {
-          captions: {
-            async upload(input: YouTubeCaptionUploadInput) {
-              captioned.push(input);
-              return { youtubeCaptionId: `caption-${captioned.length}` };
-            },
-          },
-        }),
-    ...(options.withVoiceOverDeps === false ? {} : voiceOverDeps),
-    clock: { now: () => now },
-  });
-
   return {
-    handler,
-    store,
-    mixed,
-    uploaded,
-    captioned,
-    generateCalls,
-    regeneratedLanguages,
-    checkpoints,
-    sidecars,
-  };
-}
-
-function makeCtx(
-  target: Harness,
-  overrides: Partial<JobHandlerContext> = {},
-): JobHandlerContext {
-  const ctx: JobHandlerContext = {
     jobId: "job-1",
     payload: { sessionId: "session-1", privacy: "unlisted", voiceOver: true },
     checkpoint: null,
-    setProgress() {},
-    async saveCheckpoint(step, data) {
-      target.checkpoints.push({ step, data });
-      // The queue stores one checkpoint row per job: a save replaces the
-      // previous step and its data, exactly like the SQLite adapter.
-      ctx.checkpoint = data === undefined ? { step } : { step, data };
-    },
     signal: new AbortController().signal,
     shouldPause: () => false,
     throwIfPausedOrCancelled() {},
-    ...overrides,
+    async saveCheckpoint(step, data) {
+      checkpoints.push({ step, data });
+    },
+    setProgress() {},
+    checkpoints,
   };
-  return ctx;
 }
 
-describe("publish_full_replay voice-over mode", () => {
-  it("mixes, uploads, and captions both languages from the delivery encode", async () => {
-    const target = harness();
+describe("publish_full_replay single-master", () => {
+  it("uploads one master, sets localizations, and uploads captions", async () => {
+    let stored = session();
+    const uploads: YouTubeUploadInput[] = [];
+    const localizations: YouTubeLocalizationUpdateInput[] = [];
+    const captions: YouTubeCaptionUploadInput[] = [];
+    const ctx = fakeCtx();
 
-    await target.handler(makeCtx(target));
-
-    expect(target.generateCalls).toEqual(["session-1"]);
-    expect(
-      target.mixed.map(
-        ({ videoPath, voiceAudioPath, outputPath, voiceDuckDb, burnInCaptions }) => ({
-          videoPath,
-          voiceAudioPath,
-          outputPath,
-          voiceDuckDb,
-          burnInCaptions,
-        }),
-      ),
-    ).toEqual([
-      {
-        videoPath: "media/replays/session-1/full-youtube.mp4",
-        voiceAudioPath: "media/replays/session-1/vo-it.mp3",
-        outputPath: "media/replays/session-1/full-youtube-it.mp4",
-        voiceDuckDb: -12,
-        burnInCaptions: false,
-      },
-      {
-        videoPath: "media/replays/session-1/full-youtube.mp4",
-        voiceAudioPath: "media/replays/session-1/vo-en.mp3",
-        outputPath: "media/replays/session-1/full-youtube-en.mp4",
-        voiceDuckDb: -12,
-        burnInCaptions: false,
-      },
-    ]);
-    expect(
-      target.uploaded.map(({ filePath, title, description, contentKind, privacy, tags }) => ({
-        filePath,
-        title,
-        description,
-        contentKind,
-        privacy,
-        tags,
-      })),
-    ).toEqual([
-      {
-        filePath: "media/replays/session-1/full-youtube-it.mp4",
-        title: "Titolo it",
-        description: "Descrizione it",
-        contentKind: "full",
-        privacy: "unlisted",
-        tags: ["iRacing", "simracing"],
-      },
-      {
-        filePath: "media/replays/session-1/full-youtube-en.mp4",
-        title: "Titolo en",
-        description: "Descrizione en",
-        contentKind: "full",
-        privacy: "unlisted",
-        tags: ["iRacing", "simracing"],
-      },
-    ]);
-    expect(
-      target.captioned.map(({ youtubeVideoId, filePath, language }) => ({
-        youtubeVideoId,
-        filePath,
-        language,
-      })),
-    ).toEqual([
-      {
-        youtubeVideoId: "yt-1",
-        filePath: "media/replays/session-1/vo-it.srt",
-        language: "it",
-      },
-      {
-        youtubeVideoId: "yt-2",
-        filePath: "media/replays/session-1/vo-en.srt",
-        language: "en",
-      },
-    ]);
-
-    const saved = target.store.session;
-    expect(
-      saved.fullVoiceOvers?.map(
-        ({ language, renderOutputPath, youtubeVideoId, youtubeCaptionId }) => ({
-          language,
-          renderOutputPath,
-          youtubeVideoId,
-          youtubeCaptionId,
-        }),
-      ),
-    ).toEqual([
-      {
-        language: "it",
-        renderOutputPath: "media/replays/session-1/full-youtube-it.mp4",
-        youtubeVideoId: "yt-1",
-        youtubeCaptionId: "caption-1",
-      },
-      {
-        language: "en",
-        renderOutputPath: "media/replays/session-1/full-youtube-en.mp4",
-        youtubeVideoId: "yt-2",
-        youtubeCaptionId: "caption-2",
-      },
-    ]);
-    expect(saved.fullVideoYoutubeId).toBe("yt-1");
-    expect(saved.fullVideoPrivacy).toBe("unlisted");
-    expect(saved.fullVideoPublishedAt).toEqual(now);
-    expect(target.checkpoints.map(({ step }) => step)).toEqual([
-      "encode",
-      "voice_over",
-      "mix_it",
-      "upload_it",
-      "captions_it",
-      "mix_en",
-      "upload_en",
-      "captions_en",
-    ]);
-  });
-
-  it("keeps the upload ids on the job checkpoint after every step", async () => {
-    const target = harness();
-    const ctx = makeCtx(target);
-
-    await target.handler(ctx);
-
-    expect(
-      target.checkpoints.filter(({ step }) => step === "upload_it"),
-    ).toEqual([
-      {
-        step: "upload_it",
-        data: {
-          language: "it",
-          scriptHash: "hash-it",
-          youtubeVideoId: "yt-1",
+    const handler = createPublishFullReplayHandler({
+      logger: logger(),
+      clock: { now: () => now },
+      replaySessions: {
+        async getById() {
+          return stored;
+        },
+        async save(next) {
+          stored = next;
+        },
+        async list() {
+          return [stored];
         },
       },
-    ]);
-    expect(ctx.checkpoint).toEqual({
-      step: "captions_en",
-      data: {
-        language: "en",
-        scriptHash: "hash-en",
-        youtubeVideoId: "yt-2",
-        youtubeCaptionId: "caption-2",
+      mediaStore: {
+        sourcePath: () => "",
+        renderPath: () => "",
+        audioPath: () => "",
+        brollPath: () => "",
+        replayAnalysisDir: () => "media/replays/session-1",
+        fullReplayEncodePath: () => "media/replays/session-1/full-youtube.mp4",
+        fullReplayMasterPath: () =>
+          "media/replays/session-1/delivery/master_video.mp4",
+        listBroll: async () => [],
+        ensureDirs: async () => undefined,
       },
-    });
-  });
-
-  it("skips work already recorded on the session packages", async () => {
-    const target = harness({
-      session: session({
-        fullVoiceOvers: [
-          voiceOver("it", {
-            renderOutputPath: "media/replays/session-1/full-youtube-it.mp4",
-            youtubeVideoId: "yt-existing-it",
-            youtubeCaptionId: "caption-existing-it",
-          }),
-          voiceOver("en"),
-        ],
-      }),
-    });
-
-    await target.handler(makeCtx(target));
-
-    expect(target.mixed.map(({ outputPath }) => outputPath)).toEqual([
-      "media/replays/session-1/full-youtube-en.mp4",
-    ]);
-    expect(target.uploaded).toHaveLength(1);
-    expect(target.captioned.map(({ language }) => language)).toEqual(["en"]);
-    expect(target.store.session.fullVideoYoutubeId).toBe("yt-existing-it");
-  });
-
-  it("recovers an upload id from the job checkpoint when the session write was lost", async () => {
-    // The lost write is only the IT upload id: the earlier steps persisted the
-    // encode path and both narrated renders before the crash.
-    const target = harness({
-      session: session({
-        fullVideoEncodePath: "media/replays/session-1/full-youtube.mp4",
-        fullVoiceOvers: [
-          voiceOver("it", {
-            renderOutputPath: "media/replays/session-1/full-youtube-it.mp4",
-          }),
-          voiceOver("en", {
-            renderOutputPath: "media/replays/session-1/full-youtube-en.mp4",
-          }),
-        ],
-      }),
-    });
-    const checkpoint: JobCheckpoint = {
-      step: "upload_it",
-      data: {
-        language: "it",
-        scriptHash: "hash-it",
-        youtubeVideoId: "yt-recovered-it",
+      fullVideoEncode: {
+        async encode({ outputPath }) {
+          return {
+            outputPath,
+            reused: false,
+            encoderLabel: "libx264",
+            videoBitrateMbps: 8,
+          };
+        },
       },
-    };
-
-    await target.handler(makeCtx(target, { checkpoint }));
-
-    expect(target.uploaded.map(({ filePath }) => filePath)).toEqual([
-      "media/replays/session-1/full-youtube-en.mp4",
-    ]);
-    expect(target.captioned.map(({ youtubeVideoId }) => youtubeVideoId)).toEqual([
-      "yt-recovered-it",
-      "yt-1",
-    ]);
-  });
-
-  it("recovers a sidecar before generation when the DB package was lost", async () => {
-    // The job row and its checkpoint are gone (queue replaced the job), so the
-    // sidecar is the only record that IT already reached YouTube. Its hash
-    // deliberately differs from a fresh generated package.
-    const sidecars = new Map([
-      [
-        "media/replays/session-1/vo-publish-it.json",
-        JSON.stringify({
-          language: "it",
-          scriptHash: "published-hash-A",
-          youtubeVideoId: "yt-sidecar-it",
-        }),
-      ],
-    ]);
-    const target = harness({
-      sidecars,
-      session: session({
-        fullVideoEncodePath: "media/replays/session-1/full-youtube.mp4",
-      }),
-    });
-
-    await target.handler(makeCtx(target));
-
-    expect(target.mixed.map(({ outputPath }) => outputPath)).toEqual([
-      "media/replays/session-1/full-youtube-en.mp4",
-    ]);
-    expect(target.uploaded.map(({ filePath }) => filePath)).toEqual([
-      "media/replays/session-1/full-youtube-en.mp4",
-    ]);
-    expect(target.regeneratedLanguages).toEqual(["en"]);
-    expect(target.captioned.map(({ language }) => language)).toEqual([
-      "it",
-      "en",
-    ]);
-    expect(target.store.session.fullVideoYoutubeId).toBe("yt-sidecar-it");
-    expect(
-      target.store.session.fullVoiceOvers?.find(
-        ({ language }) => language === "it",
-      ),
-    ).toMatchObject({
-      language: "it",
-      scriptHash: "published-hash-A",
-      youtubeVideoId: "yt-sidecar-it",
-    });
-    expect(
-      JSON.parse(sidecars.get("media/replays/session-1/vo-publish-en.json")!),
-    ).toMatchObject({
-      language: "en",
-      scriptHash: "hash-en",
-      youtubeVideoId: "yt-1",
-      youtubeCaptionId: "caption-2",
-    });
-  });
-
-  it("ignores a sidecar written for a different script hash", async () => {
-    const target = harness({
-      session: session({
-        fullVoiceOvers: [voiceOver("it"), voiceOver("en")],
-      }),
-      sidecars: new Map([
-        [
-          "media/replays/session-1/vo-publish-it.json",
-          JSON.stringify({
-            language: "it",
-            scriptHash: "hash-di-un-vecchio-copione",
-            youtubeVideoId: "yt-stale-it",
-          }),
-        ],
-      ]),
-    });
-
-    await target.handler(makeCtx(target));
-
-    expect(target.uploaded).toHaveLength(2);
-    expect(target.store.session.fullVideoYoutubeId).toBe("yt-1");
-  });
-
-  it("skips a stale sidecar and recovers a matching prior-job checkpoint", async () => {
-    const target = harness({
-      session: session({
-        fullVoiceOvers: [
-          voiceOver("it"),
-          voiceOver("en", {
-            youtubeVideoId: "yt-existing-en",
-            youtubeCaptionId: "caption-existing-en",
-          }),
-        ],
-      }),
-      sidecars: new Map([
-        [
-          "media/replays/session-1/vo-publish-it.json",
-          JSON.stringify({
-            language: "it",
-            scriptHash: "stale-hash-it",
-            youtubeVideoId: "yt-stale-it",
-          }),
-        ],
-      ]),
-      priorJobs: [
-        {
-          id: "prior-job",
-          type: "publish_full_replay",
-          payload: { sessionId: "session-1", voiceOver: true },
-          status: "failed",
-          position: 0,
-          progressPct: 70,
-          progressMessage: "Uploaded IT",
-          checkpoint: {
-            step: "captions_it",
-            data: {
-              language: "it",
-              scriptHash: "hash-it",
-              youtubeVideoId: "yt-prior-it",
-              youtubeCaptionId: "caption-prior-it",
-            },
+      generateFullVoiceOvers: async () => {
+        const packages = [voiceOver("it"), voiceOver("en")];
+        stored = { ...stored, fullVoiceOvers: packages };
+        return packages;
+      },
+      packageFullDeliveryAssets: async () => {
+        const bundle: DeliveryAssetBundle = {
+          sessionId: "session-1",
+          raceAnalysisPath: "media/replays/session-1/delivery/race_analysis.json",
+          youtubeMetadataPath:
+            "media/replays/session-1/delivery/youtube_metadata.json",
+          masterVideoPath:
+            "media/replays/session-1/delivery/master_video.mp4",
+          audioItPath: "media/replays/session-1/delivery/audio_it.m4a",
+          audioEnPath: "media/replays/session-1/delivery/audio_en.m4a",
+          subtitlesItPath: "media/replays/session-1/delivery/subtitles_it.srt",
+          subtitlesEnPath: "media/replays/session-1/delivery/subtitles_en.srt",
+          thumbnailItPath: null,
+          thumbnailEnPath: null,
+          thumbnailConcept: {
+            universalText: "P18 → P8",
+            textIt: null,
+            textEn: null,
+            rationale: "position swing",
           },
-          error: "Session save failed",
-          createdAt: now,
-          startedAt: now,
-          finishedAt: now,
-          updatedAt: now,
+          metadata: {
+            originalLanguage: "it",
+            contentKind: "full",
+            masterVideo: "media/replays/session-1/delivery/master_video.mp4",
+            requiresLocalizedRender: false,
+            localizations: {
+              it: {
+                title: "Title it",
+                description: "Description it",
+                audio: "media/replays/session-1/delivery/audio_it.m4a",
+                subtitles: "media/replays/session-1/delivery/subtitles_it.srt",
+                thumbnail: null,
+              },
+              en: {
+                title: "Title en",
+                description: "Description en",
+                audio: "media/replays/session-1/delivery/audio_en.m4a",
+                subtitles: "media/replays/session-1/delivery/subtitles_en.srt",
+                thumbnail: null,
+              },
+            },
+            manualStudioChecklist: ["Attach secondary audio in Studio"],
+          },
+        };
+        stored = {
+          ...stored,
+          deliveryAssets: bundle,
+          publishManualChecklist: bundle.metadata.manualStudioChecklist,
+          fullVoiceOvers: [voiceOver("it"), voiceOver("en")],
+        };
+        return bundle;
+      },
+      auth: {
+        async getAuthorizationUrl() {
+          return "";
         },
-      ],
+        async exchangeCode() {
+          throw new Error("unused");
+        },
+        async refreshAccessToken() {
+          throw new Error("unused");
+        },
+        async getStoredTokens() {
+          return {
+            accessToken: "token",
+            refreshToken: "refresh",
+            expiresAt: new Date(now.getTime() + 3_600_000),
+          };
+        },
+        async saveTokens() {},
+      },
+      upload: {
+        async upload(input) {
+          uploads.push(input);
+          return { youtubeVideoId: "yt-master-1" };
+        },
+        async updateLocalizations(input) {
+          localizations.push(input);
+        },
+      },
+      captions: {
+        async upload(input) {
+          captions.push(input);
+          return { youtubeCaptionId: `cap-${input.language}` };
+        },
+      },
+      settings: {
+        async get() {
+          return {
+            brandRoot: "",
+            logLevel: "INFO",
+            defaultPrivacy: "unlisted",
+            videoEncoderPreference: "libx264",
+            brandVoiceProfile: "coral",
+            italianVoiceProfile: "ash",
+            shortsBurnInCaptions: true,
+            fullBurnInCaptions: false,
+            voiceDuckDb: -12,
+            enableVoiceOverPipeline: true,
+          };
+        },
+        async save() {},
+      },
     });
 
-    await target.handler(makeCtx(target));
+    await handler(ctx);
 
-    expect(target.generateCalls).toEqual([]);
-    expect(target.regeneratedLanguages).toEqual([]);
-    expect(target.mixed).toEqual([]);
-    expect(target.uploaded).toEqual([]);
-    expect(target.captioned).toEqual([]);
-    expect(
-      target.store.session.fullVoiceOvers?.find(
-        ({ language }) => language === "it",
-      ),
-    ).toMatchObject({
-      scriptHash: "hash-it",
-      youtubeVideoId: "yt-prior-it",
-      youtubeCaptionId: "caption-prior-it",
-    });
-    expect(target.store.session.fullVideoYoutubeId).toBe("yt-prior-it");
-  });
-
-  it("ducks the race only for the narration span", async () => {
-    const target = harness({
-      packages: [
-        voiceOver("it", {
-          words: [
-            { text: "via", startMs: 0, endMs: 200 },
-            { text: "bandiera", startMs: 700_000, endMs: 754_200 },
-          ],
-        }),
-        voiceOver("en", { words: [] }),
-      ],
-    });
-
-    await target.handler(makeCtx(target));
-
-    expect(target.mixed.map(({ voiceDurationMs }) => voiceDurationMs)).toEqual([
-      754_200,
-      undefined,
-    ]);
-  });
-
-  it("burns captions into both languages when the setting is on", async () => {
-    const target = harness({ settings: settings({ fullBurnInCaptions: true }) });
-
-    await target.handler(makeCtx(target));
-
-    expect(
-      target.mixed.map(({ burnInCaptions, subtitlesPath }) => ({
-        burnInCaptions,
-        subtitlesPath,
-      })),
-    ).toEqual([
-      { burnInCaptions: true, subtitlesPath: "media/replays/session-1/vo-it.srt" },
-      { burnInCaptions: true, subtitlesPath: "media/replays/session-1/vo-en.srt" },
-    ]);
-  });
-
-  it("fails when the captions adapter is not configured", async () => {
-    const target = harness({ withCaptions: false });
-
-    await expect(target.handler(makeCtx(target))).rejects.toThrow(
-      /captions adapter/i,
-    );
-  });
-
-  it("fails when voice-over dependencies are missing", async () => {
-    const target = harness({ withVoiceOverDeps: false });
-
-    await expect(target.handler(makeCtx(target))).rejects.toThrow(
-      /voice-over/i,
-    );
-  });
-
-  it("leaves the silent single upload path untouched", async () => {
-    const target = harness();
-
-    await target.handler(
-      makeCtx(target, { payload: { sessionId: "session-1", privacy: "public" } }),
-    );
-
-    expect(target.generateCalls).toEqual([]);
-    expect(target.mixed).toEqual([]);
-    expect(target.uploaded).toHaveLength(1);
-    expect(target.uploaded[0]?.filePath).toBe(
-      "media/replays/session-1/full-youtube.mp4",
-    );
-    expect(target.store.session.fullVideoYoutubeId).toBe("yt-1");
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.filePath).toContain("master_video.mp4");
+    expect(uploads[0]?.defaultLanguage).toBe("it");
+    expect(localizations).toHaveLength(1);
+    expect(localizations[0]?.localizations.en.title).toBe("Title en");
+    expect(captions.map((item) => item.language).sort()).toEqual(["en", "it"]);
+    expect(stored.fullVideoYoutubeId).toBe("yt-master-1");
+    expect(stored.publishManualChecklist?.length).toBeGreaterThan(0);
   });
 });

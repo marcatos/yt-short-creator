@@ -30,7 +30,7 @@ export function createRequestFullReplayPublish(
     if (!session.mediaPath) {
       throw new Error("Replay session has no source media to encode/upload");
     }
-    if (!session.racePackage?.fullVideo?.title) {
+    if (!session.racePackage?.fullVideo?.title && !session.raceAnalysis) {
       throw new Error(
         "Run AV analysis first so title/description for the full video exist",
       );

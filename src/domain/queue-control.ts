@@ -40,17 +40,14 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
   publish_short: ["prepare", "upload", "captions"],
-  // "upload" is the silent single-video path; the language-suffixed steps
-  // run instead of it when the job publishes the narrated IT/EN pair.
+  // Single-master multi-language publish (assets-first + best-effort API).
   publish_full_replay: [
     "encode",
-    "upload",
     "voice_over",
-    "mix_it",
-    "upload_it",
+    "package_assets",
+    "upload",
+    "localizations",
     "captions_it",
-    "mix_en",
-    "upload_en",
     "captions_en",
   ],
 };

@@ -257,5 +257,55 @@ export function createFfmpegFullVoMix(
       });
       return { outputPath, burnedInCaptions, durationMs };
     },
+
+    async mixAudioTrack(input): Promise<{
+      outputPath: string;
+      durationMs: number;
+    }> {
+      const startedAt = performance.now();
+      const videoPath = path.resolve(input.videoPath);
+      const voiceAudioPath = path.resolve(input.voiceAudioPath);
+      const outputPath = path.resolve(input.outputPath);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      log.info("Mixing full-race audio track for multi-language delivery", {
+        videoPath,
+        voiceAudioPath,
+        outputPath,
+        voiceDuckDb: input.voiceDuckDb ?? null,
+        voiceDurationMs: input.voiceDurationMs ?? null,
+      });
+      await runFfmpeg(
+        ffmpegPath,
+        [
+          "-y",
+          "-hide_banner",
+          "-i",
+          videoPath,
+          "-i",
+          voiceAudioPath,
+          "-filter_complex",
+          duckedVoiceMixFilter({
+            sourceAudioLabel: "0:a",
+            voiceAudioLabel: "1:a",
+            voiceDuckDb: input.voiceDuckDb,
+            voiceDurationMs: input.voiceDurationMs,
+          }).join(";"),
+          "-map",
+          "[aout]",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "320k",
+          "-ac",
+          "2",
+          outputPath,
+        ],
+        log,
+        "mix_audio_track",
+      );
+      const durationMs = Math.round(performance.now() - startedAt);
+      log.info("Full-race mixed audio track ready", { outputPath, durationMs });
+      return { outputPath, durationMs };
+    },
   };
 }

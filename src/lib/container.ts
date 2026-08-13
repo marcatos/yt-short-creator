@@ -109,6 +109,15 @@ import {
   createGenerateShortVoiceOvers,
   type GenerateShortVoiceOvers,
 } from "@/src/application/generate-short-voice-overs";
+import { createFsHardwareConfig } from "@/src/adapters/config/fs-hardware-config";
+import {
+  createEditorialLocalize,
+  type EditorialLocalize,
+} from "@/src/application/editorial-localize";
+import {
+  createPackageFullDeliveryAssets,
+  type PackageFullDeliveryAssets,
+} from "@/src/application/package-full-delivery-assets";
 import {
   createGenerateFullVoiceOvers,
   type GenerateFullVoiceOvers,
@@ -158,6 +167,8 @@ export type AppContainer = {
   requestFullReplayPublish: RequestFullReplayPublish;
   generateShortVoiceOvers: GenerateShortVoiceOvers;
   generateFullVoiceOvers: GenerateFullVoiceOvers;
+  editorialLocalize: EditorialLocalize;
+  packageFullDeliveryAssets: PackageFullDeliveryAssets;
   runReplayDirectorCapture: RunReplayDirectorCapture;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
@@ -208,6 +219,7 @@ export function createContainer(env: AppEnv): AppContainer {
   const clock = new SystemClock();
   const id = new UuidIdPort();
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
+  const hardwareConfig = createFsHardwareConfig({ logger });
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
   const render = createFfmpegRender({ logger, settings });
   const fullVideoEncode = createFfmpegFullVideoEncode({ logger, settings });
@@ -286,6 +298,11 @@ export function createContainer(env: AppEnv): AppContainer {
     llm,
     id,
     clock,
+    logger,
+  });
+  const editorialLocalize = createEditorialLocalize({
+    llm,
+    hardware: hardwareConfig,
     logger,
   });
   const container: AppContainer = {
@@ -380,6 +397,7 @@ export function createContainer(env: AppEnv): AppContainer {
       settings,
       logger,
     }),
+    editorialLocalize,
     generateFullVoiceOvers: createGenerateFullVoiceOvers({
       llm,
       tts,
@@ -388,6 +406,15 @@ export function createContainer(env: AppEnv): AppContainer {
       mediaDuration,
       mediaStore,
       replaySessions: repositories.replaySessions,
+      settings,
+      clock,
+      logger,
+      editorialLocalize,
+    }),
+    packageFullDeliveryAssets: createPackageFullDeliveryAssets({
+      mediaStore,
+      replaySessions: repositories.replaySessions,
+      fullVoMix,
       settings,
       clock,
       logger,
@@ -505,6 +532,7 @@ export function startWorkers(): void {
       fullVideoEncode: container.fullVideoEncode,
       fullVoMix: container.fullVoMix,
       generateFullVoiceOvers: container.generateFullVoiceOvers,
+      packageFullDeliveryAssets: container.packageFullDeliveryAssets,
       queue: container.jobQueue,
       settings: container.settings,
       auth: container.auth,

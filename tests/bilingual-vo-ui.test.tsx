@@ -133,7 +133,7 @@ describe("bilingual voice-over candidate UI", () => {
 
     const markup = renderToStaticMarkup(await ReplaysPage());
 
-    expect(markup).toContain("Encode + upload full IT+EN VO");
+    expect(markup).toContain("Encode + publish multi-lang VO");
     expect(markup).toContain('name="voiceOver"');
     expect(markup).toContain('value="true"');
   });

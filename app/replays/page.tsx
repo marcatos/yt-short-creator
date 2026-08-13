@@ -273,7 +273,7 @@ export default async function ReplaysPage() {
                     <select
                       name="privacy"
                       defaultValue="unlisted"
-                      disabled={!session.racePackage}
+                      disabled={!session.racePackage && !session.raceAnalysis}
                       title="YouTube privacy"
                     >
                       <option value="unlisted">unlisted</option>
@@ -282,7 +282,10 @@ export default async function ReplaysPage() {
                     </select>
                     <button
                       type="submit"
-                      disabled={!session.racePackage || !session.mediaPath}
+                      disabled={
+                        (!session.racePackage && !session.raceAnalysis) ||
+                        !session.mediaPath
+                      }
                     >
                       Encode + upload full
                     </button>
@@ -290,9 +293,13 @@ export default async function ReplaysPage() {
                       type="submit"
                       name="voiceOver"
                       value="true"
-                      disabled={!session.racePackage || !session.mediaPath}
+                      disabled={
+                        (!session.racePackage && !session.raceAnalysis) ||
+                        !session.mediaPath
+                      }
+                      title="Single master + IT/EN audio, localizations, captions"
                     >
-                      Encode + upload full IT+EN VO
+                      Encode + publish multi-lang VO
                     </button>
                   </form>
                 </div>
@@ -318,6 +325,92 @@ export default async function ReplaysPage() {
                 </p>
               ) : null}
 
+              {session.raceAnalysis ? (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    background: "#141414",
+                    border: "1px solid #2a2a2a",
+                    display: "grid",
+                    gap: "0.75rem",
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>Race analysis</h3>
+                  <p style={{ margin: 0 }}>
+                    <strong>Why watch:</strong> {session.raceAnalysis.whyWatch}
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>Storyline:</strong>{" "}
+                    {session.raceAnalysis.mainStoryline}
+                  </p>
+                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                    {[
+                      session.raceAnalysis.context.track,
+                      session.raceAnalysis.context.car,
+                      session.raceAnalysis.results.startPosition != null &&
+                      session.raceAnalysis.results.finishPosition != null
+                        ? `P${session.raceAnalysis.results.startPosition} → P${session.raceAnalysis.results.finishPosition}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                    Short candidates: {session.raceAnalysis.shortCandidates.length}{" "}
+                    (top score{" "}
+                    {Math.max(
+                      ...session.raceAnalysis.shortCandidates.map(
+                        (item) => item.shortScore,
+                      ),
+                      0,
+                    ).toFixed(2)}
+                    )
+                  </p>
+                </div>
+              ) : null}
+
+              {session.deliveryAssets ? (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    background: "#141414",
+                    border: "1px solid #2a2a2a",
+                    display: "grid",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>Delivery assets</h3>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--ice-dim)" }}>
+                    <li>
+                      Master:{" "}
+                      {session.deliveryAssets.masterVideoPath ?? "(none)"}
+                    </li>
+                    <li>Audio IT: {session.deliveryAssets.audioItPath ?? "—"}</li>
+                    <li>Audio EN: {session.deliveryAssets.audioEnPath ?? "—"}</li>
+                    <li>
+                      Metadata: {session.deliveryAssets.youtubeMetadataPath}
+                    </li>
+                  </ul>
+                  {(session.publishManualChecklist ??
+                    session.deliveryAssets.metadata.manualStudioChecklist)
+                    .length > 0 ? (
+                    <div>
+                      <strong>Studio checklist (manual)</strong>
+                      <ol style={{ margin: "0.35rem 0 0", paddingLeft: "1.25rem" }}>
+                        {(
+                          session.publishManualChecklist ??
+                          session.deliveryAssets.metadata.manualStudioChecklist
+                        ).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {session.racePackage ? (
                 <div
                   style={{
@@ -329,7 +422,7 @@ export default async function ReplaysPage() {
                     gap: "0.75rem",
                   }}
                 >
-                  <h3 style={{ margin: 0 }}>YouTube long-form package</h3>
+                  <h3 style={{ margin: 0 }}>Legacy package bridge</h3>
                   <p style={{ margin: 0 }}>
                     <strong>Title:</strong> {session.racePackage.fullVideo.title}
                   </p>
@@ -348,7 +441,7 @@ export default async function ReplaysPage() {
                   </p>
                   <details>
                     <summary style={{ cursor: "pointer" }}>
-                      Race transcript ({session.racePackage.timeline.length}{" "}
+                      Race narrative ({session.racePackage.timeline.length}{" "}
                       beats)
                     </summary>
                     <pre

@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import type { ReplaySession } from "@/src/domain/entities";
+import type { EditorialLocalize } from "@/src/application/editorial-localize";
 import {
   RACE_METADATA_STYLE,
   RACE_VOICE_OVER_STYLE,
@@ -108,6 +109,8 @@ type Dependencies = {
   logger: Logger;
   /** Measures rendered chunk audio so word offsets match the concatenated file. */
   mediaDuration?: MediaDurationPort;
+  /** Preferred when session.raceAnalysis is present (single-master editorial). */
+  editorialLocalize?: EditorialLocalize;
 };
 
 export type GenerateFullVoiceOvers = (input: {
@@ -125,6 +128,24 @@ type LanguageScript = {
 };
 
 function raceContext(session: ReplaySession): string {
+  if (session.raceAnalysis) {
+    return JSON.stringify({
+      title: session.title,
+      trackName: session.trackName,
+      durationSec: session.durationSec,
+      raceAnalysis: {
+        context: session.raceAnalysis.context,
+        results: session.raceAnalysis.results,
+        mainStoryline: session.raceAnalysis.mainStoryline,
+        whyWatch: session.raceAnalysis.whyWatch,
+        storylines: session.raceAnalysis.storylines,
+        timeline: session.raceAnalysis.timeline,
+        narrativeIt: session.raceAnalysis.narrativeIt,
+        events: session.raceAnalysis.events,
+        potentialHooks: session.raceAnalysis.potentialHooks,
+      },
+    });
+  }
   return JSON.stringify({
     title: session.title,
     trackName: session.trackName,
@@ -352,9 +373,9 @@ export function createGenerateFullVoiceOvers(
       if (!appSettings.enableVoiceOverPipeline) {
         throw new Error("Voice-over pipeline is disabled in settings");
       }
-      if (!session.racePackage?.fullVideo?.title) {
+      if (!session.racePackage?.fullVideo?.title && !session.raceAnalysis) {
         throw new Error(
-          "Run AV analysis first so the racePackage timeline and metadata exist",
+          "Run AV analysis first so the race analysis / racePackage exists",
         );
       }
       const voPath = deps.mediaStore.fullReplayVoPath?.bind(deps.mediaStore);
@@ -367,18 +388,42 @@ export function createGenerateFullVoiceOvers(
       await deps.mediaStore.ensureDirs();
 
       const scriptStartedAt = performance.now();
-      const response = await deps.llm.complete({
-        system: SYSTEM_PROMPT,
-        user: `Write the bilingual full-race narration for this race package:\n${raceContext(session)}`,
-        jsonSchema: responseJsonSchema,
-      });
-      const scripts = scriptsSchema.parse(JSON.parse(response));
-      log.info("Full voice-over scripts generated", {
-        sessionId,
-        chapterCount: scripts.chapters.length,
-        durationMs: Math.round(performance.now() - scriptStartedAt),
-      });
-
+      let scripts: z.infer<typeof scriptsSchema>;
+      if (session.raceAnalysis && deps.editorialLocalize) {
+        const editorial = await deps.editorialLocalize({
+          analysis: session.raceAnalysis,
+        });
+        scripts = {
+          chapters: [
+            {
+              label: "race",
+              scriptIt: editorial.it.voiceOverScript,
+              scriptEn: editorial.en.voiceOverScript,
+            },
+          ],
+          titleIt: editorial.it.title,
+          titleEn: editorial.en.title,
+          descriptionIt: editorial.it.description,
+          descriptionEn: editorial.en.description,
+        };
+        log.info("Full voice-over scripts from editorial localize", {
+          sessionId,
+          titleIt: editorial.it.title,
+          durationMs: Math.round(performance.now() - scriptStartedAt),
+        });
+      } else {
+        const response = await deps.llm.complete({
+          system: SYSTEM_PROMPT,
+          user: `Write the bilingual full-race narration for this race package:\n${raceContext(session)}`,
+          jsonSchema: responseJsonSchema,
+        });
+        scripts = scriptsSchema.parse(JSON.parse(response));
+        log.info("Full voice-over scripts generated", {
+          sessionId,
+          chapterCount: scripts.chapters.length,
+          durationMs: Math.round(performance.now() - scriptStartedAt),
+        });
+      }
       const existingByLanguage = new Map(
         (session.fullVoiceOvers ?? []).map((item) => [item.language, item]),
       );
