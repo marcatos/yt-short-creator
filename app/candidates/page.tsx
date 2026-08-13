@@ -4,6 +4,12 @@ import { getContainer } from "@/src/lib/container";
 
 export const dynamic = "force-dynamic";
 
+const TERMINAL_CANDIDATE_STATUSES = new Set([
+  "published",
+  "rejected",
+  "failed",
+]);
+
 type PageProps = {
   searchParams: Promise<{
     status?: string;
@@ -22,11 +28,20 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
   const origin = ["clip", "generate", "replay"].includes(query.origin ?? "")
     ? query.origin
     : undefined;
-  const candidates = await getContainer().listCandidates({ status, origin });
+  const container = getContainer();
+  const candidates = await container.listCandidates({ status, origin });
   candidates.sort((left, right) =>
     query.sort === "newest"
       ? right.createdAt.getTime() - left.createdAt.getTime()
       : right.score - left.score,
+  );
+
+  const publishJobs =
+    await container.repositories.jobs.listPublishJobsByCandidateIds(
+      candidates.map((candidate) => candidate.id),
+    );
+  const publishedAtByCandidateId = new Map(
+    publishJobs.map((job) => [job.candidateId, job.publishedAt]),
   );
 
   return (
@@ -36,7 +51,7 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
           <p className="eyebrow">Approval queue</p>
           <h1>Candidate triage</h1>
         </div>
-        <strong>{candidates.length} shown</strong>
+        <strong>{candidates.length} loaded</strong>
       </header>
       <form className="filter-bar">
         <label>
@@ -71,19 +86,30 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
         </button>
       </form>
       <CandidateQueue
-        candidates={candidates.map((candidate) => ({
-          id: candidate.id,
-          origin: candidate.origin,
-          status: candidate.status,
-          title: candidate.title,
-          score: candidate.score,
-          sourceHint:
-            candidate.origin === "clip"
-              ? `Source ${"sourceVideoId" in candidate.provenance ? candidate.provenance.sourceVideoId : "video"}`
-              : candidate.origin === "replay"
-                ? `Replay ${"replaySessionId" in candidate.provenance ? candidate.provenance.replaySessionId : "session"} · ${"eventType" in candidate.provenance ? candidate.provenance.eventType : "moment"}${"segments" in candidate.provenance && Array.isArray(candidate.provenance.segments) && candidate.provenance.segments.length >= 2 ? ` · multi-scene×${candidate.provenance.segments.length}` : ""}`
-                : `Brief ${"generationBriefId" in candidate.provenance ? candidate.provenance.generationBriefId : "generated"}`,
-        }))}
+        candidates={candidates.map((candidate) => {
+          const publishedAt = publishedAtByCandidateId.get(candidate.id);
+          const endedAt =
+            publishedAt ??
+            (TERMINAL_CANDIDATE_STATUSES.has(candidate.status)
+              ? candidate.updatedAt
+              : null);
+          return {
+            id: candidate.id,
+            origin: candidate.origin,
+            status: candidate.status,
+            title: candidate.title,
+            score: candidate.score,
+            createdAt: candidate.createdAt.toISOString(),
+            endedAt: endedAt?.toISOString() ?? null,
+            previewUrl: `/api/candidates/${candidate.id}/media`,
+            sourceHint:
+              candidate.origin === "clip"
+                ? `Source ${"sourceVideoId" in candidate.provenance ? candidate.provenance.sourceVideoId : "video"}`
+                : candidate.origin === "replay"
+                  ? `Replay ${"replaySessionId" in candidate.provenance ? candidate.provenance.replaySessionId : "session"} · ${"eventType" in candidate.provenance ? candidate.provenance.eventType : "moment"}${"segments" in candidate.provenance && Array.isArray(candidate.provenance.segments) && candidate.provenance.segments.length >= 2 ? ` · multi-scene×${candidate.provenance.segments.length}` : ""}`
+                  : `Brief ${"generationBriefId" in candidate.provenance ? candidate.provenance.generationBriefId : "generated"}`,
+          };
+        })}
       />
     </main>
   );
