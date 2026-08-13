@@ -21,10 +21,27 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 
 2. Set `BRAND_ROOT` to the absolute path of your `smarcato42-racing` checkout (see `.env.example`).
 
-3. Install dependencies, then run **two** processes (UI + workers):
+3. Install dependencies, then run the **production daemon** (recommended on Windows):
 
    ```bash
    npm install
+   npm run daemon:start
+   ```
+
+   This builds (if needed), starts `next start` + workers as **detached** processes,
+   then exits — you can close the shell. Monitor anytime with:
+
+   ```bash
+   npm run daemon:status
+   npm run daemon:logs
+   npm run daemon:stop
+   ```
+
+   Optional: auto-start at Windows logon → `npm run daemon:install-autostart`
+
+   For local UI development instead (two terminals):
+
+   ```bash
    npm run dev        # Terminal A — localhost UI only
    npm run workers    # Terminal B — FFmpeg / YouTube / analysis jobs
    ```
@@ -70,8 +87,14 @@ Run this checklist against a test channel before accepting a release:
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start Next.js UI (does **not** run heavy job workers) |
-| `npm run workers` | Dedicated worker process for render/upload/analysis |
+| `npm run daemon:start` | Production daemon (detached web + workers) |
+| `npm run daemon:status` | Check daemon PIDs + HTTP without the start shell |
+| `npm run daemon:logs` | Tail `data/daemon/*.log` |
+| `npm run daemon:stop` | Stop daemon processes |
+| `npm run daemon:restart` | Stop + start |
+| `npm run daemon:install-autostart` | Windows Scheduled Task at logon |
+| `npm run dev` | Start Next.js UI only (dev; does **not** run heavy job workers) |
+| `npm run workers` | Dedicated worker process (dev companion to `npm run dev`) |
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm test` | Run Vitest |
