@@ -7,8 +7,11 @@ import type {
 } from "@/src/domain/voice-over";
 import type { PackageFullDeliveryAssets } from "@/src/application/package-full-delivery-assets";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
+import { uploadOrDeferDailyLimit } from "@/src/application/defer-youtube-upload";
+import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
 import type { ClockPort } from "@/src/ports/clock";
 import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
+import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
@@ -18,6 +21,7 @@ import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
 
 import type { JobHandlerContext } from "./job-handler-context";
+import type { YoutubePublishDeferQueue } from "./publish-vo-short-handler";
 import { runStep } from "./run-step";
 import { currentYouTubeAccessToken } from "./youtube-access-token";
 
@@ -33,8 +37,7 @@ export type FullVoiceOverPublishDeps = {
   fullVoMix?: FullVoMixPort;
   packageFullDeliveryAssets?: PackageFullDeliveryAssets;
   clock: ClockPort;
-  /** Unused by single-master path; kept for handler typing compatibility. */
-  queue?: unknown;
+  queue?: InspectableJobQueue & Partial<YoutubePublishDeferQueue>;
 };
 
 const JOB_TYPE = "publish_full_replay";
@@ -125,21 +128,30 @@ export async function runFullVoiceOverPublish(
       deps.auth,
       deps.clock.now(),
     );
-    const result = await deps.upload.upload({
-      accessToken,
-      filePath: masterPath,
-      title: it.title.slice(0, 100),
-      description: it.description,
-      tags: (session.racePackage?.fullVideo.tags ?? ["iRacing", "simracing"]).slice(
-        0,
-        15,
-      ),
-      scheduledAt: null,
-      privacy,
-      contentKind: "full",
-      defaultLanguage: "it",
-      defaultAudioLanguage: "it",
-    });
+    const result = await uploadOrDeferDailyLimit(
+      {
+        queue: deps.queue ?? { listJobs: () => [] },
+        breaker: youtubeUploadCircuitBreaker,
+        logger: log,
+      },
+      { jobId: ctx.jobId, jobType: JOB_TYPE },
+      () =>
+        deps.upload.upload({
+          accessToken,
+          filePath: masterPath,
+          title: it.title.slice(0, 100),
+          description: it.description,
+          tags: (session.racePackage?.fullVideo.tags ?? ["iRacing", "simracing"]).slice(
+            0,
+            15,
+          ),
+          scheduledAt: null,
+          privacy,
+          contentKind: "full",
+          defaultLanguage: "it",
+          defaultAudioLanguage: "it",
+        }),
+    );
     await deps.replaySessions.save({
       ...session,
       fullVideoYoutubeId: result.youtubeVideoId,

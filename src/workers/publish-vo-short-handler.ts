@@ -14,11 +14,14 @@ import {
   resolveVoiceOverUploadCheckpoint,
   type VoiceOverUploadCheckpoint,
 } from "@/src/application/voice-over-publish-checkpoint";
+import { uploadOrDeferDailyLimit } from "@/src/application/defer-youtube-upload";
+import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { InspectableJobQueue } from "@/src/ports/job-queue";
+import type { DurableJobQueue } from "@/src/ports/job-queue";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -30,6 +33,12 @@ import type { JobHandler } from "./job-handler-context";
 import { runStep } from "./run-step";
 import { currentYouTubeAccessToken } from "./youtube-access-token";
 
+/** Queue surface required to defer publishes on daily upload limit. */
+export type YoutubePublishDeferQueue = Pick<
+  DurableJobQueue,
+  "listJobs" | "getJob" | "saveCheckpoint" | "setProgress" | "markPaused"
+>;
+
 type Dependencies = {
   logger: Logger;
   candidates: CandidateRepository;
@@ -40,7 +49,7 @@ type Dependencies = {
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
   mediaStore?: MediaStorePort;
-  queue: InspectableJobQueue;
+  queue: InspectableJobQueue & Partial<YoutubePublishDeferQueue>;
 };
 
 type VoiceOverPublishPayload = {
@@ -259,16 +268,25 @@ export function createPublishVoiceOverShortHandler(
           20,
           `Uploading ${payload.language.toUpperCase()} Short to YouTube`,
         );
-        const result = await deps.upload.upload({
-          accessToken: token,
-          filePath: payload.filePath,
-          title: payload.title,
-          description,
-          tags: fresh.tags,
-          scheduledAt: fresh.scheduledAt,
-          privacy: fresh.scheduledAt ? "private" : settings.defaultPrivacy,
-          contentKind: "short",
-        });
+        const result = await uploadOrDeferDailyLimit(
+          {
+            queue: deps.queue,
+            breaker: youtubeUploadCircuitBreaker,
+            logger: log,
+          },
+          { jobId: ctx.jobId, jobType: JOB_TYPE },
+          () =>
+            deps.upload.upload({
+              accessToken: token,
+              filePath: payload.filePath,
+              title: payload.title,
+              description,
+              tags: fresh.tags,
+              scheduledAt: fresh.scheduledAt,
+              privacy: fresh.scheduledAt ? "private" : settings.defaultPrivacy,
+              contentKind: "short",
+            }),
+        );
         youtubeVideoId = result.youtubeVideoId;
         const uploadCheckpoint = {
           ...checkpointMetadata,

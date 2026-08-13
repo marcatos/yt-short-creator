@@ -7,6 +7,8 @@ import type { InProcessQueueDeps } from "@/src/adapters/jobs/in-process-queue-he
 
 export type SqliteQueueDeps = InProcessQueueDeps & {
   db: AppDb;
+  /** When set, claimNext skips queued jobs that return false (e.g. publish while quota blocked). */
+  canClaimJob?: (job: JobRecord) => boolean;
 };
 
 /**
@@ -41,6 +43,16 @@ export function readNextQueuedJob(db: Queryable): JobRecord | undefined {
     .orderBy(asc(queueJobs.position))
     .limit(1)
     .get();
+}
+
+/** Queued jobs in claim order (position asc). */
+export function listQueuedJobsOrdered(db: Queryable): JobRecord[] {
+  return db
+    .select()
+    .from(queueJobs)
+    .where(eq(queueJobs.status, "queued"))
+    .orderBy(asc(queueJobs.position))
+    .all();
 }
 
 export function insertJob(db: Queryable, job: JobRecord): void {

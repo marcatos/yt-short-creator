@@ -1,5 +1,7 @@
 import type { YoutubePrivacy } from "@/src/domain/entities";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
+import { uploadOrDeferDailyLimit } from "@/src/application/defer-youtube-upload";
+import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 
 import { requireStringPayload } from "./handler-utils";
@@ -140,17 +142,26 @@ export function createPublishFullReplayHandler(
           .filter(Boolean)
           .join("\n");
 
-        const result = await deps.upload.upload({
-          accessToken,
-          filePath,
-          title: title.slice(0, 100),
-          description,
-          tags: (packageMeta?.tags ?? ["iRacing", "simracing"]).slice(0, 15),
-          scheduledAt: null,
-          privacy,
-          contentKind: "full",
-          defaultLanguage: "it",
-        });
+        const result = await uploadOrDeferDailyLimit(
+          {
+            queue: deps.queue ?? { listJobs: () => [] },
+            breaker: youtubeUploadCircuitBreaker,
+            logger: log,
+          },
+          { jobId: ctx.jobId, jobType: JOB_TYPE },
+          () =>
+            deps.upload.upload({
+              accessToken,
+              filePath,
+              title: title.slice(0, 100),
+              description,
+              tags: (packageMeta?.tags ?? ["iRacing", "simracing"]).slice(0, 15),
+              scheduledAt: null,
+              privacy,
+              contentKind: "full",
+              defaultLanguage: "it",
+            }),
+        );
 
         await deps.replaySessions.save({
           ...session,

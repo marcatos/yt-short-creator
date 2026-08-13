@@ -8,12 +8,12 @@ import {
 import type { JobRecord } from "@/src/adapters/jobs/job-record";
 import {
   persistJobWithLogging,
-  readQueuedForClaim,
 } from "@/src/adapters/jobs/sqlite-queue-observability";
 import {
   clearTerminalJobs,
   insertJob,
   listJobsByDisplayOrder,
+  listQueuedJobsOrdered,
   loadJobs,
   readJob,
   type SqliteQueueDeps,
@@ -21,6 +21,10 @@ import {
 import type { DurableJobQueue } from "@/src/ports/job-queue";
 
 type JobMutation = (job: JobRecord) => void;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
   const pauseRequests = new Set<string>();
@@ -37,8 +41,16 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
   // process — poll SQLite so workers wake without a daemon restart.
   const CROSS_PROCESS_POLL_MS = 1_000;
 
+  function pickClaimableQueued(): JobRecord | undefined {
+    const queued = listQueuedJobsOrdered(deps.db);
+    if (!deps.canClaimJob) {
+      return queued[0];
+    }
+    return queued.find((job) => deps.canClaimJob!(job));
+  }
+
   function waitForWork(): Promise<void> {
-    if (readQueuedForClaim(deps.db, queueLogger)) {
+    if (pickClaimableQueued()) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -53,7 +65,7 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
         resolve();
       };
       let poll: ReturnType<typeof setInterval> | null = setInterval(() => {
-        if (readQueuedForClaim(deps.db, queueLogger)) {
+        if (pickClaimableQueued()) {
           done();
         }
       }, CROSS_PROCESS_POLL_MS);
@@ -103,18 +115,28 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
 
     async claimNext() {
       const startedAt = Date.now();
-      let next = readQueuedForClaim(deps.db, queueLogger);
-      while (!next) {
+      for (;;) {
+        const queued = listQueuedJobsOrdered(deps.db);
+        const next = deps.canClaimJob
+          ? queued.find((job) => deps.canClaimJob!(job))
+          : queued[0];
+        if (next) {
+          queueLogger.info("Job claimed", {
+            jobId: next.id,
+            type: next.type,
+            position: next.position,
+            durationMs: Date.now() - startedAt,
+          });
+          return next;
+        }
+        if (queued.length > 0) {
+          // Queued jobs exist but none are claimable (e.g. publish while
+          // YouTube daily limit breaker is armed) — poll instead of spinning.
+          await sleep(CROSS_PROCESS_POLL_MS);
+          continue;
+        }
         await waitForWork();
-        next = readQueuedForClaim(deps.db, queueLogger);
       }
-      queueLogger.info("Job claimed", {
-        jobId: next.id,
-        type: next.type,
-        position: next.position,
-        durationMs: Date.now() - startedAt,
-      });
-      return next;
     },
 
     setProgress(jobId, pct, message) {

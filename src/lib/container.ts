@@ -12,6 +12,10 @@ import { createFfmpegFullVideoEncode } from "@/src/adapters/ffmpeg/ffmpeg-full-v
 import { createFfmpegFullVoMix } from "@/src/adapters/ffmpeg/ffmpeg-full-vo-mix";
 import { createIbtFileTelemetry } from "@/src/adapters/ibt/ibt-file-telemetry";
 import { createSqliteJobQueue } from "@/src/adapters/jobs/sqlite-queue";
+import { isPublishJobType } from "@/src/application/defer-youtube-upload";
+import { resumeDeferredYoutubeUploads } from "@/src/application/resume-deferred-youtube-uploads";
+import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
+import { isYoutubeDailyUploadLimitCheckpoint } from "@/src/domain/youtube-upload-limit";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
@@ -257,6 +261,14 @@ export function createContainer(env: AppEnv): AppContainer {
     logger,
     idPort: id,
     clock,
+    canClaimJob: (job) => {
+      if (!isPublishJobType(job.type)) return true;
+      const data = job.checkpoint?.data;
+      if (isYoutubeDailyUploadLimitCheckpoint(data)) {
+        return new Date(data.retryAfter).getTime() <= Date.now();
+      }
+      return youtubeUploadCircuitBreaker.shouldClaimPublishJob();
+    },
   });
   const auth = new GoogleYouTubeAuthAdapter({
     clientId: env.YOUTUBE_CLIENT_ID,
@@ -490,6 +502,9 @@ export async function recoverThenStartWorkers(
   recoverQueue: () => Promise<unknown>,
   runner: Pick<ReturnType<typeof createWorkerRunner>, "start">,
   logger: Logger,
+  options?: {
+    resumeDeferredUploads?: () => Promise<unknown>;
+  },
 ): Promise<void> {
   try {
     await recoverQueue();
@@ -499,9 +514,21 @@ export async function recoverThenStartWorkers(
       stack: error instanceof Error ? error.stack : undefined,
     });
   }
+  if (options?.resumeDeferredUploads) {
+    try {
+      await options.resumeDeferredUploads();
+    } catch (error: unknown) {
+      logger.warn("Deferred YouTube upload resume failed on boot", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
+  }
   runner.start();
   logger.info("Workers started");
 }
+
+const YOUTUBE_UPLOAD_RESUME_INTERVAL_MS = 5 * 60 * 1000;
 
 export function startWorkers(): void {
   if (workersStarted) {
@@ -511,6 +538,12 @@ export function startWorkers(): void {
 
   const container = getContainer();
   const logger = container.logger;
+  const resumeDeferredUploads = () =>
+    resumeDeferredYoutubeUploads({
+      queue: container.jobQueue,
+      breaker: youtubeUploadCircuitBreaker,
+      logger,
+    });
   const runner = createWorkerRunner({
     queue: container.jobQueue,
     handlers: createHandlers({
@@ -549,15 +582,23 @@ export function startWorkers(): void {
     logger,
   });
 
-  recoverThenStartWorkers(recoverQueue, runner, logger).catch(
-    (error: unknown) => {
-      // Only reachable if runner.start() itself throws. Reset the guard so a
-      // later call to startWorkers() (e.g. a subsequent request) can retry.
-      workersStarted = false;
-      logger.error("Workers failed to start", {
+  setInterval(() => {
+    void resumeDeferredUploads().catch((error: unknown) => {
+      logger.warn("Periodic deferred YouTube upload resume failed", {
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
       });
-    },
-  );
+    });
+  }, YOUTUBE_UPLOAD_RESUME_INTERVAL_MS);
+
+  recoverThenStartWorkers(recoverQueue, runner, logger, {
+    resumeDeferredUploads,
+  }).catch((error: unknown) => {
+    // Only reachable if runner.start() itself throws. Reset the guard so a
+    // later call to startWorkers() (e.g. a subsequent request) can retry.
+    workersStarted = false;
+    logger.error("Workers failed to start", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  });
 }

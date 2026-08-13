@@ -2,6 +2,8 @@ import { applyCandidateEvent } from "@/src/domain/approval";
 import type { PublishJob } from "@/src/domain/entities";
 import { withFullVideoLink } from "@/src/domain/full-video-link";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
+import { uploadOrDeferDailyLimit } from "@/src/application/defer-youtube-upload";
+import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { JobRepository } from "@/src/ports/job-repository";
@@ -19,6 +21,7 @@ import type { JobHandler } from "./job-handler-context";
 import {
   createPublishVoiceOverShortHandler,
   hasVoiceOverPublishPayload,
+  type YoutubePublishDeferQueue,
 } from "./publish-vo-short-handler";
 import { runStep } from "./run-step";
 import { currentYouTubeAccessToken } from "./youtube-access-token";
@@ -27,7 +30,7 @@ type Dependencies = {
   logger: Logger;
   candidates: CandidateRepository;
   jobs: JobRepository;
-  queue: InspectableJobQueue;
+  queue: InspectableJobQueue & Partial<YoutubePublishDeferQueue>;
   settings: SettingsRepository;
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
@@ -151,16 +154,25 @@ export function createPublishShortHandler(deps: Dependencies): JobHandler {
           }
         }
         ctx.setProgress(20, "Uploading Short to YouTube");
-        const result = await deps.upload.upload({
-          accessToken: token,
-          filePath: renderOutputPath,
-          title: candidate.title,
-          description,
-          tags: candidate.tags,
-          scheduledAt,
-          privacy: scheduledAt ? "private" : settings.defaultPrivacy,
-          contentKind: "short",
-        });
+        const result = await uploadOrDeferDailyLimit(
+          {
+            queue: deps.queue,
+            breaker: youtubeUploadCircuitBreaker,
+            logger: log,
+          },
+          { jobId: ctx.jobId, jobType: JOB_TYPE },
+          () =>
+            deps.upload.upload({
+              accessToken: token,
+              filePath: renderOutputPath,
+              title: candidate.title,
+              description,
+              tags: candidate.tags,
+              scheduledAt,
+              privacy: scheduledAt ? "private" : settings.defaultPrivacy,
+              contentKind: "short",
+            }),
+        );
         youtubeVideoId = result.youtubeVideoId;
         const publishedAt = deps.clock.now();
         candidate = applyCandidateEvent(candidate, { type: "publish_succeeded" });
