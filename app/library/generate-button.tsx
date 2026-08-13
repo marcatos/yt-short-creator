@@ -60,16 +60,25 @@ export function GenerateIdeasButton({ channelId }: { channelId: string }) {
 
   const running = job !== null && !["succeeded", "failed", "cancelled"].includes(job.status);
   return (
-    <div>
-      <button type="button" onClick={generateIdeas} disabled={running}>
+    <div className="library-generate">
+      <button
+        className="button button-secondary"
+        type="button"
+        onClick={generateIdeas}
+        disabled={running}
+      >
         {running ? "Generating…" : "Generate Shorts ideas"}
       </button>
       {job ? (
-        <p aria-live="polite" style={{ color: "var(--ice-dim)", marginBottom: 0 }}>
+        <p aria-live="polite" className="muted library-generate-status">
           {job.progressPct}% — {job.message}
         </p>
       ) : null}
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <p className="job-error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
