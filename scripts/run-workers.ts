@@ -58,8 +58,17 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  // Keep the event loop alive for the runner's claimNext waits.
-  await new Promise(() => {});
+  // Windows/tsx can drop an unresolved Promise; keep explicit handles alive.
+  if (process.stdin.isTTY) {
+    process.stdin.resume();
+  }
+  setInterval(() => {
+    log.debug("Worker process heartbeat", { pid: process.pid });
+  }, 60_000).unref();
+
+  await new Promise<void>(() => {
+    /* run until signal */
+  });
 }
 
 main().catch((error: unknown) => {
