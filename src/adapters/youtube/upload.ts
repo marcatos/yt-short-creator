@@ -8,6 +8,7 @@ import type {
   YouTubeUploadInput,
   YouTubeUploadPort,
 } from "@/src/ports/youtube-upload";
+import { parseYouTubeUploadLimitError } from "@/src/domain/youtube-upload-limit";
 
 function shortDescription(input: YouTubeUploadInput): string {
   if (input.contentKind === "full") return input.description;
@@ -105,6 +106,7 @@ export function createGoogleYouTubeUpload(deps: {
         });
         return { youtubeVideoId };
       } catch (error) {
+        const limitError = parseYouTubeUploadLimitError(error);
         log.error("YouTube resumable upload failed", {
           filePath: input.filePath,
           fileSizeBytes,
@@ -114,6 +116,9 @@ export function createGoogleYouTubeUpload(deps: {
               ? { message: error.message, stack: error.stack }
               : String(error),
         });
+        if (limitError) {
+          throw limitError;
+        }
         throw error;
       }
     },
