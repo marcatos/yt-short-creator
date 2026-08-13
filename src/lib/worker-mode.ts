@@ -6,14 +6,14 @@
  * Escape hatch: WORKERS_IN_NEXT=1 embeds workers again (not recommended).
  */
 export function workersEmbeddedInNextEnabled(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): boolean {
   const raw = (env.WORKERS_IN_NEXT ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
 export function isDedicatedWorkerProcess(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): boolean {
   const raw = (env.WORKER_PROCESS ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";

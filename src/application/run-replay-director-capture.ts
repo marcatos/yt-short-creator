@@ -69,6 +69,12 @@ export function createRunReplayDirectorCapture(
     });
 
     try {
+      const rpyPath = session.rpyPath;
+      if (!rpyPath) {
+        throw new Error(
+          `Replay session ${session.id} has no .rpy path for director capture`,
+        );
+      }
       let events: ReplayEvent[] = [...session.events];
       let trackName = session.trackName;
 
@@ -109,7 +115,7 @@ export function createRunReplayDirectorCapture(
       );
 
       const result = await deps.capture.directedCapture({
-        rpyPath: session.rpyPath,
+        rpyPath,
         watchDir,
         timeoutMs,
         outputPath,
