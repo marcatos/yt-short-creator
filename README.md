@@ -1,35 +1,82 @@
 # YT Short Creator
 
-Local S.Marcato 42 Racing tool: analyze your YouTube channel, propose branded Shorts (clip + generate), approve in a localhost dashboard, and auto-upload.
+**Local Short Control for [S.Marcato 42 Racing](https://github.com/marcatos)** — analyze the channel, propose branded YouTube Shorts, approve on `localhost`, then render and upload without leaving the desk.
 
-See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) and [implementation plan](docs/superpowers/plans/2026-08-11-yt-short-creator.md).
+[![CI](https://github.com/marcatos/yt-short-creator/actions/workflows/ci.yml/badge.svg)](https://github.com/marcatos/yt-short-creator/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-25-brightgreen)
+
+Pipeline: **analyze → propose → brand render → human approve → upload**.
+
+Built as a single-operator desktop web app — not a multi-tenant SaaS. Every publish path requires an explicit Approve.
+
+## Why it exists
+
+Shorts are how a race channel grows between long-form uploads. This tool mines existing masters, generates new hooks when inventory is thin, and pulls highlight packages from iRacing replays — then wraps every cut in S.Marcato 42 Racing brand language (carbon / ice / Rosso Corsa) before it ever touches YouTube.
+
+The operator stays in the loop. The machine does the heavy lifting: download, analysis, FFmpeg render, OAuth upload, bilingual voice-over and captions, and daily upload-limit deferrals.
+
+## What it does
+
+| Surface | Role |
+|---------|------|
+| **Library** | Sync the channel catalog; **Analyze clips** from long-form; **Generate ideas** for original Shorts |
+| **Replays** | iRacing `.rpy` / OBS / telemetry workflow — Director capture, auto-record, full-race publish |
+| **Candidates** | Triage by origin (`clip` / `generate` / `replay`) and status; revise, reject, or approve |
+| **Jobs** | Live queue — pause, resume, cancel, reorder; respects YouTube daily upload limits |
+| **Setup** | Hardware / desk copy blocks for descriptions (IT + EN), never LLM-invented |
+| **Settings** | Brand root, privacy defaults, encoder prefs, IT/EN TTS voices, VO / caption flags |
+| **Connect** | YouTube OAuth for the intended channel |
+
+After Approve: workers enqueue `render_short` → `publish_short`. Optional bilingual IT/EN voice-over and captions ride the same review path.
+
+Deeper product map: [docs/overview.md](docs/overview.md).
+
+## How it runs
+
+```mermaid
+flowchart LR
+  UI["Next.js UI\nlocalhost:3000"]
+  DB[(SQLite)]
+  W["Detached workers"]
+  UI <--> DB
+  W <--> DB
+  W --> FF[FFmpeg]
+  W --> YT[yt-dlp / YouTube API]
+  W --> AI[LLM + TTS]
+```
+
+Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated worker process owns FFmpeg, downloads, analysis, and uploads so the dashboard stays responsive on large OBS masters.
+
+- **Production (Windows):** detached daemon — `npm run daemon:start` (web + workers). See [docs/daemon.md](docs/daemon.md).
+- **Development:** two terminals — `npm run dev` + `npm run workers`.
 
 ## Prerequisites
 
 - **Node.js** 25 (see `.nvmrc`) and npm
-- **FFmpeg** on your `PATH` (video download, analysis, and render)
+- **FFmpeg** on your `PATH` (download, analysis, render)
 - **yt-dlp** on your `PATH` (YouTube media download)
-- Sibling brand repo at `BRAND_ROOT` (default: `../smarcato42-racing`) with brand tokens and assets
+- Sibling brand pack at `BRAND_ROOT` (default: `../smarcato42-racing`) with brand tokens and assets
 
-## Local setup
+## Quick start
 
-1. Copy environment template and adjust paths:
+1. Copy the environment template and adjust paths:
 
    ```bash
    cp .env.example .env.local
    ```
 
-2. Set `BRAND_ROOT` to the absolute path of your `smarcato42-racing` checkout (see `.env.example`).
+2. Set `BRAND_ROOT` to the absolute path of your brand checkout (see `.env.example`).
 
-3. Install dependencies, then run the **production daemon** (recommended on Windows):
+3. Install dependencies, then start:
+
+   **Production daemon (recommended on Windows):**
 
    ```bash
    npm install
    npm run daemon:start
    ```
 
-   This builds (if needed), starts `next start` + workers as **detached** processes,
-   then exits — you can close the shell. Monitor anytime with:
+   Builds if needed, starts `next start` + workers as **detached** processes, then exits — you can close the shell.
 
    ```bash
    npm run daemon:status
@@ -39,24 +86,14 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 
    Optional: auto-start at Windows logon → `npm run daemon:install-autostart`
 
-   After a development, agents must **restart the daemon only if it is already
-   running**. If it is stopped, leave it stopped. See [daemon policy](docs/daemon.md).
-
-   When a work stream is finished, agents must **commit and push `main` to GitHub**
-   so nothing stays only local. See [git policy](docs/git.md).
-
-   For local UI development instead (two terminals):
+   **Local UI development (two terminals):**
 
    ```bash
    npm run dev        # Terminal A — localhost UI only
    npm run workers    # Terminal B — FFmpeg / YouTube / analysis jobs
    ```
 
-   Open [http://localhost:3000](http://localhost:3000).
-
-   Jobs are enqueued by the UI and executed by the worker process so Next stays
-   responsive on large OBS masters. Do not embed workers in Next — that freezes
-   the UI under heavy jobs.
+4. Open [http://localhost:3000](http://localhost:3000).
 
 ## Environment variables
 
@@ -66,8 +103,11 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 | `BRAND_ROOT` | Path to S.Marcato 42 Racing brand assets |
 | `YOUTUBE_*` | OAuth credentials for YouTube Data API v3 |
 | `LLM_*` / `TTS_*` | OpenAI-compatible LLM and TTS endpoints |
+| `WHISPER_MODEL` | Optional transcription model (reuses LLM credentials) |
 | `DATABASE_PATH` | SQLite database file (default `./data/app.db`) |
 | `MEDIA_ROOT` | Local media storage (default `./media`) |
+| `IRACING_VIDEOS_DIR` | Optional iRacing capture watch folder |
+| `FFMPEG_VIDEO_ENCODER` | Optional encoder override (prefer Settings UI) |
 
 ## YouTube OAuth
 
@@ -106,3 +146,11 @@ Run this checklist against a test channel before accepting a release:
 | `npm test` | Run Vitest |
 | `npm run db:generate` | Generate Drizzle migrations |
 | `npm run db:migrate` | Apply Drizzle migrations |
+
+## Further reading
+
+- [Product overview](docs/overview.md) — routes, pipeline, stack, forking notes
+- [Production daemon](docs/daemon.md) — operator guide for detached web + workers
+- [Core design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) — domain model and product contract
+
+Agent policies for this repo (commit/push `main`, daemon restart-if-running): [AGENTS.md](AGENTS.md), [docs/git.md](docs/git.md).
