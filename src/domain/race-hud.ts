@@ -86,7 +86,11 @@ export const sessionStripStateSchema = z.object({
   sessionType: nullableString,
   status: nullableString,
   trackName: nullableString,
-  lap: nullablePositiveInt,
+  /** Lap counters may show 0 before the first completed lap. */
+  lap: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.number().int().nonnegative().nullable(),
+  ),
   sessionTime: nullableString,
   flag: nullableString,
 });
