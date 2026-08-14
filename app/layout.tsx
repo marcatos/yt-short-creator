@@ -30,6 +30,7 @@ export default function RootLayout({
             <Link href="/replays">Replays</Link>
             <Link href="/candidates">Candidates</Link>
             <Link href="/jobs">Jobs</Link>
+            <Link href="/setup">Setup</Link>
             <Link href="/settings">Settings</Link>
           </nav>
         </header>

@@ -105,6 +105,36 @@
   font-family: ui-monospace, monospace;
 }
 
+.hardware-group {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hardware-group legend {
+  margin-bottom: 0.35rem;
+  color: var(--ice);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hardware-preview {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  background: #0e0e12;
+  color: var(--ice-dim);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 760px) {
   .review-grid,
   .settings-grid {
