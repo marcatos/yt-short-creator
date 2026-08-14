@@ -25,6 +25,16 @@ describe("hardware block", () => {
     expect(block).toContain(DEFAULT_HARDWARE.wheelbase);
     expect(block).toContain(DEFAULT_HARDWARE.wheel);
     expect(block).toContain(DEFAULT_HARDWARE.flagIndicator);
+    expect(block).toContain("Interfaccia audio:");
+    expect(block).toContain("Monitor da studio:");
+    expect(block).toContain("Cuffie:");
+    expect(block).toContain("Microfono:");
+    expect(block).toContain("Asta microfono:");
+    expect(block).toContain(DEFAULT_HARDWARE.audioInterface);
+    expect(block).toContain(DEFAULT_HARDWARE.studioMonitors);
+    expect(block).toContain(DEFAULT_HARDWARE.headphones);
+    expect(block).toContain(DEFAULT_HARDWARE.microphone);
+    expect(block).toContain(DEFAULT_HARDWARE.boomArm);
   });
 
   it("renders English labels", () => {
@@ -40,6 +50,11 @@ describe("hardware block", () => {
     expect(block).toContain("Wheelbase:");
     expect(block).toContain("Wheel:");
     expect(block).toContain("Flag indicator:");
+    expect(block).toContain("Audio interface:");
+    expect(block).toContain("Studio monitors:");
+    expect(block).toContain("Headphones:");
+    expect(block).toContain("Microphone:");
+    expect(block).toContain("Boom arm:");
     expect(block).toContain("GPU: RTX 4080");
   });
 
@@ -48,10 +63,12 @@ describe("hardware block", () => {
     expect(block).toMatch(/PC\n• CPU:/);
     expect(block).toMatch(/SIM RIG\n• Cockpit:/);
     expect(block).toMatch(/MONITOR\n• Monitor:/);
+    expect(block).toMatch(/AUDIO\n• Interfaccia audio:/);
     expect(HARDWARE_GROUPS.map((group) => group.id)).toEqual([
       "pc",
       "simRig",
       "monitors",
+      "audio",
     ]);
   });
 
@@ -80,6 +97,11 @@ describe("hardware block", () => {
       flagIndicator: "",
       monitors: "",
       resolution: "",
+      audioInterface: "",
+      studioMonitors: "",
+      headphones: "",
+      microphone: "",
+      boomArm: "",
     }, {
       cpu: "",
       motherboard: "",
@@ -97,6 +119,11 @@ describe("hardware block", () => {
       flagIndicator: "",
       monitors: "",
       resolution: "",
+      audioInterface: "",
+      studioMonitors: "",
+      headphones: "",
+      microphone: "",
+      boomArm: "",
     });
     expect(renderHardwareBlock(blank, "en")).toBe("");
   });

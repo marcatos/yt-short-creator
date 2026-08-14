@@ -20,6 +20,11 @@ const hardwareSchema = z.object({
   flagIndicator: z.string(),
   monitors: z.string(),
   resolution: z.string(),
+  audioInterface: z.string(),
+  studioMonitors: z.string(),
+  headphones: z.string(),
+  microphone: z.string(),
+  boomArm: z.string(),
 });
 
 export async function GET() {

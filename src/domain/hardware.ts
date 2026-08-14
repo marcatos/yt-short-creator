@@ -20,11 +20,16 @@ export type HardwareConfig = {
   flagIndicator: string;
   monitors: string;
   resolution: string;
+  audioInterface: string;
+  studioMonitors: string;
+  headphones: string;
+  microphone: string;
+  boomArm: string;
 };
 
 export type HardwareField = keyof HardwareConfig;
 
-export type HardwareGroupId = "pc" | "simRig" | "monitors";
+export type HardwareGroupId = "pc" | "simRig" | "monitors" | "audio";
 
 export type HardwareGroup = {
   id: HardwareGroupId;
@@ -50,6 +55,11 @@ export const DEFAULT_HARDWARE: HardwareConfig = {
   flagIndicator: "Sector 17 LED iFlag",
   monitors: 'Triple Samsung Odyssey G5 32"',
   resolution: "7680×1440",
+  audioInterface: "Focusrite Scarlett 2i2 4th Gen",
+  studioMonitors: "M-Audio BX4",
+  headphones: "Sennheiser HD518",
+  microphone: "Audio-Technica AT2020",
+  boomArm: "RØDE PSA1+",
 };
 
 export type HardwareLanguage = "it" | "en";
@@ -77,6 +87,17 @@ export const HARDWARE_GROUPS: HardwareGroup[] = [
     id: "monitors",
     heading: { it: "MONITOR", en: "MONITORS" },
     fields: ["monitors", "resolution"],
+  },
+  {
+    id: "audio",
+    heading: { it: "AUDIO", en: "AUDIO" },
+    fields: [
+      "audioInterface",
+      "studioMonitors",
+      "headphones",
+      "microphone",
+      "boomArm",
+    ],
   },
 ];
 
@@ -106,6 +127,11 @@ const LABELS: Record<
       flagIndicator: "Indicatore bandiere",
       monitors: "Monitor",
       resolution: "Risoluzione",
+      audioInterface: "Interfaccia audio",
+      studioMonitors: "Monitor da studio",
+      headphones: "Cuffie",
+      microphone: "Microfono",
+      boomArm: "Asta microfono",
     },
   },
   en: {
@@ -127,6 +153,11 @@ const LABELS: Record<
       flagIndicator: "Flag indicator",
       monitors: "Monitors",
       resolution: "Resolution",
+      audioInterface: "Audio interface",
+      studioMonitors: "Studio monitors",
+      headphones: "Headphones",
+      microphone: "Microphone",
+      boomArm: "Boom arm",
     },
   },
 };

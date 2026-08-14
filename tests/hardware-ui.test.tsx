@@ -21,6 +21,11 @@ describe("hardware setup UI", () => {
     expect(markup).toContain("VRS DirectForce Pro 20Nm");
     expect(markup).toContain("Formula VRS DirectForce Pro");
     expect(markup).toContain("Sector 17 LED iFlag");
+    expect(markup).toContain("Focusrite Scarlett 2i2 4th Gen");
+    expect(markup).toContain("M-Audio BX4");
+    expect(markup).toContain("Sennheiser HD518");
+    expect(markup).toContain("Audio-Technica AT2020");
+    expect(markup).toContain("RØDE PSA1+");
     expect(markup).toContain("Triple Samsung Odyssey G5 32");
     expect(markup).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(markup).toContain("MY SIM RACING SETUP");
