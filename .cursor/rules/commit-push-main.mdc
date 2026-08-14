@@ -1,0 +1,23 @@
+---
+description: Always commit during work, and push finished work on main to GitHub.
+alwaysApply: true
+---
+
+# Commit and push finished work to main
+
+This repo ships on `main`. Do not leave a finished work stream uncommitted or only on the local machine.
+
+**During work:** commit each coherent change separately with Conventional Commits (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`). Do not batch unrelated files.
+
+**When the work stream is done** (feature complete, the user is done with this thread, or you would otherwise stop):
+
+1. `git status` — every file from **this** stream is committed. Do not leave WIP from this stream unstaged.
+2. Stay on `main` (this project works on `main` directly). If you used another branch, integrate into `main` first.
+3. `git push origin HEAD` to GitHub (`marcatos/yt-short-creator`, personal SSH `github.com-personal`).
+4. Confirm `git status -sb` shows `main` in sync with `origin/main` (not ahead/behind).
+
+In this repository, finishing work **includes** commit + push. Do not skip them because a global habit is "only commit when asked".
+
+Never force-push `main`. Never commit secrets (`.env`, credentials, tokens). Do not mix another agent's unrelated WIP into your commits.
+
+Full policy: `docs/git.md`.

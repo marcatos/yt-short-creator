@@ -42,6 +42,9 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
    After a development, agents must **restart the daemon only if it is already
    running**. If it is stopped, leave it stopped. See [daemon policy](docs/daemon.md).
 
+   When a work stream is finished, agents must **commit and push `main` to GitHub**
+   so nothing stays only local. See [git policy](docs/git.md).
+
    For local UI development instead (two terminals):
 
    ```bash
