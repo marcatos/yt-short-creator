@@ -7,6 +7,7 @@ import type {
   ShortCandidate,
 } from "@/src/domain/entities";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaProxyPort } from "@/src/ports/media-proxy";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -24,6 +25,19 @@ function createLogger(): Logger {
     child: () => logger,
   };
   return logger;
+}
+
+function emptyInspirationStore(): InspirationStorePort {
+  return {
+    saveSyncRun: async () => {},
+    listSyncRuns: async () => [],
+    getLatestOkSyncAt: async () => null,
+    replaceActiveIdeas: async () => {},
+    listActiveIdeas: async () => [],
+    deleteLinksForCandidates: async () => {},
+    saveCandidateLinks: async () => {},
+    listLinksForCandidates: async () => [],
+  };
 }
 
 class MemoryReplaySessions implements ReplaySessionRepository {
@@ -275,6 +289,7 @@ describe("runReplayAnalysis", () => {
       },
       clock: { now: () => now },
       logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
     });
 
     const proposed = await run({ sessionId: "session-1" });
@@ -335,6 +350,7 @@ describe("runReplayAnalysis", () => {
       },
       clock: { now: () => now },
       logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
     });
 
     const proposed = await run({ sessionId: "session-1" });
@@ -523,6 +539,7 @@ describe("runReplayAnalysis", () => {
       },
       clock: { now: () => now },
       logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
     });
 
     await run({ sessionId: "session-1" });

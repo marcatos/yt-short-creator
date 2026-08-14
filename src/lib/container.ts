@@ -138,11 +138,9 @@ import {
   createRunReplayDirectorCapture,
   type RunReplayDirectorCapture,
 } from "@/src/application/run-replay-director-capture";
-import {
-  createSyncInspiration,
-  type SyncInspiration,
-} from "@/src/application/sync-inspiration";
+import { createSyncInspiration, type SyncInspiration } from "@/src/application/sync-inspiration";
 import { enqueueScheduledInspirationSyncIfDue } from "@/src/application/schedule-inspiration-sync";
+import { parseInspirationConfig } from "@/src/domain/inspiration-config";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -298,6 +296,7 @@ export function createContainer(env: AppEnv): AppContainer {
   const catalog = new GoogleYouTubeCatalogAdapter();
   const upload = createGoogleYouTubeUpload({ logger });
   const captions = createGoogleYouTubeCaptions({ logger });
+  const inspirationConfig = parseInspirationConfig(process.env);
   const runIdeation = createRunIdeation({
     llm,
     tts,
@@ -307,6 +306,8 @@ export function createContainer(env: AppEnv): AppContainer {
     id,
     clock,
     logger,
+    inspirationStore: repositories.inspiration,
+    inspirationConfig,
   });
   const syncInspiration = createSyncInspiration({
     studio: createYouTubeStudioInspirationAdapter({ logger }),
@@ -335,6 +336,8 @@ export function createContainer(env: AppEnv): AppContainer {
     id,
     clock,
     logger,
+    inspirationStore: repositories.inspiration,
+    inspirationConfig,
   });
   const editorialLocalize = createEditorialLocalize({
     llm,
@@ -383,6 +386,8 @@ export function createContainer(env: AppEnv): AppContainer {
       id,
       clock,
       logger,
+      inspirationStore: repositories.inspiration,
+      inspirationConfig,
     }),
     runReplayAnalysis,
     runIdeation,

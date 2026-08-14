@@ -29,10 +29,12 @@ import {
   selectTelemetryEvents,
   windowAroundEvent,
 } from "@/src/domain/replay";
+import type { InspirationConfig } from "@/src/domain/inspiration-config";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { IdPort } from "@/src/ports/id";
 import type { IbtTelemetryPort } from "@/src/ports/ibt-telemetry";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 import type { LlmPort, LlmUserPart } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaProxyPort, ProxyFrame } from "@/src/ports/media-proxy";
@@ -41,6 +43,9 @@ import type { RaceHudExtractorPort } from "@/src/ports/race-hud-extractor";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { TranscriptionPort } from "@/src/ports/transcription";
 import { z } from "zod";
+
+import { applyInspirationToBatchIfConfigured } from "./apply-inspiration-to-batch";
+import { loadInspirationPromptBlock } from "./inspiration-prompt-block";
 
 const MAX_SHORTS = 16;
 const MIN_SHORTS = 10;
@@ -299,6 +304,8 @@ type Dependencies = {
   id: IdPort;
   clock: ClockPort;
   logger: Logger;
+  inspirationStore?: InspirationStorePort;
+  inspirationConfig?: InspirationConfig;
 };
 
 export type RunReplayAnalysis = (input: {
@@ -748,6 +755,18 @@ export function createRunReplayAnalysis(
         )
         .join("\n");
 
+      let inspirationBlock = "";
+      try {
+        inspirationBlock = await loadInspirationPromptBlock(deps.inspirationStore);
+      } catch (error) {
+        log.warn("Failed to load inspiration prompt; continuing", {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+        });
+      }
+
       const packageStarted = performance.now();
       const response = await deps.llm.complete({
         system: [
@@ -797,6 +816,7 @@ export function createRunReplayAnalysis(
           telemetryHint
             ? `=== Telemetria IBT (boost, non unica fonte) ===\n${telemetryHint}`
             : null,
+          inspirationBlock || null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -1037,9 +1057,21 @@ export function createRunReplayAnalysis(
         .sort((a, b) => b.score - a.score)
         .slice(0, MAX_SHORTS);
 
-      await Promise.all(
-        candidates.map((candidate) => deps.candidates.save(candidate)),
+      const applied = await applyInspirationToBatchIfConfigured(
+        {
+          store: deps.inspirationStore,
+          config: deps.inspirationConfig,
+          clock: deps.clock,
+          logger: log,
+        },
+        candidates,
+        async (ordered) => {
+          await Promise.all(
+            ordered.map((candidate) => deps.candidates.save(candidate)),
+          );
+        },
       );
+      candidates = applied.candidates;
 
       await deps.replaySessions.save({
         ...session,

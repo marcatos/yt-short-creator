@@ -246,4 +246,29 @@ describe("InspirationStore", () => {
     expect(links).toHaveLength(2);
     expect(await store.listLinksForCandidates([])).toEqual([]);
   });
+
+  it("replaces existing links for the same candidate ids", async () => {
+    const { db } = openTempDb();
+    const repos = createRepositories(db);
+    const store = repos.inspiration;
+
+    await repos.candidates.save(sampleCandidate);
+    await store.saveSyncRun(syncRun({ id: "run-1" }));
+    await store.replaceActiveIdeas("run-1", [
+      idea({ id: "idea-1", syncRunId: "run-1" }),
+      idea({ id: "idea-2", syncRunId: "run-1", title: "Other" }),
+    ]);
+
+    await store.saveCandidateLinks([
+      { candidateId: "cand-1", ideaId: "idea-1", alignmentScore: 0.42 },
+    ]);
+    await store.deleteLinksForCandidates(["cand-1"]);
+    await store.saveCandidateLinks([
+      { candidateId: "cand-1", ideaId: "idea-2", alignmentScore: 0.9 },
+    ]);
+
+    expect(await store.listLinksForCandidates(["cand-1"])).toEqual([
+      { candidateId: "cand-1", ideaId: "idea-2", alignmentScore: 0.9 },
+    ]);
+  });
 });

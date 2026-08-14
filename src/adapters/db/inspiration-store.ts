@@ -159,6 +159,16 @@ export class DrizzleInspirationStore implements InspirationStorePort {
     return rows.map(toIdeaRecord);
   }
 
+  async deleteLinksForCandidates(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    const uniqueIds = [...new Set(ids)];
+    await this.db
+      .delete(candidateInspirationLinks)
+      .where(inArray(candidateInspirationLinks.candidateId, uniqueIds));
+  }
+
   async saveCandidateLinks(links: CandidateInspirationLink[]): Promise<void> {
     if (links.length === 0) {
       return;

@@ -5,14 +5,24 @@ import type {
   GenerationBrief,
   ShortCandidate,
 } from "@/src/domain/entities";
+import type { InspirationConfig } from "@/src/domain/inspiration-config";
+import { selectIdeasForGenerateFill } from "@/src/domain/inspiration";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { GenerationBriefRepository } from "@/src/ports/generation-brief-repository";
 import type { IdPort } from "@/src/ports/id";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { TtsPort } from "@/src/ports/tts";
+
+import { applyInspirationToBatchIfConfigured } from "./apply-inspiration-to-batch";
+import {
+  formatInspirationPromptBlock,
+  loadInspirationPromptBlock,
+  recordToInspirationIdea,
+} from "./inspiration-prompt-block";
 
 const ideaSchema = z.object({
   hook: z.string().trim().min(1),
@@ -78,6 +88,8 @@ type IdeationDependencies = {
   id: IdPort;
   clock: ClockPort;
   logger: Logger;
+  inspirationStore?: InspirationStorePort;
+  inspirationConfig?: InspirationConfig;
 };
 
 export type RunIdeation = (input: {
@@ -144,6 +156,154 @@ async function assemblePreview(
   return updated;
 }
 
+type IdeationIdea = z.infer<typeof ideaSchema>;
+
+async function materializeIdeas(
+  deps: IdeationDependencies,
+  channelId: string,
+  ideas: IdeationIdea[],
+  brollFiles: string[],
+  brollOffsetStart: number,
+): Promise<{ candidates: ShortCandidate[]; brollOffset: number }> {
+  const created: ShortCandidate[] = [];
+  let brollOffset = brollOffsetStart;
+  for (const idea of ideas) {
+    const createdAt = deps.clock.now();
+    const briefId = deps.id.generate();
+    const candidateId = deps.id.generate();
+    const planLength =
+      brollFiles.length === 0
+        ? idea.brollPlan.length
+        : Math.max(1, idea.brollPlan.length);
+    const brief: GenerationBrief = {
+      id: briefId,
+      channelId,
+      hook: idea.hook,
+      script: idea.script,
+      voiceProfile: idea.voiceProfile,
+      brollPlan: Array.from({ length: planLength }, (_, index) => ({
+        asset:
+          brollFiles.length === 0
+            ? ""
+            : deps.mediaStore.brollPath(
+                brollFiles[(brollOffset + index) % brollFiles.length],
+              ),
+        description: idea.brollPlan[index] ?? "Supporting racing footage",
+      })),
+      createdAt,
+    };
+    const candidate: ShortCandidate = {
+      id: candidateId,
+      origin: "generate",
+      status: "proposed",
+      title: idea.title,
+      description: idea.description,
+      tags: idea.tags,
+      score: idea.score,
+      provenance: {
+        generationBriefId: briefId,
+        scriptVersion: 1,
+        voiceAssetPath: "",
+        timeline: [],
+      },
+      renderOutputPath: null,
+      scheduledAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    await deps.briefs.save(brief);
+    created.push(
+      await assemblePreview(deps, candidate, brief, brollFiles, brollOffset),
+    );
+    brollOffset += Math.max(planLength, 1);
+  }
+  return { candidates: created, brollOffset };
+}
+
+async function generateInspirationFill(
+  deps: IdeationDependencies,
+  log: Logger,
+  input: {
+    channelId: string;
+    shortfall: number;
+    matchedIdeaIds: string[];
+    brollFiles: string[];
+    brollOffset: number;
+  },
+): Promise<ShortCandidate[]> {
+  const store = deps.inspirationStore;
+  if (!store || input.shortfall <= 0) {
+    return [];
+  }
+  const fillMax = deps.inspirationConfig?.generateFillMax ?? 3;
+  const records = await store.listActiveIdeas();
+  const unmatched = selectIdeasForGenerateFill(
+    records.map(recordToInspirationIdea),
+    new Set(input.matchedIdeaIds),
+    Math.min(input.shortfall, fillMax),
+  );
+  if (unmatched.length === 0) {
+    return [];
+  }
+
+  const fillStarted = performance.now();
+  log.info("Inspiration generate fill started", {
+    fillCount: unmatched.length,
+    shortfall: input.shortfall,
+  });
+  try {
+    const response = await deps.llm.complete({
+      system:
+        "Create concise Italian YouTube Shorts ideas for a motorsport channel. Each script must open with its hook and fit within 60 seconds.",
+      user: [
+        `Channel ID: ${input.channelId}`,
+        `Create exactly ${unmatched.length} distinct ideas aligned with these unmatched YouTube Inspiration ideas.`,
+        "Prefer their angles and titles. Do not invent facts.",
+        formatInspirationPromptBlock(unmatched),
+      ].join("\n"),
+      jsonSchema: responseJsonSchema,
+    });
+    const fillIdeas = ideationSchema
+      .parse(JSON.parse(response))
+      .ideas.slice(0, unmatched.length);
+    const materialized = await materializeIdeas(
+      deps,
+      input.channelId,
+      fillIdeas,
+      input.brollFiles,
+      input.brollOffset,
+    );
+    const applied = await applyInspirationToBatchIfConfigured(
+      {
+        store: deps.inspirationStore,
+        config: deps.inspirationConfig,
+        clock: deps.clock,
+        logger: log,
+      },
+      materialized.candidates,
+      async (ordered) => {
+        await Promise.all(
+          ordered.map((candidate) => deps.candidates.save(candidate)),
+        );
+      },
+    );
+    log.info("Inspiration generate fill completed", {
+      fillCount: applied.candidates.length,
+      durationMs: Math.round(performance.now() - fillStarted),
+    });
+    return applied.candidates;
+  } catch (error) {
+    log.warn("Inspiration generate fill failed; continuing without extra ideas", {
+      error:
+        error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : String(error),
+      durationMs: Math.round(performance.now() - fillStarted),
+    });
+    return [];
+  }
+}
+
 export function createRunIdeation(deps: IdeationDependencies): RunIdeation {
   const log = deps.logger.child({ operation: "runIdeation" });
 
@@ -156,72 +316,67 @@ export function createRunIdeation(deps: IdeationDependencies): RunIdeation {
       }
       await deps.mediaStore.ensureDirs();
       const brollFiles = await deps.mediaStore.listBroll();
+
+      let inspirationBlock = "";
+      try {
+        inspirationBlock = await loadInspirationPromptBlock(deps.inspirationStore);
+      } catch (error) {
+        log.warn("Failed to load inspiration prompt; continuing", {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+        });
+      }
+
       const response = await deps.llm.complete({
         system:
           "Create concise Italian YouTube Shorts ideas for a motorsport channel. Each script must open with its hook and fit within 60 seconds.",
-        user: `Channel ID: ${channelId}\nCreate exactly ${count} distinct ideas with metadata and a shot-by-shot B-roll plan.`,
+        user: [
+          `Channel ID: ${channelId}`,
+          `Create exactly ${count} distinct ideas with metadata and a shot-by-shot B-roll plan.`,
+          inspirationBlock,
+        ]
+          .filter(Boolean)
+          .join("\n"),
         jsonSchema: responseJsonSchema,
       });
       const ideas = ideationSchema.parse(JSON.parse(response)).ideas.slice(
         0,
         count,
       );
-      const created: ShortCandidate[] = [];
-      let brollOffset = 0;
+      const materialized = await materializeIdeas(
+        deps,
+        channelId,
+        ideas,
+        brollFiles,
+        0,
+      );
+      const applied = await applyInspirationToBatchIfConfigured(
+        {
+          store: deps.inspirationStore,
+          config: deps.inspirationConfig,
+          clock: deps.clock,
+          logger: log,
+        },
+        materialized.candidates,
+        async (ordered) => {
+          await Promise.all(
+            ordered.map((candidate) => deps.candidates.save(candidate)),
+          );
+        },
+      );
 
-      for (const idea of ideas) {
-        const createdAt = deps.clock.now();
-        const briefId = deps.id.generate();
-        const candidateId = deps.id.generate();
-        const planLength =
-          brollFiles.length === 0 ? idea.brollPlan.length : Math.max(1, idea.brollPlan.length);
-        const brief: GenerationBrief = {
-          id: briefId,
+      let created = applied.candidates;
+      if (applied.shortfall > 0 && !applied.stale) {
+        const fill = await generateInspirationFill(deps, log, {
           channelId,
-          hook: idea.hook,
-          script: idea.script,
-          voiceProfile: idea.voiceProfile,
-          brollPlan: Array.from({ length: planLength }, (_, index) => ({
-            asset:
-              brollFiles.length === 0
-                ? ""
-                : deps.mediaStore.brollPath(
-                    brollFiles[(brollOffset + index) % brollFiles.length],
-                  ),
-            description: idea.brollPlan[index] ?? "Supporting racing footage",
-          })),
-          createdAt,
-        };
-        const candidate: ShortCandidate = {
-          id: candidateId,
-          origin: "generate",
-          status: "proposed",
-          title: idea.title,
-          description: idea.description,
-          tags: idea.tags,
-          score: idea.score,
-          provenance: {
-            generationBriefId: briefId,
-            scriptVersion: 1,
-            voiceAssetPath: "",
-            timeline: [],
-          },
-          renderOutputPath: null,
-          scheduledAt: null,
-          createdAt,
-          updatedAt: createdAt,
-        };
-        await deps.briefs.save(brief);
-        created.push(
-          await assemblePreview(
-            deps,
-            candidate,
-            brief,
-            brollFiles,
-            brollOffset,
-          ),
-        );
-        brollOffset += Math.max(planLength, 1);
+          shortfall: applied.shortfall,
+          matchedIdeaIds: applied.matchedIdeaIds,
+          brollFiles,
+          brollOffset: materialized.brollOffset,
+        });
+        created = [...created, ...fill];
       }
 
       log.info("Ideation completed", {

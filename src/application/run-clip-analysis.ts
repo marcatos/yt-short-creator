@@ -2,13 +2,18 @@ import { z } from "zod";
 
 import type { ShortCandidate } from "@/src/domain/entities";
 import { withFullVideoLink } from "@/src/domain/full-video-link";
+import type { InspirationConfig } from "@/src/domain/inspiration-config";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
 import type { IdPort } from "@/src/ports/id";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { VideoDownloadPort } from "@/src/ports/video-download";
+
+import { applyInspirationToBatchIfConfigured } from "./apply-inspiration-to-batch";
+import { loadInspirationPromptBlock } from "./inspiration-prompt-block";
 
 const clipWindowSchema = z.object({
   startMs: z.number().int().nonnegative(),
@@ -66,6 +71,8 @@ type RunClipAnalysisDependencies = {
   id: IdPort;
   clock: ClockPort;
   logger: Logger;
+  inspirationStore?: InspirationStorePort;
+  inspirationConfig?: InspirationConfig;
 };
 
 export type RunClipAnalysis = (input: {
@@ -97,6 +104,18 @@ export function createRunClipAnalysis(
         await deps.sourceVideos.save({ ...source, localMediaPath });
       }
 
+      let inspirationBlock = "";
+      try {
+        inspirationBlock = await loadInspirationPromptBlock(deps.inspirationStore);
+      } catch (error) {
+        log.warn("Failed to load inspiration prompt; continuing", {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+        });
+      }
+
       const response = await deps.llm.complete({
         system:
           "Identify compelling self-contained vertical-video moments. Return 8-60 second windows only, using millisecond timestamps and truthful metadata.",
@@ -105,7 +124,10 @@ export function createRunClipAnalysis(
           `Duration: ${source.durationSec} seconds`,
           `Local media reference: ${localMediaPath}`,
           "Select up to 10 moments. Prefer a strong opening hook and complete thought.",
-        ].join("\n"),
+          inspirationBlock,
+        ]
+          .filter(Boolean)
+          .join("\n"),
         jsonSchema: responseJsonSchema,
       });
       const parsed = analysisSchema.parse(JSON.parse(response));
@@ -145,16 +167,27 @@ export function createRunClipAnalysis(
         }),
       );
 
-      await Promise.all(
-        candidates.map((candidate) => deps.candidates.save(candidate)),
+      const applied = await applyInspirationToBatchIfConfigured(
+        {
+          store: deps.inspirationStore,
+          config: deps.inspirationConfig,
+          clock: deps.clock,
+          logger: log,
+        },
+        candidates,
+        async (ordered) => {
+          await Promise.all(
+            ordered.map((candidate) => deps.candidates.save(candidate)),
+          );
+        },
       );
       log.info("Clip analysis completed", {
         sourceVideoId,
-        proposedCount: candidates.length,
+        proposedCount: applied.candidates.length,
         rejectedWindowCount: parsed.windows.length - candidates.length,
         durationMs: Math.round(performance.now() - startedAt),
       });
-      return candidates;
+      return applied.candidates;
     } catch (error) {
       log.error("Clip analysis failed", {
         sourceVideoId,

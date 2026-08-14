@@ -91,6 +91,11 @@ class MemoryInspirationStore implements InspirationStorePort {
     return this.ideas.filter((idea) => idea.active);
   }
 
+  async deleteLinksForCandidates(ids: string[]): Promise<void> {
+    const wanted = new Set(ids);
+    this.links = this.links.filter((link) => !wanted.has(link.candidateId));
+  }
+
   async saveCandidateLinks(links: CandidateInspirationLink[]): Promise<void> {
     this.links.push(...links);
   }

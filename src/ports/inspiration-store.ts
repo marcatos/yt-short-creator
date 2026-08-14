@@ -47,6 +47,7 @@ export interface InspirationStorePort {
     ideas: InspirationIdeaRecord[],
   ): Promise<void>;
   listActiveIdeas(): Promise<InspirationIdeaRecord[]>;
+  deleteLinksForCandidates(ids: string[]): Promise<void>;
   saveCandidateLinks(links: CandidateInspirationLink[]): Promise<void>;
   listLinksForCandidates(ids: string[]): Promise<CandidateInspirationLink[]>;
 }
