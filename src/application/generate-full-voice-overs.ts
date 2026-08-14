@@ -129,6 +129,7 @@ type LanguageScript = {
 
 function raceContext(session: ReplaySession): string {
   if (session.raceAnalysis) {
+    const hud = session.raceAnalysis.hudTimeline ?? [];
     return JSON.stringify({
       title: session.title,
       trackName: session.trackName,
@@ -143,6 +144,25 @@ function raceContext(session: ReplaySession): string {
         narrativeIt: session.raceAnalysis.narrativeIt,
         events: session.raceAnalysis.events,
         potentialHooks: session.raceAnalysis.potentialHooks,
+        recurringRivals: session.raceAnalysis.recurringRivals,
+        focusCarHint: session.raceAnalysis.focusCarHint,
+        hudSummary: {
+          snapshotCount: hud.length,
+          first: hud[0]
+            ? {
+                timeMs: hud[0].timeMs,
+                focus: hud[0].focus,
+                session: hud[0].session,
+              }
+            : null,
+          last: hud.length
+            ? {
+                timeMs: hud[hud.length - 1]!.timeMs,
+                focus: hud[hud.length - 1]!.focus,
+                session: hud[hud.length - 1]!.session,
+              }
+            : null,
+        },
       },
     });
   }

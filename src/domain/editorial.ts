@@ -113,6 +113,43 @@ export function assembleDescription(input: {
 }
 
 export function analysisContextForEditorial(analysis: RaceAnalysis): string {
+  const hudTimeline = analysis.hudTimeline ?? [];
+  const hudSummary =
+    hudTimeline.length > 0
+      ? {
+          snapshotCount: hudTimeline.length,
+          focusCarHint: analysis.focusCarHint,
+          rivals: analysis.recurringRivals.slice(0, 8),
+          sample: hudTimeline
+            .filter(
+              (_, index) =>
+                index %
+                  Math.max(1, Math.floor(hudTimeline.length / 6)) ===
+                0,
+            )
+            .slice(0, 6)
+            .map((snap) => ({
+              timeMs: snap.timeMs,
+              focus: snap.focus
+                ? {
+                    carNumber: snap.focus.carNumber,
+                    driverName: snap.focus.driverName,
+                    position: snap.focus.position,
+                    gapToLeader: snap.focus.gapToLeader,
+                  }
+                : null,
+              battle: snap.battle?.rows.slice(0, 4) ?? null,
+              session: snap.session
+                ? {
+                    lap: snap.session.lap,
+                    status: snap.session.status,
+                    flag: snap.session.flag,
+                  }
+                : null,
+            })),
+        }
+      : null;
+
   return JSON.stringify(
     {
       context: analysis.context,
@@ -125,6 +162,7 @@ export function analysisContextForEditorial(analysis: RaceAnalysis): string {
       timeline: analysis.timeline,
       narrativeIt: analysis.narrativeIt,
       recurringRivals: analysis.recurringRivals,
+      hud: hudSummary,
     },
     null,
     2,

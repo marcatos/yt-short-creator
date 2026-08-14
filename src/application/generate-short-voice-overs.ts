@@ -3,10 +3,17 @@ import path from "node:path";
 import { z } from "zod";
 
 import type { ShortCandidate } from "@/src/domain/entities";
+import type { RaceAnalysis } from "@/src/domain/race-analysis";
 import {
   RACE_METADATA_STYLE,
   RACE_VOICE_OVER_STYLE,
 } from "@/src/domain/race-copy-style";
+import {
+  resolveFocusSubject,
+  sliceHudWindow,
+  summarizeHudForNarration,
+  type RaceHudTimeline,
+} from "@/src/domain/race-hud";
 import {
   buildAssKaraoke,
   buildSrt,
@@ -21,6 +28,7 @@ import type { LlmPort } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaDurationPort } from "@/src/ports/media-duration";
 import type { MediaStorePort } from "@/src/ports/media-store";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { TranscriptionPort } from "@/src/ports/transcription";
 import type { TtsPort } from "@/src/ports/tts";
@@ -59,6 +67,7 @@ const SYSTEM_PROMPT = `${RACE_VOICE_OVER_STYLE}
 
 Write a YouTube Short voice-over lasting 8–25 spoken seconds.
 Hook in the first 2 seconds with a concrete race moment (positions, battle, mistake, recovery), then end with a CTA to subscribe or watch the full race.
+Use verified HUD / raceAnalysis facts when provided (positions, gaps, rivals) — never invent them.
 Also return concise localized titles and descriptions (${RACE_METADATA_STYLE}).`;
 
 function voiceProfileForLanguage(
@@ -83,21 +92,70 @@ type Dependencies = {
   logger: Logger;
   /** Measures the rendered narration so the 8–25 s gate sees real audio. */
   mediaDuration?: MediaDurationPort;
+  /** Optional — enriches Short VO with session raceAnalysis / HUD window. */
+  replaySessions?: ReplaySessionRepository;
 };
 
 export type GenerateShortVoiceOvers = (input: {
   candidateId: string;
 }) => Promise<VoiceOverPackage[]>;
 
-function candidateContext(candidate: ShortCandidate): string {
-  return JSON.stringify({
+function overlappingEvents(
+  analysis: RaceAnalysis,
+  startMs: number,
+  endMs: number,
+) {
+  return analysis.events.filter(
+    (event) => event.endMs >= startMs && event.startMs <= endMs,
+  );
+}
+
+/** Exported for unit tests. */
+export function candidateContext(
+  candidate: ShortCandidate,
+  analysis: RaceAnalysis | null | undefined,
+): string {
+  const provenance = candidate.provenance;
+  const startMs =
+    "startMs" in provenance && typeof provenance.startMs === "number"
+      ? provenance.startMs
+      : 0;
+  const endMs =
+    "endMs" in provenance && typeof provenance.endMs === "number"
+      ? provenance.endMs
+      : startMs;
+  const hudTimeline: RaceHudTimeline = analysis?.hudTimeline ?? [];
+  const hudWindow = sliceHudWindow(hudTimeline, startMs, endMs);
+  const subject = resolveFocusSubject(
+    hudTimeline.length ? hudTimeline : hudWindow,
+    analysis?.focusCarHint ?? "",
+  );
+  const payload: Record<string, unknown> = {
     id: candidate.id,
     origin: candidate.origin,
     title: candidate.title,
     description: candidate.description,
     tags: candidate.tags,
     provenance: candidate.provenance,
-  });
+  };
+
+  if (analysis) {
+    payload.raceFacts = {
+      focusCarHint: analysis.focusCarHint,
+      results: analysis.results,
+      recurringRivals: analysis.recurringRivals,
+      eventsInWindow: overlappingEvents(analysis, startMs, endMs).slice(0, 12),
+    };
+  }
+
+  if (hudWindow.length || hudTimeline.length) {
+    payload.hudWindow = summarizeHudForNarration(
+      hudWindow.length ? hudWindow : sliceHudWindow(hudTimeline, startMs, endMs),
+      subject.carNumber,
+    );
+  }
+
+  return JSON.stringify(payload);
 }
 
 function captionPath(audioPath: string, extension: ".srt" | ".ass"): string {
@@ -163,9 +221,20 @@ export function createGenerateShortVoiceOvers(
 
       await deps.mediaStore.ensureDirs();
       const scriptStartedAt = performance.now();
+      let raceAnalysis: RaceAnalysis | null = null;
+      const provenance = candidate.provenance;
+      const sessionId =
+        "replaySessionId" in provenance &&
+        typeof provenance.replaySessionId === "string"
+          ? provenance.replaySessionId
+          : null;
+      if (sessionId && deps.replaySessions) {
+        const session = await deps.replaySessions.getById(sessionId);
+        raceAnalysis = session?.raceAnalysis ?? null;
+      }
       const response = await deps.llm.complete({
         system: SYSTEM_PROMPT,
-        user: `Create bilingual voice-over copy for this candidate:\n${candidateContext(candidate)}`,
+        user: `Create bilingual voice-over copy for this candidate:\n${candidateContext(candidate, raceAnalysis)}`,
         jsonSchema: responseJsonSchema,
       });
       const scripts = scriptsSchema.parse(JSON.parse(response));
