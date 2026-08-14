@@ -57,9 +57,25 @@ Failures land in `failed` (retryable from the UI). Rejected candidates are retai
 
 Approve enqueues render, then publish. Workers also handle analysis, ideation, replay capture, bilingual voice-over packaging, and YouTube daily-upload deferrals.
 
+## Using Inspiration (operator)
+
+Inspiration is a **bias**, not a separate pipeline. After ideas are mirrored locally:
+
+1. Open **`/inspiration`** — confirm active ideas, last sync status, and the **Stale** badge (default: sync older than 7 days).
+2. Sync when Studio’s feed changes: **Sync now** on that page, or wait for the scheduled job (`INSPIRATION_SYNC_INTERVAL_HOURS`, default `24`). One-time Studio login: `npm run studio:login`.
+3. Run **clip**, **generate**, or **replay** as usual. While active ideas are fresh, proposals get:
+   - a soft LLM prompt block (title / summary / suggested titles),
+   - score boost for matched candidates,
+   - an alignment quota (~40% of the kept batch when enough matchable material exists).
+4. On **Candidates**, look for the Inspiration chip — it links the proposal to the mirrored idea(s).
+
+If ideas are **stale**, only the prompt soft-hint remains (no boost/quota). Clip and replay never invent windows to fill quota; generate may add a few inspiration-guided briefs. Missing Studio profile does not fail those jobs.
+
+Design details and env knobs: [2026-08-14 youtube-inspiration](superpowers/specs/2026-08-14-youtube-inspiration-design.md).
+
 ## Capability map
 
-- **Inspiration sync** — Playwright scrape of Studio Inspiration tab (manual + scheduled); biases clip/generate/replay proposals via prompt, score boost, and alignment quota
+- **Inspiration sync** — Playwright scrape of Studio Inspiration tab (manual + scheduled); biases clip/generate/replay proposals via prompt, score boost, and alignment quota (see **Using Inspiration** above)
 - **Clip path** — sync library → analyze long-form windows → score and propose candidates
 - **Generate path** — ideation briefs → assemble / preview → same approval path
 - **Replay path** — `.rpy` / media / telemetry → analyze → Director or auto capture → Short or full-race publish

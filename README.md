@@ -21,6 +21,8 @@ The operator stays in the loop. The machine does the heavy lifting: download, an
 |---------|------|
 | **Library** | Sync the channel catalog; **Analyze clips** from long-form; **Generate ideas** for original Shorts |
 | **Inspiration** | Mirror YouTube Studio Inspiration ideas; **Sync now** or scheduled job; stale badge when ideas age out |
+
+After a successful sync, keep working normally: **Analyze clips**, **Generate ideas**, or **Replays**. Fresh Inspiration ideas bias those proposals (prompt + score boost + ~40% alignment quota). On Candidates, the Inspiration chip shows which idea(s) influenced a Short. Operator walkthrough: [docs/overview.md — Using Inspiration](docs/overview.md#using-inspiration-operator).
 | **Replays** | iRacing `.rpy` / OBS / telemetry workflow — Director capture, auto-record, full-race publish |
 | **Candidates** | Triage by origin (`clip` / `generate` / `replay`) and status; revise, reject, or approve |
 | **Jobs** | Live queue — pause, resume, cancel, reorder; respects YouTube daily upload limits |
