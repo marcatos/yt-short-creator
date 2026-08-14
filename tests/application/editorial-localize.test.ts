@@ -99,6 +99,7 @@ describe("editorialLocalize", () => {
         async get() {
           return DEFAULT_HARDWARE;
         },
+        async save() {},
       },
       llm: {
         async complete() {

@@ -84,6 +84,11 @@ import {
   type SettingsView,
 } from "@/src/application/settings";
 import {
+  createGetHardware,
+  createUpdateHardware,
+} from "@/src/application/hardware";
+import type { HardwareConfig } from "@/src/domain/hardware";
+import {
   createCreateReplaySession,
   type CreateReplaySession,
 } from "@/src/application/create-replay-session";
@@ -184,6 +189,8 @@ export type AppContainer = {
   settings: SettingsRepository;
   getSettings: () => Promise<SettingsView>;
   updateSettings: (input: AppSettings) => Promise<AppSettings>;
+  getHardware: () => Promise<HardwareConfig>;
+  updateHardware: (input: HardwareConfig) => Promise<HardwareConfig>;
   jobQueue: DurableJobQueue;
   videoDownload: VideoDownloadPort;
   mediaStore: MediaStorePort;
@@ -479,6 +486,8 @@ export function createContainer(env: AppEnv): AppContainer {
       logger,
     }),
     updateSettings: createUpdateSettings({ settings, logger }),
+    getHardware: createGetHardware({ hardware: hardwareConfig, logger }),
+    updateHardware: createUpdateHardware({ hardware: hardwareConfig, logger }),
   };
 
   return container;
