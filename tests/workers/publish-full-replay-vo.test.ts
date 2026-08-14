@@ -72,6 +72,7 @@ function analysis(): RaceAnalysis {
     ],
     narrativeIt: "Parto P18.",
     audioTranscript: "",
+    hudTimeline: [],
   };
 }
 

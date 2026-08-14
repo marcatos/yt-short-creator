@@ -99,6 +99,16 @@ function fakeMediaStore(): MediaStorePort {
   };
 }
 
+function fakeRaceHudExtractor(
+  timeline: Array<Record<string, unknown>> = [],
+) {
+  return {
+    async extract() {
+      return timeline as never;
+    },
+  };
+}
+
 function fakeMediaProxy(): MediaProxyPort {
   return {
     async ensureProxy() {
@@ -232,6 +242,7 @@ describe("runReplayAnalysis", () => {
       mediaProxy: fakeMediaProxy(),
       transcription: fakeTranscription(),
       mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor(),
       llm: {
         async complete(input) {
           if (input.userParts?.length) {
@@ -302,6 +313,7 @@ describe("runReplayAnalysis", () => {
         },
       },
       mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor(),
       llm: {
         async complete(input) {
           if (input.userParts?.length) {
@@ -329,6 +341,175 @@ describe("runReplayAnalysis", () => {
     expect(proposed).toHaveLength(10);
     expect(sessions.session.raceAnalysis?.narrativeIt).toContain("vision");
     expect(sessions.session.racePackage?.transcript).toContain("vision");
+  });
+
+  it("uses HUD focus card for subject and fills verified results", async () => {
+    const sessions = new MemoryReplaySessions(baseSession());
+    const candidates = new MemoryCandidates();
+    let faseAUser = "";
+
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: fakeTranscription(),
+      mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor([
+        {
+          timeMs: 0,
+          session: {
+            sessionType: "RACE",
+            status: "REPLAY",
+            trackName: "Oschersleben",
+            lap: 1,
+            sessionTime: "0:10",
+            flag: "GREEN",
+          },
+          focus: {
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            position: 5,
+            fieldSize: 19,
+            lastLap: null,
+            bestLap: null,
+            gapToLeader: "+2.0s",
+          },
+          battle: {
+            rows: [
+              {
+                role: "ahead",
+                carNumber: 4,
+                driverName: "Yoan",
+                gapSec: -0.5,
+              },
+              {
+                role: "focus",
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapSec: 0,
+              },
+              {
+                role: "behind",
+                carNumber: 5,
+                driverName: "Kike",
+                gapSec: 0.2,
+              },
+            ],
+          },
+          standings: {
+            rows: [
+              {
+                position: 5,
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapText: "+2.0s",
+              },
+            ],
+          },
+          confidence: "verified",
+        },
+        {
+          timeMs: 120_000,
+          session: {
+            sessionType: "RACE",
+            status: "REPLAY",
+            trackName: "Oschersleben",
+            lap: 8,
+            sessionTime: "12:00",
+            flag: "GREEN",
+          },
+          focus: {
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            position: 2,
+            fieldSize: 19,
+            lastLap: "1:41.143",
+            bestLap: null,
+            gapToLeader: "+0.86s",
+          },
+          battle: {
+            rows: [
+              {
+                role: "ahead",
+                carNumber: 4,
+                driverName: "Yoan",
+                gapSec: -0.86,
+              },
+              {
+                role: "focus",
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapSec: 0,
+              },
+            ],
+          },
+          standings: {
+            rows: [
+              {
+                position: 1,
+                carNumber: 4,
+                driverName: "Yoan",
+                gapText: "LEADER",
+              },
+              {
+                position: 2,
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapText: "+0.86s",
+              },
+            ],
+          },
+          confidence: "verified",
+        },
+      ]),
+      llm: {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({ moments: [] });
+          }
+          faseAUser = input.user;
+          return JSON.stringify({
+            raceAnalysis: raceAnalysisLlmFixture({
+              results: {
+                qualiResult: null,
+                startPosition: null,
+                finishPosition: null,
+                fieldSize: null,
+                positionsGained: null,
+              },
+            }),
+          });
+        },
+      },
+      id: {
+        generate: (() => {
+          let n = 0;
+          return () => `id-${++n}`;
+        })(),
+      },
+      clock: { now: () => now },
+      logger: createLogger(),
+    });
+
+    await run({ sessionId: "session-1" });
+
+    expect(faseAUser).toContain("=== HUD overlay (verified when present) ===");
+    expect(faseAUser).toContain("#7");
+    expect(sessions.session.raceAnalysis?.focusCarHint).toContain("#7");
+    expect(sessions.session.raceAnalysis?.results.startPosition).toBe(5);
+    expect(sessions.session.raceAnalysis?.results.finishPosition).toBe(2);
+    expect(sessions.session.raceAnalysis?.results.fieldSize).toBe(19);
+    expect(sessions.session.raceAnalysis?.hudTimeline).toHaveLength(2);
+    expect(
+      sessions.session.raceAnalysis?.events.some(
+        (event) => event.kind === "battle" && event.confidence === "verified",
+      ),
+    ).toBe(true);
   });
 });
 

@@ -56,6 +56,7 @@ const analysis: RaceAnalysis = {
   ],
   narrativeIt: "Parto P18 e arrivo P8.",
   audioTranscript: "",
+  hudTimeline: [],
 };
 
 function createLogger(): Logger {

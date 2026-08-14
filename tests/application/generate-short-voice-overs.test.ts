@@ -4,8 +4,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGenerateShortVoiceOvers } from "@/src/application/generate-short-voice-overs";
+import {
+  candidateContext,
+  createGenerateShortVoiceOvers,
+} from "@/src/application/generate-short-voice-overs";
 import type { ShortCandidate } from "@/src/domain/entities";
+import type { RaceAnalysis } from "@/src/domain/race-analysis";
 import {
   hashVoiceScript,
   ttsInstructionsFor,
@@ -448,5 +452,128 @@ describe("generateShortVoiceOvers", () => {
 
     expect(getCalls).toBe(2);
     expect(saved).toEqual({ ...concurrentlyUpdated, voiceOvers });
+  });
+});
+
+describe("candidateContext HUD enrichment", () => {
+  it("includes raceFacts and hudWindow from analysis", () => {
+    const analysis: RaceAnalysis = {
+      version: 1,
+      focusCarHint: "#7 Simone Marcato (camera focus from HUD)",
+      context: {
+        simulator: "iRacing",
+        track: "Oschersleben",
+        car: null,
+        durationSec: 600,
+      },
+      results: {
+        qualiResult: null,
+        startPosition: 5,
+        finishPosition: 2,
+        fieldSize: 19,
+        positionsGained: 3,
+      },
+      recurringRivals: ["#4 Yoan"],
+      events: [
+        {
+          kind: "battle",
+          startMs: 12_000,
+          endMs: 20_000,
+          summary: "Close battle",
+          involvingFocusCar: true,
+          confidence: "verified",
+        },
+      ],
+      timeline: [],
+      storylines: [
+        {
+          kind: "main",
+          summary: "Battle for P2",
+          whyWatch: "Close fight",
+        },
+      ],
+      mainStoryline: "Battle",
+      whyWatch: "Close fight",
+      potentialHooks: ["P2 battle"],
+      shortCandidates: [
+        {
+          shortScore: 0.9,
+          startMs: 10_000,
+          endMs: 28_000,
+          hook: "h",
+          story: "s",
+          payoff: "p",
+          recommendedTitleIt: "IT",
+          recommendedTitleEn: "EN",
+          requiresLocalizedRender: false,
+          tags: [],
+          descriptionIt: "d",
+          descriptionEn: "d",
+        },
+      ],
+      narrativeIt: "Battaglia.",
+      audioTranscript: "",
+      hudTimeline: [
+        {
+          timeMs: 12_000,
+          session: {
+            sessionType: "RACE",
+            status: "REPLAY",
+            trackName: "Oschersleben",
+            lap: 2,
+            sessionTime: "7:28",
+            flag: "GREEN",
+          },
+          focus: {
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            position: 2,
+            fieldSize: 19,
+            lastLap: "1:41.143",
+            bestLap: null,
+            gapToLeader: "+0.86s",
+          },
+          battle: {
+            rows: [
+              {
+                role: "ahead",
+                carNumber: 4,
+                driverName: "Yoan",
+                gapSec: -0.86,
+              },
+              {
+                role: "focus",
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapSec: 0,
+              },
+              {
+                role: "behind",
+                carNumber: 5,
+                driverName: "Kike",
+                gapSec: 0.06,
+              },
+            ],
+          },
+          standings: {
+            rows: [
+              {
+                position: 2,
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapText: "+0.86s",
+              },
+            ],
+          },
+          confidence: "verified",
+        },
+      ],
+    };
+
+    const ctx = JSON.parse(candidateContext(candidate(), analysis));
+    expect(ctx.raceFacts.results.finishPosition).toBe(2);
+    expect(ctx.raceFacts.eventsInWindow[0].kind).toBe("battle");
+    expect(ctx.hudWindow.focus.carNumber).toBe(7);
+    expect(ctx.hudWindow.lastFocus.gapToLeader).toBe("+0.86s");
   });
 });

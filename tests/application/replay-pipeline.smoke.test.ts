@@ -144,6 +144,11 @@ describe("replay pipeline smoke", () => {
         listBroll: async () => [],
         ensureDirs: async () => {},
       },
+      raceHudExtractor: {
+        async extract() {
+          return [];
+        },
+      },
       llm: {
         async complete(input) {
           if (input.userParts?.length) {
