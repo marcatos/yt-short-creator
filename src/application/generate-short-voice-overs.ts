@@ -210,6 +210,7 @@ export function createGenerateShortVoiceOvers(
       if (!candidate) {
         throw new Error(`Short candidate not found: ${candidateId}`);
       }
+      const resolvedCandidate = candidate;
       if (!appSettings.enableVoiceOverPipeline) {
         throw new Error("Voice-over pipeline is disabled in settings");
       }
@@ -222,7 +223,7 @@ export function createGenerateShortVoiceOvers(
       await deps.mediaStore.ensureDirs();
       const scriptStartedAt = performance.now();
       let raceAnalysis: RaceAnalysis | null = null;
-      const provenance = candidate.provenance;
+      const provenance = resolvedCandidate.provenance;
       const sessionId =
         "replaySessionId" in provenance &&
         typeof provenance.replaySessionId === "string"
@@ -237,7 +238,7 @@ export function createGenerateShortVoiceOvers(
         const response = await deps.llm.complete({
           system: SYSTEM_PROMPT,
           user: [
-            `Create bilingual voice-over copy for this candidate:\n${candidateContext(candidate, raceAnalysis)}`,
+            `Create bilingual voice-over copy for this candidate:\n${candidateContext(resolvedCandidate, raceAnalysis)}`,
             extraInstruction,
           ]
             .filter(Boolean)
@@ -254,7 +255,10 @@ export function createGenerateShortVoiceOvers(
       });
 
       const existingByLanguage = new Map(
-        (candidate.voiceOvers ?? []).map((item) => [item.language, item]),
+        (resolvedCandidate.voiceOvers ?? []).map((item) => [
+          item.language,
+          item,
+        ]),
       );
       let languageScripts: Array<{
         language: VoiceOverLanguage;
