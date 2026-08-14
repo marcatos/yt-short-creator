@@ -1,5 +1,7 @@
 # Agent notes
 
+Product overview for humans and agents: [docs/overview.md](docs/overview.md).
+
 ## Git
 
 Commit each coherent change. When a work stream is finished, everything from that stream must be on **`main` and pushed to GitHub**. Do not leave it only local.

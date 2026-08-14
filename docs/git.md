@@ -1,6 +1,6 @@
 # Git: commit and push to main
 
-This is a personal public repo (`marcatos/yt-short-creator`). Day-to-day work lands on **`main`** and must exist on GitHub when a work stream is finished.
+This personal public repo (`marcatos/yt-short-creator`) **ships on `main`**. Finished work must exist on GitHub, not only on the local machine.
 
 ## Agent policy
 
