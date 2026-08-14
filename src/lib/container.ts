@@ -142,6 +142,7 @@ import {
   createSyncInspiration,
   type SyncInspiration,
 } from "@/src/application/sync-inspiration";
+import { enqueueScheduledInspirationSyncIfDue } from "@/src/application/schedule-inspiration-sync";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -531,6 +532,7 @@ export async function recoverThenStartWorkers(
   logger: Logger,
   options?: {
     resumeDeferredUploads?: () => Promise<unknown>;
+    enqueueScheduledInspirationSync?: () => Promise<unknown>;
   },
 ): Promise<void> {
   try {
@@ -551,11 +553,22 @@ export async function recoverThenStartWorkers(
       });
     }
   }
+  if (options?.enqueueScheduledInspirationSync) {
+    try {
+      await options.enqueueScheduledInspirationSync();
+    } catch (error: unknown) {
+      logger.warn("Scheduled Inspiration sync enqueue failed on boot", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
+  }
   runner.start();
   logger.info("Workers started");
 }
 
 const YOUTUBE_UPLOAD_RESUME_INTERVAL_MS = 5 * 60 * 1000;
+const INSPIRATION_SYNC_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 export function startWorkers(): void {
   if (workersStarted) {
@@ -563,12 +576,20 @@ export function startWorkers(): void {
   }
   workersStarted = true;
 
+  const env = loadEnv();
   const container = getContainer();
   const logger = container.logger;
   const resumeDeferredUploads = () =>
     resumeDeferredYoutubeUploads({
       queue: container.jobQueue,
       breaker: youtubeUploadCircuitBreaker,
+      logger,
+    });
+  const enqueueScheduledInspirationSync = () =>
+    enqueueScheduledInspirationSyncIfDue({
+      store: container.repositories.inspiration,
+      queue: container.jobQueue,
+      intervalHours: env.INSPIRATION_SYNC_INTERVAL_HOURS,
       logger,
     });
   const runner = createWorkerRunner({
@@ -618,8 +639,17 @@ export function startWorkers(): void {
     });
   }, YOUTUBE_UPLOAD_RESUME_INTERVAL_MS);
 
+  setInterval(() => {
+    void enqueueScheduledInspirationSync().catch((error: unknown) => {
+      logger.warn("Periodic scheduled Inspiration sync enqueue failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, INSPIRATION_SYNC_CHECK_INTERVAL_MS);
+
   recoverThenStartWorkers(recoverQueue, runner, logger, {
     resumeDeferredUploads,
+    enqueueScheduledInspirationSync,
   }).catch((error: unknown) => {
     // Only reachable if runner.start() itself throws. Reset the guard so a
     // later call to startWorkers() (e.g. a subsequent request) can retry.
