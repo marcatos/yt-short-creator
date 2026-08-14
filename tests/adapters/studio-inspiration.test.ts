@@ -336,7 +336,7 @@ describe("createPlaywrightInspirationHelpers", () => {
     await helpers.gotoAndEnsureSignedIn();
     await helpers.openInspirationFeed();
     expect(gotos).toContain(INSPIRATION_SELECTORS.studioHome);
-    expect(gotos).toContain(INSPIRATION_SELECTORS.inspirationPath("UC123abc"));
+    expect(gotos).toContain(INSPIRATION_SELECTORS.contentPath("UC123abc"));
     expect(clicks).toContain("tab");
     expect(await helpers.countCards()).toBe(1);
 

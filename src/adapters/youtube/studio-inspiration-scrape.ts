@@ -21,19 +21,28 @@ import { parseIdeaFromTexts } from "./studio-inspiration-parse";
 export const INSPIRATION_SELECTORS = {
   studioHome: "https://studio.youtube.com",
   studioApp: "ytcp-app, ytcp-navigation, ytcp-entity-page",
-  /** Best-effort Content→Inspiration URL; tab click still runs afterward. */
-  inspirationPath: (channelId: string) =>
+  /** Content (uploads) page — Inspiration is a top tab here. */
+  contentPath: (channelId: string) =>
+    `https://studio.youtube.com/channel/${channelId}/videos/upload`,
+  /** Best-effort direct Inspiration URLs (may 404 / redirect on some accounts). */
+  inspirationPaths: (channelId: string) => [
     `https://studio.youtube.com/channel/${channelId}/videos/inspiration`,
+    `https://studio.youtube.com/channel/${channelId}/inspiration`,
+  ],
   contentNavNames: /^(content|contenuti)$/i,
   contentNavCandidates: [
     "ytcp-navigation-drawer a[href*='/videos']",
     "#menu-item-content",
+    "a[href*='/videos/upload']",
   ],
   inspirationTabNames: /inspiration|ispirazione/i,
   inspirationTabCandidates: [
     "tp-yt-paper-tab",
     "ytcp-tab",
     "[role='tab']",
+    "ytcp-animatable tp-yt-paper-tab",
+    "#tabsContent tp-yt-paper-tab",
+    "text=/Inspiration|Ispirazione/i",
   ],
   ideaCardCandidates: [
     "[data-idea-id]",
@@ -43,6 +52,10 @@ export const INSPIRATION_SELECTORS = {
     "[class*='idea-card']",
     "article:has-text('Audience interest')",
     "article:has-text('Interesse del pubblico')",
+    ":text('Audience interest')",
+    ":text('Interesse del pubblico')",
+    ":text(\"Let's brainstorm\")",
+    ":text('Creiamo idee')",
   ],
   detailPanel:
     "ytcd-idea-detail, ytcp-dialog[opened], [role='dialog'], ytcd-inspiration-detail",
@@ -199,8 +212,10 @@ export function createPlaywrightInspirationHelpers(
 
     async openInspirationFeed(): Promise<void> {
       const channelId = extractStudioChannelId(page.url());
+
+      // Always land on Content first — Inspiration is a top tab on that page.
       if (channelId) {
-        await page.goto(INSPIRATION_SELECTORS.inspirationPath(channelId), {
+        await page.goto(INSPIRATION_SELECTORS.contentPath(channelId), {
           waitUntil: "domcontentloaded",
           timeout: INSPIRATION_NAV_TIMEOUT_MS,
         });
@@ -224,10 +239,10 @@ export function createPlaywrightInspirationHelpers(
         }
       }
 
-      const clickedTab =
+      let opened =
         (await clickFirstRole(
           page,
-          ["tab"],
+          ["tab", "link", "button"],
           INSPIRATION_SELECTORS.inspirationTabNames,
         )) ||
         (await clickMatchingLocator(
@@ -235,13 +250,33 @@ export function createPlaywrightInspirationHelpers(
           INSPIRATION_SELECTORS.inspirationTabCandidates,
           INSPIRATION_SELECTORS.inspirationTabNames,
         ));
-      if (!clickedTab && !/\/inspiration\b/i.test(page.url())) {
+
+      if (!opened && channelId) {
+        for (const path of INSPIRATION_SELECTORS.inspirationPaths(channelId)) {
+          await page.goto(path, {
+            waitUntil: "domcontentloaded",
+            timeout: INSPIRATION_NAV_TIMEOUT_MS,
+          });
+          opened =
+            /\/inspiration\b/i.test(page.url()) ||
+            (await clickMatchingLocator(
+              page,
+              INSPIRATION_SELECTORS.inspirationTabCandidates,
+              INSPIRATION_SELECTORS.inspirationTabNames,
+            ));
+          if (opened) break;
+        }
+      }
+
+      if (!opened && !/\/inspiration\b/i.test(page.url())) {
         throw new StudioInspirationUiError(
-          "YouTube Studio Inspiration tab was not found",
+          `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
         );
       }
 
-      const cards = page.locator(INSPIRATION_SELECTORS.ideaCardCandidates.join(", "));
+      const cards = page.locator(
+        INSPIRATION_SELECTORS.ideaCardCandidates.join(", "),
+      );
       try {
         await cards.first().waitFor({
           state: "visible",
