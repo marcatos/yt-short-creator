@@ -5,8 +5,11 @@
 
 export type HardwareConfig = {
   cpu: string;
+  motherboard: string;
   gpu: string;
   ram: string;
+  aio: string;
+  pcCase: string;
   rig: string;
   wheelbase: string;
   wheel: string;
@@ -31,8 +34,11 @@ export type HardwareGroup = {
 /** Default Marcato / S.Marcato 42 Racing desk — sourced from video `_0H55Bo383k`. */
 export const DEFAULT_HARDWARE: HardwareConfig = {
   cpu: "AMD Ryzen 7 9800X3D",
+  motherboard: "MSI B850M GAMING PLUS WIFI",
   gpu: "NVIDIA GeForce RTX 4070 12GB",
   ram: "32GB DDR5 6000MHz",
+  aio: "ARCTIC Liquid Freezer III Pro 240",
+  pcCase: "Mars Gaming MC-VIEW2",
   rig: "TREQ One",
   wheelbase: "VRS DirectForce Pro 20Nm",
   wheel: "Formula VRS DirectForce Pro",
@@ -50,7 +56,7 @@ export const HARDWARE_GROUPS: HardwareGroup[] = [
   {
     id: "pc",
     heading: { it: "PC", en: "PC" },
-    fields: ["cpu", "gpu", "ram"],
+    fields: ["cpu", "motherboard", "gpu", "ram", "aio", "pcCase"],
   },
   {
     id: "simRig",
@@ -83,8 +89,11 @@ const LABELS: Record<
     heading: "🛠️ LA MIA POSTAZIONE SIM RACING",
     fields: {
       cpu: "CPU",
+      motherboard: "Scheda madre",
       gpu: "GPU",
       ram: "RAM",
+      aio: "AIO",
+      pcCase: "Case",
       rig: "Cockpit",
       wheelbase: "Base volante",
       wheel: "Volante",
@@ -100,8 +109,11 @@ const LABELS: Record<
     heading: "🛠️ MY SIM RACING SETUP",
     fields: {
       cpu: "CPU",
+      motherboard: "Motherboard",
       gpu: "GPU",
       ram: "RAM",
+      aio: "AIO",
+      pcCase: "Case",
       rig: "Rig",
       wheelbase: "Wheelbase",
       wheel: "Wheel",

@@ -1,7 +1,10 @@
 {
   "cpu": "AMD Ryzen 7 9800X3D",
+  "motherboard": "MSI B850M GAMING PLUS WIFI",
   "gpu": "NVIDIA GeForce RTX 4070 12GB",
   "ram": "Crucial Pro RAM DDR5 32GB 6000MHz CL36",
+  "aio": "ARCTIC Liquid Freezer III Pro 240",
+  "pcCase": "Mars Gaming MC-VIEW2",
   "rig": "TREQ One",
   "wheelbase": "VRS DirectForce Pro 20Nm",
   "wheel": "Formula VRS DirectForce Pro",

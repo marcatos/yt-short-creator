@@ -11,6 +11,12 @@ describe("hardware block", () => {
   it("renders Italian labels without LLM", () => {
     const block = renderHardwareBlock(DEFAULT_HARDWARE, "it");
     expect(block).toContain("LA MIA POSTAZIONE SIM RACING");
+    expect(block).toContain("Scheda madre:");
+    expect(block).toContain("AIO:");
+    expect(block).toContain("Case:");
+    expect(block).toContain(DEFAULT_HARDWARE.motherboard);
+    expect(block).toContain(DEFAULT_HARDWARE.aio);
+    expect(block).toContain(DEFAULT_HARDWARE.pcCase);
     expect(block).toContain("Base volante:");
     expect(block).toContain("Volante:");
     expect(block).toContain("Indicatore bandiere:");
@@ -25,6 +31,9 @@ describe("hardware block", () => {
       "en",
     );
     expect(block).toContain("MY SIM RACING SETUP");
+    expect(block).toContain("Motherboard:");
+    expect(block).toContain("AIO:");
+    expect(block).toContain("Case:");
     expect(block).toContain("Wheelbase:");
     expect(block).toContain("Wheel:");
     expect(block).toContain("Flag indicator:");
@@ -53,8 +62,11 @@ describe("hardware block", () => {
   it("returns empty string when all fields blank", () => {
     const blank = mergeHardware({
       cpu: " ",
+      motherboard: "",
       gpu: "",
       ram: "",
+      aio: "",
+      pcCase: "",
       rig: "",
       wheelbase: "",
       wheel: "",
@@ -66,8 +78,11 @@ describe("hardware block", () => {
       resolution: "",
     }, {
       cpu: "",
+      motherboard: "",
       gpu: "",
       ram: "",
+      aio: "",
+      pcCase: "",
       rig: "",
       wheelbase: "",
       wheel: "",

@@ -13,6 +13,9 @@ describe("hardware setup UI", () => {
     );
 
     expect(markup).toContain("AMD Ryzen 7 9800X3D");
+    expect(markup).toContain("MSI B850M GAMING PLUS WIFI");
+    expect(markup).toContain("ARCTIC Liquid Freezer III Pro 240");
+    expect(markup).toContain("Mars Gaming MC-VIEW2");
     expect(markup).toContain("TREQ One");
     expect(markup).toContain("VRS DirectForce Pro 20Nm");
     expect(markup).toContain("Formula VRS DirectForce Pro");

@@ -5,8 +5,11 @@ import { getContainer } from "@/src/lib/container";
 
 const hardwareSchema = z.object({
   cpu: z.string(),
+  motherboard: z.string(),
   gpu: z.string(),
   ram: z.string(),
+  aio: z.string(),
+  pcCase: z.string(),
   rig: z.string(),
   wheelbase: z.string(),
   wheel: z.string(),
