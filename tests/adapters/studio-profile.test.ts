@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isStudioHeaded,
   resolveChromeExecutablePath,
   resolveStudioBrowserChannel,
   resolveStudioCdpPort,
@@ -38,10 +39,15 @@ describe("studio browser channel", () => {
     expect(resolveStudioCdpPort({})).toBe(9222);
   });
 
-  it("defaults Studio automation to headed", async () => {
-    const { isStudioHeaded } = await import(
-      "@/src/adapters/youtube/studio-profile"
-    );
+  it("uses YOUTUBE_STUDIO_CHROME_PATH when set", () => {
+    expect(
+      resolveChromeExecutablePath({
+        YOUTUBE_STUDIO_CHROME_PATH: "C:\\Chrome\\chrome.exe",
+      }),
+    ).toBe("C:\\Chrome\\chrome.exe");
+  });
+
+  it("defaults Studio automation to headed", () => {
     expect(isStudioHeaded({})).toBe(true);
     expect(isStudioHeaded({ YOUTUBE_STUDIO_HEADED: "0" })).toBe(false);
   });
