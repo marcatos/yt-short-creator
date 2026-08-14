@@ -105,6 +105,9 @@ function helpersFromCards(
         expanded: card.expanded ?? true,
       };
     },
+    currentUrl() {
+      return "https://studio.youtube.com/channel/UC_test/content/inspiration";
+    },
     ...extras,
   };
 }
@@ -368,15 +371,23 @@ describe("createPlaywrightInspirationHelpers", () => {
       count: 1,
       click: () => clicks.push("inspiration-tab"),
     });
+    const ideaCard = locatorFrom({
+      count: 1,
+      text: EN_CARD,
+      visible: true,
+    });
     const page: PageLike = {
       url: () => "https://studio.youtube.com/",
       async goto(url) {
         gotos.push(url);
       },
-      locator: (selector) =>
-        selector === INSPIRATION_SELECTORS.ideaCardCandidates.join(", ")
-          ? locatorFrom({ visible: true, count: 1 })
-          : emptyLocator(),
+      locator: (selector) => {
+        if (selector === "ytci-feed-idea-preview") return ideaCard;
+        if (selector === INSPIRATION_SELECTORS.ideaCardCandidates[0]) {
+          return ideaCard;
+        }
+        return emptyLocator();
+      },
       getByRole: (role) => {
         if (role === "link" || role === "menuitem") return contentLink;
         if (role === "tab") return inspirationTab;
@@ -392,27 +403,53 @@ describe("createPlaywrightInspirationHelpers", () => {
 
   it("does not click a Videos tab when falling back to paper-tab locators", async () => {
     const clicks: string[] = [];
+    const gotos: string[] = [];
+    let currentUrl =
+      "https://studio.youtube.com/channel/UCabc/content/videos";
     const videosTab = locatorFrom({
       text: "Videos",
       click: () => clicks.push("videos"),
     });
     const inspirationTab = locatorFrom({
       text: "Ispirazione",
-      click: () => clicks.push("ispirazione"),
+      click: () => {
+        clicks.push("ispirazione");
+        currentUrl =
+          "https://studio.youtube.com/channel/UCabc/content/inspiration";
+      },
     });
     const paperTabs = locatorFrom({
       count: 2,
+      visible: true,
       nth: (index) => (index === 0 ? videosTab : inspirationTab),
     });
+    const ideaCard = locatorFrom({
+      count: 1,
+      text: EN_CARD,
+      visible: true,
+    });
     const page: PageLike = {
-      url: () => "https://studio.youtube.com/channel/UCabc/videos/upload",
-      async goto() {},
+      url: () => currentUrl,
+      async goto(url) {
+        gotos.push(url);
+        // Mimic Studio keeping the Videos tab despite the Inspiration URL.
+        if (url.includes("/content/inspiration")) {
+          currentUrl =
+            "https://studio.youtube.com/channel/UCabc/content/videos";
+          return;
+        }
+        currentUrl = url;
+      },
       locator: (selector) => {
-        if (selector === INSPIRATION_SELECTORS.inspirationTabCandidates[0]) {
+        if (
+          selector === "tp-yt-paper-tab, [role='tab']" ||
+          selector === INSPIRATION_SELECTORS.inspirationTabCandidates[0]
+        ) {
           return paperTabs;
         }
-        if (selector === INSPIRATION_SELECTORS.ideaCardCandidates.join(", ")) {
-          return locatorFrom({ visible: true, count: 1 });
+        if (selector === "ytci-feed-idea-preview") return ideaCard;
+        if (selector === INSPIRATION_SELECTORS.ideaCardCandidates[0]) {
+          return ideaCard;
         }
         return emptyLocator();
       },
@@ -422,7 +459,9 @@ describe("createPlaywrightInspirationHelpers", () => {
 
     await createPlaywrightInspirationHelpers(page).openInspirationFeed();
     expect(clicks).toEqual(["ispirazione"]);
-  });
+    expect(clicks).not.toContain("videos");
+    expect(gotos[0]).toBe(INSPIRATION_SELECTORS.inspirationPath("UCabc"));
+  }, 20_000);
 
   it("throws when the Inspiration tab cannot be found", async () => {
     const page: PageLike = {
@@ -472,8 +511,11 @@ describe("createPlaywrightInspirationHelpers", () => {
 
 describe("createYouTubeStudioInspirationAdapter", () => {
   function contextFromPage(page: unknown): StudioPersistentContext {
+    const closable = {
+      close: async () => {},
+    };
     return {
-      pages: () => [page],
+      pages: () => [closable],
       newPage: async () => page,
       close: async () => {},
     };
@@ -504,7 +546,7 @@ describe("createYouTubeStudioInspirationAdapter", () => {
       browserFactory: async ({ headed }) => {
         order.push(headed ? "headed" : "headless");
         return {
-          pages: () => [{}],
+          pages: () => [{ close: async () => order.push("page-close") }],
           newPage: async () => ({}),
           close: async () => {
             order.push("close");
@@ -520,7 +562,7 @@ describe("createYouTubeStudioInspirationAdapter", () => {
     });
 
     await expect(adapter.sync()).rejects.toBeInstanceOf(StudioInspirationUiError);
-    expect(order).toEqual(["lock", "headed", "close"]);
+    expect(order).toEqual(["lock", "headed", "page-close", "close"]);
   });
 
   it("returns captured ideas from injectable page helpers", async () => {

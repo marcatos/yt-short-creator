@@ -110,7 +110,14 @@ export function createYouTubeStudioInspirationAdapter(
           });
 
           try {
-            const page = context.pages()[0] ?? (await context.newPage());
+            // Prefer a fresh tab — restored Studio tabs from the persistent
+            // profile often ignore SPA route changes under automation.
+            for (const existing of context.pages()) {
+              await (existing as { close(): Promise<void> })
+                .close()
+                .catch(() => undefined);
+            }
+            const page = await context.newPage();
             const helpers = pageHelpersFactory(page);
             return await scrapeInspirationIdeas(helpers, log);
           } finally {

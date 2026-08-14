@@ -5,7 +5,7 @@ import type { CapturedInspirationIdea } from "@/src/ports/youtube-studio-inspira
 const RAW_SNIPPET_MAX = 1500;
 
 const CHROME_LINE =
-  /^(more like this|altri come questo|show more|mostra altro|bookmark|salva|create ideas|crea idee|update idea|aggiorna idea)$/i;
+  /^(more like this|altri come questo|altri simili|show more|mostra altro|bookmark|salva|create ideas|crea idee|update idea|aggiorna idea|impossibile creare l'illustrazione|unable to create (?:the )?illustration)$/i;
 
 type SectionKey =
   | "audienceInterest"
@@ -22,7 +22,7 @@ const SECTION_LABELS: Array<{ key: SectionKey; test: RegExp }> = [
   },
   {
     key: "channelAlignment",
-    test: /^(?:channel alignment|allineamento(?: del)? canale)(?:\s*[:·-]\s*(.*))?$/i,
+    test: /^(?:channel alignment|allineamento(?: del)? canale|perché potrebbe adattarsi(?: al tuo canale)?)(?:\s*[:·-]\s*(.*))?$/i,
   },
   {
     key: "relatedInterest",
@@ -30,7 +30,7 @@ const SECTION_LABELS: Array<{ key: SectionKey; test: RegExp }> = [
   },
   {
     key: "outline",
-    test: /^(?:outline|scaletta|struttura)(?:\s*[:·-]\s*(.*))?$/i,
+    test: /^(?:outline|scaletta|struttura|visual narrative tension)(?:\s*[:·-]\s*(.*))?$/i,
   },
   {
     key: "suggestedTitles",

@@ -24,13 +24,15 @@ export const INSPIRATION_SELECTORS = {
   /** Content uploads page (sibling tabs live under /content/…). */
   contentPath: (channelId: string) =>
     `https://studio.youtube.com/channel/${channelId}/content/videos`,
-  /** Canonical Inspiration feed (Studio 2026: Content → Inspiration). */
+  /** Canonical Inspiration feed (Studio: Content → Inspiration tab). */
   inspirationPath: (channelId: string) =>
     `https://studio.youtube.com/channel/${channelId}/content/inspiration`,
-  /** Fallback paths if the primary URL redirects. */
+  /**
+   * Legacy/alternate paths. Do not prefer `/videos/inspiration` — Studio serves
+   * the real feed under `/content/inspiration` (with Videos/Shorts/… sibling tabs).
+   */
   inspirationPaths: (channelId: string) => [
     `https://studio.youtube.com/channel/${channelId}/content/inspiration`,
-    `https://studio.youtube.com/channel/${channelId}/videos/inspiration`,
   ],
   contentNavNames: /^(content|contenuti)$/i,
   contentNavCandidates: [
@@ -64,9 +66,10 @@ export const INSPIRATION_SELECTORS = {
     ":text('Interesse del pubblico')",
   ],
   detailPanel:
-    "ytci-feed-idea-preview[expanded], ytci-idea-detail, ytcd-idea-detail, ytcp-dialog[opened], [role='dialog'], ytcd-inspiration-detail",
+    "ytci-pitch-dialog, ytci-feed-idea-preview[expanded], ytci-idea-detail, ytcd-idea-detail, ytcp-dialog[opened], [role='dialog'], ytcd-inspiration-detail",
   closeDetail:
-    "button[aria-label='Close'], button[aria-label='Chiudi'], #close-button, ytcp-icon-button[aria-label='Close']",
+    "ytci-pitch-dialog button[aria-label='Close'], ytci-pitch-dialog button[aria-label='Chiudi'], ytci-pitch-dialog #close-button, ytci-pitch-dialog ytcp-icon-button[aria-label='Close'], ytci-pitch-dialog ytcp-icon-button[aria-label='Chiudi'], button[aria-label='Close'], button[aria-label='Chiudi'], #close-button, ytcp-icon-button[aria-label='Close']",
+  pitchDialog: "ytci-pitch-dialog",
   /** Loading copy while Studio generates idea cards. */
   loadingCopy: /cercando idee|ci stiamo lavorando|looking for ideas|working on it/i,
 } as const;
@@ -78,7 +81,7 @@ export type LocatorLike = {
   first(): LocatorLike;
   nth(index: number): LocatorLike;
   count(): Promise<number>;
-  click(options?: { timeout?: number }): Promise<void>;
+  click(options?: { timeout?: number; force?: boolean }): Promise<void>;
   innerText(): Promise<string>;
   getAttribute(name: string): Promise<string | null>;
   isVisible(): Promise<boolean>;
@@ -106,6 +109,7 @@ export type InspirationPageHelpers = {
   openInspirationFeed(): Promise<void>;
   countCards(): Promise<number>;
   captureCard(index: number): Promise<CapturedInspirationCard>;
+  currentUrl(): string;
 };
 
 function errorMessage(error: unknown): string {
@@ -169,7 +173,62 @@ async function clickMatchingLocator(
   return false;
 }
 
+/** Wait for Content section tabs, then activate Inspiration / Ispirazione. */
+async function activateInspirationTab(page: PageLike): Promise<boolean> {
+  try {
+    await page
+      .locator("tp-yt-paper-tab, [role='tab']")
+      .first()
+      .waitFor({ state: "visible", timeout: INSPIRATION_NAV_TIMEOUT_MS });
+  } catch {
+    // Fall through — click helpers may still find a late tab.
+  }
+
+  if (
+    (await clickFirstRole(
+      page,
+      ["tab"],
+      INSPIRATION_SELECTORS.inspirationTabNames,
+    )) ||
+    (await clickMatchingLocator(
+      page,
+      INSPIRATION_SELECTORS.inspirationTabCandidates,
+      INSPIRATION_SELECTORS.inspirationTabNames,
+    ))
+  ) {
+    // Give the SPA a moment to swap the feed.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    return true;
+  }
+  return false;
+}
+
 async function dismissDetail(page: PageLike): Promise<void> {
+  const pitch = page.locator(INSPIRATION_SELECTORS.pitchDialog);
+  try {
+    if ((await pitch.count()) > 0 && (await pitch.first().isVisible())) {
+      const closeInPitch = page.locator(INSPIRATION_SELECTORS.closeDetail).first();
+      try {
+        if (await closeInPitch.isVisible()) {
+          await closeInPitch.click({ timeout: 2_000 });
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if ((await pitch.count()) === 0) return;
+        }
+      } catch {
+        // Fall through to Escape.
+      }
+      await page.keyboard.press("Escape");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if ((await pitch.count()) > 0) {
+        await page.keyboard.press("Escape");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      return;
+    }
+  } catch {
+    // Fall through to generic close.
+  }
+
   const close = page.locator(INSPIRATION_SELECTORS.closeDetail).first();
   try {
     if (await close.isVisible()) {
@@ -181,6 +240,8 @@ async function dismissDetail(page: PageLike): Promise<void> {
   }
   await page.keyboard.press("Escape");
 }
+
+
 
 export function createPlaywrightInspirationHelpers(
   page: PageLike,
@@ -194,19 +255,61 @@ export function createPlaywrightInspirationHelpers(
 
   async function waitForIdeaCards(timeoutMs: number): Promise<number> {
     const primary = page.locator("ytci-feed-idea-preview");
+    const deadline = Date.now() + timeoutMs;
+    let sawPrimary = false;
+
     try {
       await primary.first().waitFor({
         state: "attached",
-        timeout: timeoutMs,
+        timeout: Math.min(timeoutMs, 45_000),
       });
+      sawPrimary = true;
     } catch {
-      // Fall through to a final count of whatever is present.
+      // Primary custom element missing — try legacy/test selectors once.
+      const fallback = await firstNonEmptyLocator(
+        page,
+        INSPIRATION_SELECTORS.ideaCardCandidates,
+      );
+      return fallback ? fallback.count() : 0;
     }
-    const list = await resolveCardList();
-    return list ? list.count() : 0;
+
+    // Cards often mount as empty loading shells; wait for titles to hydrate.
+    while (Date.now() < deadline) {
+      const count = await primary.count();
+      if (count === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        continue;
+      }
+      let ready = 0;
+      for (let index = 0; index < count; index += 1) {
+        const text = (await primary.nth(index).innerText()).trim();
+        if (text.length > 0) ready += 1;
+      }
+      const loading = await page
+        .locator(".ytciFeedIdeaPreviewLoadingPlaceholder")
+        .count();
+      if (ready > 0) return count;
+      if (loading === 0 && count > 0) {
+        // Shells present without the loading class — give text one more beat.
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        const recheck = await primary.count();
+        let readyAfter = 0;
+        for (let index = 0; index < recheck; index += 1) {
+          const text = (await primary.nth(index).innerText()).trim();
+          if (text.length > 0) readyAfter += 1;
+        }
+        if (readyAfter > 0) return recheck;
+        return recheck;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+
+    return sawPrimary ? primary.count() : 0;
   }
 
   return {
+    currentUrl: () => page.url(),
+
     async gotoAndEnsureSignedIn(): Promise<void> {
       await page.goto(INSPIRATION_SELECTORS.studioHome, {
         waitUntil: "domcontentloaded",
@@ -247,48 +350,41 @@ export function createPlaywrightInspirationHelpers(
       }
 
       if (channelId) {
-        await page.goto(INSPIRATION_SELECTORS.inspirationPath(channelId), {
-          waitUntil: "domcontentloaded",
-          timeout: INSPIRATION_NAV_TIMEOUT_MS,
-        });
+        const inspirationUrl =
+          INSPIRATION_SELECTORS.inspirationPath(channelId);
+        let onInspiration = false;
 
-        if (!/\/inspiration\b/i.test(page.url())) {
-          let opened = false;
-          for (const path of INSPIRATION_SELECTORS.inspirationPaths(channelId)) {
-            if (path === INSPIRATION_SELECTORS.inspirationPath(channelId)) {
-              continue;
-            }
-            await page.goto(path, {
-              waitUntil: "domcontentloaded",
-              timeout: INSPIRATION_NAV_TIMEOUT_MS,
-            });
-            if (/\/inspiration\b/i.test(page.url())) {
-              opened = true;
-              break;
-            }
+        for (let attempt = 0; attempt < 3 && !onInspiration; attempt += 1) {
+          await page.goto(inspirationUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: INSPIRATION_NAV_TIMEOUT_MS,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          if (/\/content\/inspiration\b/i.test(page.url())) {
+            onInspiration = true;
+            break;
           }
-          if (!opened) {
-            await page.goto(INSPIRATION_SELECTORS.contentPath(channelId), {
-              waitUntil: "domcontentloaded",
-              timeout: INSPIRATION_NAV_TIMEOUT_MS,
-            });
-            opened =
-              (await clickFirstRole(
-                page,
-                ["tab"],
-                INSPIRATION_SELECTORS.inspirationTabNames,
-              )) ||
-              (await clickMatchingLocator(
-                page,
-                INSPIRATION_SELECTORS.inspirationTabCandidates,
-                INSPIRATION_SELECTORS.inspirationTabNames,
-              ));
+          // Studio sometimes keeps the last Content tab (Videos) despite the
+          // /inspiration URL. Click the Inspiration tab on the Content page.
+          if (/\/content\//i.test(page.url())) {
+            onInspiration = await activateInspirationTab(page);
+            if (onInspiration && /\/inspiration\b/i.test(page.url())) break;
+            onInspiration = /\/inspiration\b/i.test(page.url());
           }
-          if (!opened && !/\/inspiration\b/i.test(page.url())) {
-            throw new StudioInspirationUiError(
-              `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
-            );
-          }
+        }
+
+        if (!onInspiration) {
+          await page.goto(INSPIRATION_SELECTORS.contentPath(channelId), {
+            waitUntil: "domcontentloaded",
+            timeout: INSPIRATION_NAV_TIMEOUT_MS,
+          });
+          onInspiration = await activateInspirationTab(page);
+        }
+
+        if (!onInspiration && !/\/inspiration\b/i.test(page.url())) {
+          throw new StudioInspirationUiError(
+            `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
+          );
         }
       } else {
         const clickedNav = await clickFirstRole(
@@ -308,17 +404,7 @@ export function createPlaywrightInspirationHelpers(
           }
           await nav.first().click({ timeout: INSPIRATION_NAV_TIMEOUT_MS });
         }
-        const clickedTab =
-          (await clickFirstRole(
-            page,
-            ["tab"],
-            INSPIRATION_SELECTORS.inspirationTabNames,
-          )) ||
-          (await clickMatchingLocator(
-            page,
-            INSPIRATION_SELECTORS.inspirationTabCandidates,
-            INSPIRATION_SELECTORS.inspirationTabNames,
-          ));
+        const clickedTab = await activateInspirationTab(page);
         if (!clickedTab) {
           throw new StudioInspirationUiError(
             `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
@@ -326,9 +412,11 @@ export function createPlaywrightInspirationHelpers(
         }
       }
 
-      const cardCount = await waitForIdeaCards(90_000);
+      const cardCount = await waitForIdeaCards(120_000);
       if (cardCount === 0) {
-        // Leave zero-card handling to scrapeInspirationIdeas.
+        throw new StudioInspirationUiError(
+          `No Inspiration idea cards found (url=${page.url()})`,
+        );
       }
     },
 
@@ -338,6 +426,9 @@ export function createPlaywrightInspirationHelpers(
     },
 
     async captureCard(index: number): Promise<CapturedInspirationCard> {
+      // A leftover pitch dialog blocks clicks on the next feed card.
+      await dismissDetail(page);
+
       const list = await resolveCardList();
       if (!list) {
         throw new Error("Inspiration idea cards disappeared");
@@ -346,23 +437,60 @@ export function createPlaywrightInspirationHelpers(
       const studioId =
         (await card.getAttribute("data-idea-id")) ??
         (await card.getAttribute("data-id"));
-      const cardText = await card.innerText();
-      await card.click({ timeout: INSPIRATION_CARD_TIMEOUT_MS });
+      let cardText = (await card.innerText()).trim();
+      if (!cardText) {
+        cardText = (await card.getAttribute("aria-label"))?.trim() ?? "";
+      }
+
+      try {
+        await card.click({ timeout: INSPIRATION_CARD_TIMEOUT_MS });
+      } catch {
+        await dismissDetail(page);
+        await card.click({
+          timeout: INSPIRATION_CARD_TIMEOUT_MS,
+          force: true,
+        });
+      }
 
       let detailText = "";
       let expanded = false;
       try {
-        const panel = page.locator(INSPIRATION_SELECTORS.detailPanel).first();
-        await panel.waitFor({
-          state: "visible",
-          timeout: INSPIRATION_CARD_TIMEOUT_MS,
-        });
-        detailText = await panel.innerText();
-        expanded = Boolean(detailText.trim());
+        // Pitch dialog is the live Studio detail surface; fall back to legacy
+        // detail selectors used in unit tests / older Studio chrome.
+        const pitch = page.locator(INSPIRATION_SELECTORS.pitchDialog).first();
+        const legacy = page.locator(INSPIRATION_SELECTORS.detailPanel).first();
+        try {
+          await pitch.waitFor({
+            state: "attached",
+            timeout: Math.min(INSPIRATION_CARD_TIMEOUT_MS, 4_000),
+          });
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          detailText = (await pitch.innerText()).trim();
+        } catch {
+          await legacy.waitFor({
+            state: "visible",
+            timeout: INSPIRATION_CARD_TIMEOUT_MS,
+          });
+          detailText = (await legacy.innerText()).trim();
+        }
+        if (!detailText) {
+          detailText = (await legacy.innerText()).trim();
+        }
+        expanded = Boolean(detailText);
+        cardText = (await card.innerText()).trim() || cardText;
       } catch {
         expanded = false;
+        cardText = (await card.innerText()).trim() || cardText;
       } finally {
         await dismissDetail(page);
+      }
+
+      if (!cardText && detailText.trim()) {
+        cardText =
+          detailText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find(Boolean) ?? "";
       }
 
       return {
@@ -383,7 +511,9 @@ export async function scrapeInspirationIdeas(
 
   const total = await helpers.countCards();
   if (total === 0) {
-    throw new StudioInspirationUiError("No Inspiration idea cards found");
+    throw new StudioInspirationUiError(
+      `No Inspiration idea cards found (url=${helpers.currentUrl()})`,
+    );
   }
 
   log?.info("Inspiration idea cards found", { total });
