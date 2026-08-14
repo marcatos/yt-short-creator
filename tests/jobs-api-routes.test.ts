@@ -11,8 +11,17 @@ const jobQueue = vi.hoisted(() => ({
   reorder: vi.fn(),
 }));
 
+const candidates = vi.hoisted(() => ({
+  listByIds: vi.fn(async (ids: string[]) =>
+    ids.map((id) => ({ id, title: `Title ${id}` })),
+  ),
+}));
+
 vi.mock("@/src/lib/container", () => ({
-  getContainer: () => ({ jobQueue }),
+  getContainer: () => ({
+    jobQueue,
+    repositories: { candidates },
+  }),
 }));
 
 import { GET as listJobs } from "@/app/api/jobs/route";

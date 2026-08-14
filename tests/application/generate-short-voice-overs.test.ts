@@ -343,7 +343,10 @@ describe("generateShortVoiceOvers", () => {
     await expect(generate({ candidateId: "candidate-42" })).rejects.toThrow(
       /received 31,?400 ms/,
     );
-    expect(probed).toEqual([expect.stringContaining("vo-it.mp3")]);
+    expect(probed).toEqual([
+      expect.stringContaining("vo-it.mp3"),
+      expect.stringContaining("vo-it.mp3"),
+    ]);
     expect(candidates.candidate.voiceOvers).toBeNull();
   });
 

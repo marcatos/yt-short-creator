@@ -68,7 +68,13 @@ describe("ffmpeg multi-segment replay render", () => {
     });
 
     expect(childProcessMocks.spawn).toHaveBeenCalled();
-    const args = childProcessMocks.spawn.mock.calls[0]?.[1] as string[];
+    const renderCall = childProcessMocks.spawn.mock.calls.find(
+      (call) =>
+        Array.isArray(call[1]) &&
+        (call[1] as string[]).includes("-filter_complex"),
+    );
+    const args = renderCall?.[1] as string[];
+    expect(args).toBeDefined();
     const filter = args[args.indexOf("-filter_complex") + 1];
     expect(filter).toContain("concat=n=2:v=1:a=0");
     expect(filter).toContain("concat=n=2:v=0:a=1");
