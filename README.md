@@ -20,6 +20,7 @@ The operator stays in the loop. The machine does the heavy lifting: download, an
 | Surface | Role |
 |---------|------|
 | **Library** | Sync the channel catalog; **Analyze clips** from long-form; **Generate ideas** for original Shorts |
+| **Inspiration** | Mirror YouTube Studio Inspiration ideas; **Sync now** or scheduled job; stale badge when ideas age out |
 | **Replays** | iRacing `.rpy` / OBS / telemetry workflow — Director capture, auto-record, full-race publish |
 | **Candidates** | Triage by origin (`clip` / `generate` / `replay`) and status; revise, reject, or approve |
 | **Jobs** | Live queue — pause, resume, cancel, reorder; respects YouTube daily upload limits |
@@ -108,6 +109,10 @@ Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated
 | `MEDIA_ROOT` | Local media storage (default `./media`) |
 | `IRACING_VIDEOS_DIR` | Optional iRacing capture watch folder |
 | `FFMPEG_VIDEO_ENCODER` | Optional encoder override (prefer Settings UI) |
+| `YOUTUBE_STUDIO_PROFILE_DIR` | Persistent Chromium profile for Studio automation (default `data/youtube-studio-profile`) |
+| `INSPIRATION_SYNC_INTERVAL_HOURS` | Scheduled Inspiration sync interval (default `24`) |
+
+One-time headed sign-in for Studio scraping (Inspiration + related-video): `npm run studio:login`. Workers never open an interactive browser.
 
 ## YouTube OAuth
 
@@ -146,6 +151,7 @@ Run this checklist against a test channel before accepting a release:
 | `npm test` | Run Vitest |
 | `npm run db:generate` | Generate Drizzle migrations |
 | `npm run db:migrate` | Apply Drizzle migrations |
+| `npm run studio:login` | One-time headed YouTube Studio sign-in (shared Playwright profile) |
 
 ## Further reading
 

@@ -35,6 +35,7 @@ It is a single-operator tool. There is no multi-user SaaS surface. Publish alway
 | `/` | Home shell |
 | `/connect` | YouTube OAuth channel connect |
 | `/library` | Channel catalog, clip analysis, generate ideas |
+| `/inspiration` | YouTube Studio Inspiration mirror — active ideas, sync history, Sync now |
 | `/replays` | iRacing / OBS replay sessions, Director capture, full-race publish |
 | `/candidates` | Candidate list (filter by status / origin) |
 | `/candidates/[id]` | Review, revise, reject, approve; optional VO |
@@ -58,6 +59,7 @@ Approve enqueues render, then publish. Workers also handle analysis, ideation, r
 
 ## Capability map
 
+- **Inspiration sync** — Playwright scrape of Studio Inspiration tab (manual + scheduled); biases clip/generate/replay proposals via prompt, score boost, and alignment quota
 - **Clip path** — sync library → analyze long-form windows → score and propose candidates
 - **Generate path** — ideation briefs → assemble / preview → same approval path
 - **Replay path** — `.rpy` / media / telemetry → analyze → Director or auto capture → Short or full-race publish
@@ -118,5 +120,6 @@ The brand pack is a sibling checkout by default (`../smarcato42-racing`). CI use
 | [2026-08-13 multilingual-single-master](superpowers/specs/2026-08-13-multilingual-single-master-design.md) | Single master + multilingual delivery assets |
 | [2026-08-13 youtube-daily-upload-limit](superpowers/specs/2026-08-13-youtube-daily-upload-limit-design.md) | Daily upload defer / resume |
 | [2026-08-14 shorts-related-video](superpowers/specs/2026-08-14-shorts-related-video-design.md) | Related-video linking |
+| [2026-08-14 youtube-inspiration](superpowers/specs/2026-08-14-youtube-inspiration-design.md) | Studio Inspiration mirror + candidate bias |
 
 Agent policies (commit/push `main`, daemon restart-if-running): [AGENTS.md](../AGENTS.md), [git.md](git.md).

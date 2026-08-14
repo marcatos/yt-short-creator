@@ -1,7 +1,7 @@
 # YouTube Studio Inspiration — local mirror + candidate bias
 
 **Date:** 2026-08-14  
-**Status:** Draft pending user review of this file  
+**Status:** Implemented with known live-selector risk  
 **Scope:** Sync Inspiration ideas from YouTube Studio into local SQLite; dashboard; bias all Short candidate origins (clip / generate / replay) via prompt + score boost + quota.
 
 ## 1. Purpose
