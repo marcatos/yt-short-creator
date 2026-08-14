@@ -96,8 +96,80 @@ function Stop-DaemonTree {
     }
 }
 
+function Test-EditorBundledNode {
+  param([string]$Path)
+  return $Path -match '(?i)[\\/](cursor|microsoft vs code)[\\/]resources[\\/]app[\\/]resources[\\/]helpers[\\/]node\.exe$'
+}
+
 function Get-NodeExecutable {
-  $cmd = Get-Command node -ErrorAction SilentlyContinue
-  if (-not $cmd) { throw "node not found on PATH" }
-  return $cmd.Source
+  $official = Join-Path ${env:ProgramFiles} "nodejs\node.exe"
+  if (Test-Path $official) {
+    return $official
+  }
+
+  $candidates = @(Get-Command node -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+  $usable = $candidates | Where-Object { -not (Test-EditorBundledNode -Path $_) } | Select-Object -First 1
+  if ($usable) { return $usable }
+
+  if ($candidates.Count -gt 0) {
+    throw "Only editor-bundled Node.js was found. Install Node.js from https://nodejs.org and retry."
+  }
+  throw "node not found on PATH"
+}
+
+function Test-BetterSqlite3Loads {
+  param([string]$Root, [string]$Node)
+  # require() only loads the JS wrapper; the native .node is opened on Database().
+  $probeJs = Join-Path $PSScriptRoot "probe-sqlite.js"
+  $out = Join-Path $env:TEMP "yt-short-creator-sqlite-probe.out.log"
+  $err = Join-Path $env:TEMP "yt-short-creator-sqlite-probe.err.log"
+  $proc = Start-Process -FilePath $Node `
+    -ArgumentList @($probeJs) `
+    -WorkingDirectory $Root `
+    -Wait -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $out `
+    -RedirectStandardError $err
+  return ($proc.ExitCode -eq 0)
+}
+
+function Ensure-NativeSqliteModule {
+  param([string]$Root, [string]$Node)
+
+  $addon = Join-Path $Root "node_modules\better-sqlite3"
+  if (-not (Test-Path $addon)) {
+    throw "better-sqlite3 is not installed. Run npm install first."
+  }
+
+  $nodeVersion = (& $Node -v).Trim()
+  if (Test-BetterSqlite3Loads -Root $Root -Node $Node) {
+    Write-Host "better-sqlite3 OK ($nodeVersion)"
+    return
+  }
+
+  $started = Get-Date
+  Write-Host "better-sqlite3 ABI mismatch. Rebuilding against $nodeVersion..."
+
+  $nodeDir = Split-Path $Node
+  $npmCmd = Join-Path $nodeDir "npm.cmd"
+  if (-not (Test-Path $npmCmd)) {
+    throw "npm.cmd not found next to $Node"
+  }
+
+  $savedPath = $env:PATH
+  $env:PATH = "$nodeDir;$savedPath"
+  try {
+    & $npmCmd rebuild better-sqlite3
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm rebuild better-sqlite3 failed with exit $LASTEXITCODE"
+    }
+  } finally {
+    $env:PATH = $savedPath
+  }
+
+  if (-not (Test-BetterSqlite3Loads -Root $Root -Node $Node)) {
+    throw "better-sqlite3 still fails to load after rebuild (Node $nodeVersion)."
+  }
+
+  $elapsedMs = [int]((Get-Date) - $started).TotalMilliseconds
+  Write-Host "better-sqlite3 rebuilt in ${elapsedMs}ms ($nodeVersion)"
 }

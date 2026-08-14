@@ -16,6 +16,7 @@ $env:PORT = "$Port"
 $env:WORKER_PROCESS = "1"
 
 $node = Get-NodeExecutable
+Write-Host "Using Node: $node ($((& $node -v).Trim()))"
 $nextBin = Join-Path $Root "node_modules\next\dist\bin\next"
 $tsxBin = Join-Path $Root "node_modules\tsx\dist\cli.mjs"
 
@@ -28,6 +29,9 @@ if (-not (Test-Path $tsxBin)) {
 
 # Stop previous daemon instance (if any) before starting.
 & "$PSScriptRoot\stop.ps1" | Out-Host
+
+# Rebuild native addons only after processes release better_sqlite3.node.
+Ensure-NativeSqliteModule -Root $Root -Node $node
 
 if (-not $SkipBuild -or -not (Test-Path (Join-Path $Root ".next\BUILD_ID"))) {
   Write-Host "Building production bundle..."
