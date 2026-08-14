@@ -174,7 +174,8 @@ export function createPlaywrightInspirationHelpers(
         waitUntil: "domcontentloaded",
         timeout: INSPIRATION_NAV_TIMEOUT_MS,
       });
-      if (page.url().includes("accounts.google.com")) {
+      const href = page.url();
+      if (href.includes("accounts.google.com")) {
         throw new StudioSessionUnavailableError(
           "YouTube Studio session is logged out; run npm run studio:login",
         );
@@ -190,7 +191,7 @@ export function createPlaywrightInspirationHelpers(
       } catch {
         if (!/studio\.youtube\.com\/channel\//i.test(page.url())) {
           throw new StudioInspirationUiError(
-            "Signed-in YouTube Studio chrome was not detected",
+            `Signed-in YouTube Studio chrome was not detected (url=${page.url()})`,
           );
         }
       }

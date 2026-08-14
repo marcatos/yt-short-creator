@@ -115,7 +115,7 @@ Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated
 | `YOUTUBE_STUDIO_CDP_PORT` | Remote-debugging port for login (default `9222`) |
 | `INSPIRATION_SYNC_INTERVAL_HOURS` | Scheduled Inspiration sync interval (default `24`) |
 
-One-time headed sign-in: `npm run studio:login` opens **real** Google Chrome (CDP), not a Playwright-controlled window — Google blocks the latter. Complete login in that window; workers reuse the same profile headless afterward.
+One-time headed sign-in: `npm run studio:login` opens **real** Google Chrome (CDP), not a Playwright-controlled window — Google blocks the latter. Complete login in that window, then press Enter. Workers reuse the same profile; Studio scrape runs **headed by default** (set `YOUTUBE_STUDIO_HEADED=0` only to force headless).
 
 ## YouTube OAuth
 

@@ -104,7 +104,7 @@ export function createYouTubeStudioInspirationAdapter(
           const headed = isStudioHeaded(env);
           const launchStartedAt = performance.now();
           const context = await browserFactory({ profileDir, headed });
-          log?.info("Studio Chromium launched", {
+          log?.info("Studio Chrome launched", {
             headed,
             durationMs: Math.round(performance.now() - launchStartedAt),
           });

@@ -208,13 +208,21 @@ async function main(): Promise<void> {
       log.info("Signed-in Studio verified", {
         durationMs: Math.round(performance.now() - verifyStartedAt),
       });
-    } finally {
+    }     finally {
+      // Prefer CDP Browser.close so Chrome flushes the profile before exit.
+      // Hard-kill only as a last resort (can drop cookies mid-write).
       try {
-        await browser?.close();
+        if (browser) {
+          await browser.close();
+          browser = null;
+        }
       } catch {
-        // browser may already be closed with Chrome
+        // fall through to process stop
       }
-      stopChrome(child);
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      if (child.exitCode === null && !child.killed) {
+        stopChrome(child);
+      }
     }
   });
 

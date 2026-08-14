@@ -23,8 +23,12 @@ export function resolveStudioProfileDir(
 export function isStudioHeaded(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
+  // Google often rejects headless Studio sessions even with a valid profile.
+  // Default headed; set YOUTUBE_STUDIO_HEADED=0 to force headless.
   const value = env.YOUTUBE_STUDIO_HEADED?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
+  if (value === "0" || value === "false" || value === "no") return false;
+  if (value === "1" || value === "true" || value === "yes") return true;
+  return true;
 }
 
 /** True when the browser has created a persistent Default profile directory. */
