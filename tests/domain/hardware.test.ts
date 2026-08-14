@@ -13,9 +13,11 @@ describe("hardware block", () => {
     expect(block).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(block).toContain("Scheda madre:");
     expect(block).toContain("AIO:");
+    expect(block).toContain("Ventole:");
     expect(block).toContain("Case:");
     expect(block).toContain(DEFAULT_HARDWARE.motherboard);
     expect(block).toContain(DEFAULT_HARDWARE.aio);
+    expect(block).toContain(DEFAULT_HARDWARE.fans);
     expect(block).toContain(DEFAULT_HARDWARE.pcCase);
     expect(block).toContain("Base volante:");
     expect(block).toContain("Volante:");
@@ -33,6 +35,7 @@ describe("hardware block", () => {
     expect(block).toContain("MY SIM RACING SETUP");
     expect(block).toContain("Motherboard:");
     expect(block).toContain("AIO:");
+    expect(block).toContain("Fans:");
     expect(block).toContain("Case:");
     expect(block).toContain("Wheelbase:");
     expect(block).toContain("Wheel:");
@@ -66,6 +69,7 @@ describe("hardware block", () => {
       gpu: "",
       ram: "",
       aio: "",
+      fans: "",
       pcCase: "",
       rig: "",
       wheelbase: "",
@@ -82,6 +86,7 @@ describe("hardware block", () => {
       gpu: "",
       ram: "",
       aio: "",
+      fans: "",
       pcCase: "",
       rig: "",
       wheelbase: "",

@@ -9,6 +9,7 @@ const hardwareSchema = z.object({
   gpu: z.string(),
   ram: z.string(),
   aio: z.string(),
+  fans: z.string(),
   pcCase: z.string(),
   rig: z.string(),
   wheelbase: z.string(),

@@ -9,6 +9,7 @@ export type HardwareConfig = {
   gpu: string;
   ram: string;
   aio: string;
+  fans: string;
   pcCase: string;
   rig: string;
   wheelbase: string;
@@ -38,6 +39,7 @@ export const DEFAULT_HARDWARE: HardwareConfig = {
   gpu: "NVIDIA GeForce RTX 4070 12GB",
   ram: "32GB DDR5 6000MHz",
   aio: "ARCTIC Liquid Freezer III Pro 240",
+  fans: "5x Thermalright TL-C12C + 2x Thermalright TL-C14C",
   pcCase: "Mars Gaming MC-VIEW2",
   rig: "TREQ One",
   wheelbase: "VRS DirectForce Pro 20Nm",
@@ -56,7 +58,7 @@ export const HARDWARE_GROUPS: HardwareGroup[] = [
   {
     id: "pc",
     heading: { it: "PC", en: "PC" },
-    fields: ["cpu", "motherboard", "gpu", "ram", "aio", "pcCase"],
+    fields: ["cpu", "motherboard", "gpu", "ram", "aio", "fans", "pcCase"],
   },
   {
     id: "simRig",
@@ -93,6 +95,7 @@ const LABELS: Record<
       gpu: "GPU",
       ram: "RAM",
       aio: "AIO",
+      fans: "Ventole",
       pcCase: "Case",
       rig: "Cockpit",
       wheelbase: "Base volante",
@@ -113,6 +116,7 @@ const LABELS: Record<
       gpu: "GPU",
       ram: "RAM",
       aio: "AIO",
+      fans: "Fans",
       pcCase: "Case",
       rig: "Rig",
       wheelbase: "Wheelbase",
