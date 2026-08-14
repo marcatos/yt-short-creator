@@ -67,7 +67,7 @@ export default async function LibraryPage() {
             <GenerateIdeasButton channelId={channel.id} />
             <form action={syncChannelAction}>
               <input type="hidden" name="channelId" value={channel.id} />
-              <button className="button" type="submit">
+              <button className="button button-primary" type="submit">
                 Sync now
               </button>
             </form>
