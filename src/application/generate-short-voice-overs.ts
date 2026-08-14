@@ -232,12 +232,22 @@ export function createGenerateShortVoiceOvers(
         const session = await deps.replaySessions.getById(sessionId);
         raceAnalysis = session?.raceAnalysis ?? null;
       }
-      const response = await deps.llm.complete({
-        system: SYSTEM_PROMPT,
-        user: `Create bilingual voice-over copy for this candidate:\n${candidateContext(candidate, raceAnalysis)}`,
-        jsonSchema: responseJsonSchema,
-      });
-      const scripts = scriptsSchema.parse(JSON.parse(response));
+
+      async function draftScripts(extraInstruction?: string) {
+        const response = await deps.llm.complete({
+          system: SYSTEM_PROMPT,
+          user: [
+            `Create bilingual voice-over copy for this candidate:\n${candidateContext(candidate, raceAnalysis)}`,
+            extraInstruction,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          jsonSchema: responseJsonSchema,
+        });
+        return scriptsSchema.parse(JSON.parse(response));
+      }
+
+      let scripts = await draftScripts();
       log.info("Short voice-over scripts generated", {
         candidateId,
         durationMs: Math.round(performance.now() - scriptStartedAt),
@@ -246,7 +256,7 @@ export function createGenerateShortVoiceOvers(
       const existingByLanguage = new Map(
         (candidate.voiceOvers ?? []).map((item) => [item.language, item]),
       );
-      const languageScripts: Array<{
+      let languageScripts: Array<{
         language: VoiceOverLanguage;
         script: string;
         title: string;
@@ -268,14 +278,11 @@ export function createGenerateShortVoiceOvers(
       const packages: VoiceOverPackage[] = [];
       let reusedCount = 0;
 
-      for (const { language, script, title, description } of languageScripts) {
+      for (let index = 0; index < languageScripts.length; index += 1) {
+        let { language, script, title, description } = languageScripts[index]!;
         const languageStartedAt = performance.now();
         const voiceProfile = voiceProfileForLanguage(appSettings, language);
-        const scriptHash = hashVoiceScript(
-          script,
-          voiceProfile,
-          language,
-        );
+        let scriptHash = hashVoiceScript(script, voiceProfile, language);
         const cached = existingByLanguage.get(language);
         if (cached?.scriptHash === scriptHash) {
           packages.push({ ...cached, title, description });
@@ -289,33 +296,71 @@ export function createGenerateShortVoiceOvers(
         }
 
         const audioPath = voPath(candidateId, language);
-        const ttsStartedAt = performance.now();
-        const synthesis = await deps.tts.synthesize({
-          text: script,
-          voiceProfile,
-          outputPath: audioPath,
-          instructions: ttsInstructionsFor(language),
-        });
-        const measured = await measureNarrationMs(
-          audioPath,
-          synthesis.durationMs,
-          { candidateId, language },
-        );
-        if (
-          measured.durationMs < MIN_VOICE_OVER_DURATION_MS ||
-          measured.durationMs > MAX_VOICE_OVER_DURATION_MS
-        ) {
-          throw new Error(
-            `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${measured.durationMs} ms`,
+        let attempts = 0;
+        let measured: { durationMs: number; source: "probe" | "estimate" };
+        while (true) {
+          attempts += 1;
+          const ttsStartedAt = performance.now();
+          const synthesis = await deps.tts.synthesize({
+            text: script,
+            voiceProfile,
+            outputPath: audioPath,
+            instructions: ttsInstructionsFor(language),
+          });
+          measured = await measureNarrationMs(
+            audioPath,
+            synthesis.durationMs,
+            { candidateId, language },
           );
+          const inRange =
+            measured.durationMs >= MIN_VOICE_OVER_DURATION_MS &&
+            measured.durationMs <= MAX_VOICE_OVER_DURATION_MS;
+          if (inRange) {
+            log.info("Short voice-over synthesis completed", {
+              candidateId,
+              language,
+              audioDurationMs: measured.durationMs,
+              durationSource: measured.source,
+              attempts,
+              durationMs: Math.round(performance.now() - ttsStartedAt),
+            });
+            break;
+          }
+          if (attempts >= 2) {
+            throw new Error(
+              `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${measured.durationMs} ms`,
+            );
+          }
+          log.warn("Short voice-over duration out of range; rewriting shorter", {
+            candidateId,
+            language,
+            audioDurationMs: measured.durationMs,
+            durationSource: measured.source,
+          });
+          scripts = await draftScripts(
+            `REWRITE: previous ${language.toUpperCase()} narration was ${Math.round(measured.durationMs / 1000)}s. Keep BOTH scripts under ~18 spoken seconds (max 25). Shorter hook + one beat + CTA.`,
+          );
+          languageScripts = [
+            {
+              language: "it",
+              script: scripts.scriptIt,
+              title: scripts.titleIt,
+              description: scripts.descriptionIt,
+            },
+            {
+              language: "en",
+              script: scripts.scriptEn,
+              title: scripts.titleEn,
+              description: scripts.descriptionEn,
+            },
+          ];
+          const rewritten = languageScripts[index]!;
+          language = rewritten.language;
+          script = rewritten.script;
+          title = rewritten.title;
+          description = rewritten.description;
+          scriptHash = hashVoiceScript(script, voiceProfile, language);
         }
-        log.info("Short voice-over synthesis completed", {
-          candidateId,
-          language,
-          audioDurationMs: measured.durationMs,
-          durationSource: measured.source,
-          durationMs: Math.round(performance.now() - ttsStartedAt),
-        });
 
         const alignStartedAt = performance.now();
         const transcription = await deps.transcription.transcribe(audioPath, {
