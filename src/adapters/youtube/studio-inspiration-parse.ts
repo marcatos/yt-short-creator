@@ -92,15 +92,8 @@ function matchSection(line: string): { key: SectionKey; rest: string } | null {
   return null;
 }
 
-export function parseIdeaFromTexts(input: {
-  studioId?: string | null;
-  cardText: string;
-  detailText?: string;
-}): CapturedInspirationIdea {
-  const combined = [input.cardText, input.detailText]
-    .filter((part) => part && part.trim())
-    .join("\n");
-  const sections: Record<SectionKey, string[]> = {
+function emptySections(): Record<SectionKey, string[]> {
+  return {
     audienceInterest: [],
     channelAlignment: [],
     relatedInterest: [],
@@ -108,10 +101,17 @@ export function parseIdeaFromTexts(input: {
     suggestedTitles: [],
     thumbnailNotes: [],
   };
+}
+
+function parseLabeledDocument(text: string): {
+  preamble: string[];
+  sections: Record<SectionKey, string[]>;
+} {
+  const sections = emptySections();
   const preamble: string[] = [];
   let current: SectionKey | null = null;
 
-  for (const rawLine of combined.split(/\r?\n/)) {
+  for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || CHROME_LINE.test(line)) continue;
     const section = matchSection(line);
@@ -127,16 +127,35 @@ export function parseIdeaFromTexts(input: {
     }
   }
 
-  const title = preamble[0]?.trim() ?? "";
-  const summary = preamble.slice(1).join(" ").trim();
+  return { preamble, sections };
+}
+
+function joinSection(lines: string[]): string | null {
+  const value = lines.join("\n").trim();
+  return value ? value : null;
+}
+
+export function parseIdeaFromTexts(input: {
+  studioId?: string | null;
+  cardText: string;
+  detailText?: string;
+}): CapturedInspirationIdea {
+  const card = parseLabeledDocument(input.cardText);
+  const detail = parseLabeledDocument(input.detailText ?? "");
+  const title = (card.preamble[0] ?? detail.preamble[0] ?? "").trim();
+  const summary =
+    card.preamble.slice(1).join(" ").trim() ||
+    detail.preamble.slice(1).join(" ").trim();
   if (!title || !summary) {
     throw new Error("Inspiration card missing title or summary");
   }
 
-  const join = (key: SectionKey): string | null => {
-    const value = sections[key].join("\n").trim();
-    return value ? value : null;
-  };
+  const join = (key: SectionKey): string | null =>
+    joinSection(detail.sections[key]) ?? joinSection(card.sections[key]);
+
+  const combined = [input.cardText, input.detailText]
+    .filter((part) => part && part.trim())
+    .join("\n");
 
   return {
     externalKey: buildInspirationExternalKey({

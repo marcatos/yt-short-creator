@@ -158,9 +158,13 @@ describe("parseIdeaFromTexts", () => {
   it("extracts EN idea fields and hashes when Studio id is missing", () => {
     const parsed = parseIdeaFromTexts({ cardText: EN_CARD, detailText: EN_DETAIL });
     expect(parsed.title).toBe("Wet race guide for Oschersleben");
-    expect(parsed.summary).toContain("rain lines");
-    expect(parsed.audienceInterest).toContain("High");
-    expect(parsed.channelAlignment).toContain("sim racing tutorials");
+    expect(parsed.summary).toBe(
+      "A practical look at rain lines, braking, and tire temps.",
+    );
+    expect(parsed.audienceInterest).toBe("High · 12K weekly views in topic");
+    expect(parsed.channelAlignment).toBe(
+      "Fits your sim racing tutorials and onboard analysis.",
+    );
     expect(parsed.relatedInterest).toEqual({
       items: [
         "iRacing Oschersleben wet — 240K views",
@@ -341,6 +345,118 @@ describe("createPlaywrightInspirationHelpers", () => {
     expect(captured.idea.externalKey).toBe("studio:card-1");
     expect(captured.idea.suggestedTitles).toHaveLength(2);
     expect(clicks).toContain("close");
+  });
+
+  it("clicks Content then the Inspiration tab when the URL has no channel id", async () => {
+    const gotos: string[] = [];
+    const clicks: string[] = [];
+    const contentLink = locatorFrom({
+      count: 1,
+      click: () => clicks.push("content"),
+    });
+    const inspirationTab = locatorFrom({
+      count: 1,
+      click: () => clicks.push("inspiration-tab"),
+    });
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com/",
+      async goto(url) {
+        gotos.push(url);
+      },
+      locator: (selector) =>
+        selector === INSPIRATION_SELECTORS.ideaCardCandidates.join(", ")
+          ? locatorFrom({ visible: true, count: 1 })
+          : emptyLocator(),
+      getByRole: (role) => {
+        if (role === "link" || role === "menuitem") return contentLink;
+        if (role === "tab") return inspirationTab;
+        return emptyLocator();
+      },
+      keyboard: { press: async () => {} },
+    };
+
+    await createPlaywrightInspirationHelpers(page).openInspirationFeed();
+    expect(gotos).toEqual([]);
+    expect(clicks).toEqual(["content", "inspiration-tab"]);
+  });
+
+  it("does not click a Videos tab when falling back to paper-tab locators", async () => {
+    const clicks: string[] = [];
+    const videosTab = locatorFrom({
+      text: "Videos",
+      click: () => clicks.push("videos"),
+    });
+    const inspirationTab = locatorFrom({
+      text: "Ispirazione",
+      click: () => clicks.push("ispirazione"),
+    });
+    const paperTabs = locatorFrom({
+      count: 2,
+      nth: (index) => (index === 0 ? videosTab : inspirationTab),
+    });
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com/channel/UCabc/videos/upload",
+      async goto() {},
+      locator: (selector) => {
+        if (selector === INSPIRATION_SELECTORS.inspirationTabCandidates[0]) {
+          return paperTabs;
+        }
+        if (selector === INSPIRATION_SELECTORS.ideaCardCandidates.join(", ")) {
+          return locatorFrom({ visible: true, count: 1 });
+        }
+        return emptyLocator();
+      },
+      getByRole: () => emptyLocator(),
+      keyboard: { press: async () => {} },
+    };
+
+    await createPlaywrightInspirationHelpers(page).openInspirationFeed();
+    expect(clicks).toEqual(["ispirazione"]);
+  });
+
+  it("throws when the Inspiration tab cannot be found", async () => {
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com/",
+      async goto() {},
+      locator: () => emptyLocator(),
+      getByRole: (role) =>
+        role === "link"
+          ? locatorFrom({ count: 1, click: () => undefined })
+          : emptyLocator(),
+      keyboard: { press: async () => {} },
+    };
+    await expect(
+      createPlaywrightInspirationHelpers(page).openInspirationFeed(),
+    ).rejects.toThrow(/inspiration tab was not found/i);
+  });
+
+  it("marks a card partial when the detail panel never appears", async () => {
+    const card = locatorFrom({
+      count: 1,
+      text: EN_CARD,
+      attrs: { "data-idea-id": "list-only" },
+    });
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com/channel/UCabc/videos/inspiration",
+      async goto() {},
+      locator: (selector) => {
+        if (selector === INSPIRATION_SELECTORS.ideaCardCandidates[0]) return card;
+        if (selector === INSPIRATION_SELECTORS.detailPanel) {
+          return locatorFrom({ visible: false, count: 0 });
+        }
+        if (selector === INSPIRATION_SELECTORS.closeDetail) {
+          return locatorFrom({ visible: false });
+        }
+        return emptyLocator();
+      },
+      getByRole: () => emptyLocator(),
+      keyboard: { press: async () => {} },
+    };
+
+    const captured = await createPlaywrightInspirationHelpers(page).captureCard(0);
+    expect(captured.expanded).toBe(false);
+    expect(captured.idea.externalKey).toBe("studio:list-only");
+    expect(captured.idea.title).toBe("Wet race guide for Oschersleben");
   });
 });
 

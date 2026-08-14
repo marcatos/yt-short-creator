@@ -11,11 +11,17 @@ import { parseIdeaFromTexts } from "./studio-inspiration-parse";
 /**
  * Fragile YouTube Studio Inspiration DOM hooks.
  * Update here when Studio chrome drifts — not in scrape control flow.
+ *
+ * Documented from YouTube Help (Studio → Content → Inspiration tab) plus
+ * public Studio custom-element naming. Not verified against a live signed-in
+ * Studio session in CI; operators should re-tune after `npm run studio:login`.
+ *
  * EN/IT labels: Inspiration/Ispirazione, Content/Contenuti.
  */
 export const INSPIRATION_SELECTORS = {
   studioHome: "https://studio.youtube.com",
   studioApp: "ytcp-app, ytcp-navigation, ytcp-entity-page",
+  /** Best-effort Content→Inspiration URL; tab click still runs afterward. */
   inspirationPath: (channelId: string) =>
     `https://studio.youtube.com/channel/${channelId}/videos/inspiration`,
   contentNavNames: /^(content|contenuti)$/i,
@@ -123,6 +129,25 @@ async function clickFirstRole(
   return false;
 }
 
+async function clickMatchingLocator(
+  page: PageLike,
+  selectors: readonly string[],
+  name: RegExp,
+): Promise<boolean> {
+  for (const selector of selectors) {
+    const loc = page.locator(selector);
+    const count = await loc.count();
+    for (let index = 0; index < count; index += 1) {
+      const item = loc.nth(index);
+      const text = (await item.innerText()).trim();
+      if (!name.test(text)) continue;
+      await item.click({ timeout: INSPIRATION_NAV_TIMEOUT_MS });
+      return true;
+    }
+  }
+  return false;
+}
+
 async function dismissDetail(page: PageLike): Promise<void> {
   const close = page.locator(INSPIRATION_SELECTORS.closeDetail).first();
   try {
@@ -198,19 +223,21 @@ export function createPlaywrightInspirationHelpers(
         }
       }
 
-      const clickedTab = await clickFirstRole(
-        page,
-        ["tab"],
-        INSPIRATION_SELECTORS.inspirationTabNames,
-      );
-      if (!clickedTab) {
-        const tab = await firstNonEmptyLocator(
+      const clickedTab =
+        (await clickFirstRole(
+          page,
+          ["tab"],
+          INSPIRATION_SELECTORS.inspirationTabNames,
+        )) ||
+        (await clickMatchingLocator(
           page,
           INSPIRATION_SELECTORS.inspirationTabCandidates,
+          INSPIRATION_SELECTORS.inspirationTabNames,
+        ));
+      if (!clickedTab && !/\/inspiration\b/i.test(page.url())) {
+        throw new StudioInspirationUiError(
+          "YouTube Studio Inspiration tab was not found",
         );
-        if (tab) {
-          await tab.first().click({ timeout: INSPIRATION_NAV_TIMEOUT_MS });
-        }
       }
 
       const cards = page.locator(INSPIRATION_SELECTORS.ideaCardCandidates.join(", "));
