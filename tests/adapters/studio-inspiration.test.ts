@@ -289,7 +289,7 @@ describe("createPlaywrightInspirationHelpers", () => {
     );
   });
 
-  it("opens the Inspiration URL from the channel id and clicks the tab", async () => {
+  it("opens the canonical /content/inspiration URL from the channel id", async () => {
     const gotos: string[] = [];
     const clicks: string[] = [];
     const locators = new Map<string, LocatorLike>([
@@ -318,17 +318,16 @@ describe("createPlaywrightInspirationHelpers", () => {
         locatorFrom({ visible: true, click: () => clicks.push("close") }),
       ],
     ]);
-    const tab = locatorFrom({
-      count: 1,
-      click: () => clicks.push("tab"),
-    });
+    let currentUrl =
+      "https://studio.youtube.com/channel/UC123abc/videos/upload";
     const page: PageLike = {
-      url: () => "https://studio.youtube.com/channel/UC123abc/videos/upload",
+      url: () => currentUrl,
       async goto(url) {
         gotos.push(url);
+        currentUrl = url;
       },
       locator: (selector) => locators.get(selector) ?? emptyLocator(),
-      getByRole: (role) => (role === "tab" ? tab : emptyLocator()),
+      getByRole: () => emptyLocator(),
       keyboard: { press: async () => clicks.push("escape") },
     };
 
@@ -336,8 +335,7 @@ describe("createPlaywrightInspirationHelpers", () => {
     await helpers.gotoAndEnsureSignedIn();
     await helpers.openInspirationFeed();
     expect(gotos).toContain(INSPIRATION_SELECTORS.studioHome);
-    expect(gotos).toContain(INSPIRATION_SELECTORS.contentPath("UC123abc"));
-    expect(clicks).toContain("tab");
+    expect(gotos).toContain(INSPIRATION_SELECTORS.inspirationPath("UC123abc"));
     expect(await helpers.countCards()).toBe(1);
 
     const captured = await helpers.captureCard(0);
