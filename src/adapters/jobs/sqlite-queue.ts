@@ -16,6 +16,7 @@ import {
   listQueuedJobsOrdered,
   loadJobs,
   readJob,
+  readNextQueuedJob,
   type SqliteQueueDeps,
 } from "@/src/adapters/jobs/sqlite-queue-storage";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
@@ -116,10 +117,11 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
     async claimNext() {
       const startedAt = Date.now();
       for (;;) {
-        const queued = listQueuedJobsOrdered(deps.db);
+        // Unfiltered claims stay LIMIT 1. When canClaimJob may skip the head
+        // of the queue (YouTube daily limit), load the ordered list instead.
         const next = deps.canClaimJob
-          ? queued.find((job) => deps.canClaimJob!(job))
-          : queued[0];
+          ? listQueuedJobsOrdered(deps.db).find((job) => deps.canClaimJob!(job))
+          : readNextQueuedJob(deps.db);
         if (next) {
           queueLogger.info("Job claimed", {
             jobId: next.id,
@@ -129,7 +131,7 @@ export function createSqliteJobQueue(deps: SqliteQueueDeps): DurableJobQueue {
           });
           return next;
         }
-        if (queued.length > 0) {
+        if (deps.canClaimJob && listQueuedJobsOrdered(deps.db).length > 0) {
           // Queued jobs exist but none are claimable (e.g. publish while
           // YouTube daily limit breaker is armed) — poll instead of spinning.
           await sleep(CROSS_PROCESS_POLL_MS);
