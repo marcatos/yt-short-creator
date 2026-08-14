@@ -61,14 +61,25 @@ class MemoryInspirationStore implements InspirationStorePort {
   }
 
   async getLatestOkSyncAt(): Promise<Date | null> {
-    const ok = [...this.runs.values()]
-      .filter((run) => run.status === "ok")
+    return this.latestSyncAt("ok");
+  }
+
+  async getLatestSuccessfulSyncAt(): Promise<Date | null> {
+    return this.latestSyncAt("ok", "partial");
+  }
+
+  private latestSyncAt(
+    ...statuses: Array<"ok" | "partial" | "failed">
+  ): Date | null {
+    const wanted = new Set(statuses);
+    const match = [...this.runs.values()]
+      .filter((run) => wanted.has(run.status))
       .sort(
         (a, b) =>
           (b.finishedAt ?? b.startedAt).getTime() -
           (a.finishedAt ?? a.startedAt).getTime(),
       )[0];
-    return ok ? (ok.finishedAt ?? ok.startedAt) : null;
+    return match ? (match.finishedAt ?? match.startedAt) : null;
   }
 
   async replaceActiveIdeas(

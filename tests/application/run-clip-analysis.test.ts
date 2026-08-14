@@ -69,6 +69,7 @@ function emptyInspirationStore(): InspirationStorePort {
     saveSyncRun: async () => {},
     listSyncRuns: async () => [],
     getLatestOkSyncAt: async () => null,
+    getLatestSuccessfulSyncAt: async () => null,
     replaceActiveIdeas: async () => {},
     listActiveIdeas: async () => [],
     deleteLinksForCandidates: async () => {},

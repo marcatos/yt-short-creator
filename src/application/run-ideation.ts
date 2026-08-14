@@ -158,14 +158,28 @@ async function assemblePreview(
 
 type IdeationIdea = z.infer<typeof ideaSchema>;
 
+function matchTextWithHooks(
+  hookByCandidateId: Map<string, string>,
+): (candidate: ShortCandidate) => string {
+  return (candidate) =>
+    [candidate.title, candidate.description, hookByCandidateId.get(candidate.id) ?? ""]
+      .filter(Boolean)
+      .join(" ");
+}
+
 async function materializeIdeas(
   deps: IdeationDependencies,
   channelId: string,
   ideas: IdeationIdea[],
   brollFiles: string[],
   brollOffsetStart: number,
-): Promise<{ candidates: ShortCandidate[]; brollOffset: number }> {
+): Promise<{
+  candidates: ShortCandidate[];
+  brollOffset: number;
+  hookByCandidateId: Map<string, string>;
+}> {
   const created: ShortCandidate[] = [];
+  const hookByCandidateId = new Map<string, string>();
   let brollOffset = brollOffsetStart;
   for (const idea of ideas) {
     const createdAt = deps.clock.now();
@@ -212,12 +226,13 @@ async function materializeIdeas(
       updatedAt: createdAt,
     };
     await deps.briefs.save(brief);
+    hookByCandidateId.set(candidateId, idea.hook);
     created.push(
       await assemblePreview(deps, candidate, brief, brollFiles, brollOffset),
     );
     brollOffset += Math.max(planLength, 1);
   }
-  return { candidates: created, brollOffset };
+  return { candidates: created, brollOffset, hookByCandidateId };
 }
 
 async function generateInspirationFill(
@@ -236,22 +251,37 @@ async function generateInspirationFill(
     return [];
   }
   const fillMax = deps.inspirationConfig?.generateFillMax ?? 3;
-  const records = await store.listActiveIdeas();
-  const unmatched = selectIdeasForGenerateFill(
-    records.map(recordToInspirationIdea),
-    new Set(input.matchedIdeaIds),
-    Math.min(input.shortfall, fillMax),
-  );
-  if (unmatched.length === 0) {
-    return [];
-  }
-
   const fillStarted = performance.now();
-  log.info("Inspiration generate fill started", {
-    fillCount: unmatched.length,
-    shortfall: input.shortfall,
-  });
   try {
+    let records;
+    try {
+      records = await store.listActiveIdeas();
+    } catch (error) {
+      log.warn(
+        "Inspiration generate fill skipped; failed to list active ideas",
+        {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+          durationMs: Math.round(performance.now() - fillStarted),
+        },
+      );
+      return [];
+    }
+    const unmatched = selectIdeasForGenerateFill(
+      records.map(recordToInspirationIdea),
+      new Set(input.matchedIdeaIds),
+      Math.min(input.shortfall, fillMax),
+    );
+    if (unmatched.length === 0) {
+      return [];
+    }
+
+    log.info("Inspiration generate fill started", {
+      fillCount: unmatched.length,
+      shortfall: input.shortfall,
+    });
     const response = await deps.llm.complete({
       system:
         "Create concise Italian YouTube Shorts ideas for a motorsport channel. Each script must open with its hook and fit within 60 seconds.",
@@ -279,6 +309,7 @@ async function generateInspirationFill(
         config: deps.inspirationConfig,
         clock: deps.clock,
         logger: log,
+        matchTextFor: matchTextWithHooks(materialized.hookByCandidateId),
       },
       materialized.candidates,
       async (ordered) => {
@@ -358,6 +389,7 @@ export function createRunIdeation(deps: IdeationDependencies): RunIdeation {
           config: deps.inspirationConfig,
           clock: deps.clock,
           logger: log,
+          matchTextFor: matchTextWithHooks(materialized.hookByCandidateId),
         },
         materialized.candidates,
         async (ordered) => {

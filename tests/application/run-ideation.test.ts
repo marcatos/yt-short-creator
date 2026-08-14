@@ -66,6 +66,7 @@ function emptyInspirationStore(): InspirationStorePort {
     saveSyncRun: async () => {},
     listSyncRuns: async () => [],
     getLatestOkSyncAt: async () => null,
+    getLatestSuccessfulSyncAt: async () => null,
     replaceActiveIdeas: async () => {},
     listActiveIdeas: async () => [],
     deleteLinksForCandidates: async () => {},
@@ -73,6 +74,34 @@ function emptyInspirationStore(): InspirationStorePort {
     listLinksForCandidates: async () => [],
   };
 }
+
+function oscherslebenIdea() {
+  return {
+    id: "idea-1",
+    syncRunId: "run-1",
+    externalKey: "ext-1",
+    title: "Oschersleben battle for P2",
+    summary: "Door-to-door last laps at Oschersleben",
+    audienceInterest: null,
+    channelAlignment: null,
+    relatedInterest: null,
+    outline: null,
+    suggestedTitles: ["Last lap fight at Oschersleben"],
+    thumbnailNotes: null,
+    rawSnippet: null,
+    capturedAt: now,
+    active: true,
+  };
+}
+
+const freshSyncAt = new Date("2026-08-13T18:00:00.000Z");
+const inspirationConfig = {
+  matchMin: 0.25,
+  scoreBoost: 0.12,
+  quotaRatio: 0.4,
+  staleDays: 7,
+  generateFillMax: 3,
+};
 
 describe("runIdeation", () => {
   it("saves generated briefs and candidates with TTS and round-robin B-roll", async () => {
@@ -212,27 +241,9 @@ describe("runIdeation", () => {
     const llmUsers: string[] = [];
     const store: InspirationStorePort = {
       ...emptyInspirationStore(),
-      getLatestOkSyncAt: async () => new Date("2026-08-13T18:00:00.000Z"),
-      listActiveIdeas: async () => [
-        {
-          id: "idea-1",
-          syncRunId: "run-1",
-          externalKey: "ext-1",
-          title: "Oschersleben battle for P2",
-          summary: "Door-to-door last laps at Oschersleben",
-          audienceInterest: null,
-          channelAlignment: null,
-          relatedInterest: null,
-          outline: null,
-          suggestedTitles: ["Last lap fight at Oschersleben"],
-          thumbnailNotes: null,
-          rawSnippet: null,
-          capturedAt: now,
-          active: true,
-        },
-      ],
-      deleteLinksForCandidates: async () => {},
-      saveCandidateLinks: async () => {},
+      getLatestOkSyncAt: async () => freshSyncAt,
+      getLatestSuccessfulSyncAt: async () => freshSyncAt,
+      listActiveIdeas: async () => [oscherslebenIdea()],
     };
     const pastaIdea = {
       hook: "Carbonara in due minuti",
@@ -277,13 +288,7 @@ describe("runIdeation", () => {
       clock: { now: () => now },
       logger: createLogger(),
       inspirationStore: store,
-      inspirationConfig: {
-        matchMin: 0.25,
-        scoreBoost: 0.12,
-        quotaRatio: 0.4,
-        staleDays: 7,
-        generateFillMax: 3,
-      },
+      inspirationConfig,
     });
 
     const result = await runIdeation({ channelId: "channel-1", count: 1 });
@@ -292,5 +297,130 @@ describe("runIdeation", () => {
     expect(llmUsers[1]).toContain("Oschersleben battle for P2");
     expect(result).toHaveLength(2);
     expect(result[1]?.title).toBe("Oschersleben last lap battle");
+  });
+
+  it("biases generate candidates using brief hook text", async () => {
+    const briefs = new MemoryBriefRepository();
+    const candidates = new MemoryCandidateRepository();
+    const ids = ["brief-1", "candidate-1"];
+    const links: Array<{ candidateId: string; ideaId: string }> = [];
+    const store: InspirationStorePort = {
+      ...emptyInspirationStore(),
+      getLatestOkSyncAt: async () => freshSyncAt,
+      getLatestSuccessfulSyncAt: async () => freshSyncAt,
+      listActiveIdeas: async () => [oscherslebenIdea()],
+      saveCandidateLinks: async (incoming) => {
+        links.push(...incoming);
+      },
+    };
+    const runIdeation = createRunIdeation({
+      llm: {
+        complete: async () =>
+          JSON.stringify({
+            ideas: [
+              {
+                hook: "Oschersleben last lap battle door-to-door",
+                script: "Stay smooth through the last corner.",
+                title: "A racing tip",
+                description: "Stay smooth.",
+                tags: ["racing"],
+                score: 0.7,
+                voiceProfile: "alloy",
+                brollPlan: ["Onboard"],
+              },
+            ],
+          }),
+      },
+      tts: { synthesize: async () => ({ durationMs: 4_000 }) },
+      mediaStore: {
+        sourcePath: () => "",
+        renderPath: () => "",
+        audioPath: (id) => `media/audio/${id}.mp3`,
+        brollPath: (filename) => `media/broll/${filename}`,
+        listBroll: async () => [],
+        ensureDirs: async () => {},
+      },
+      briefs,
+      candidates,
+      id: { generate: () => ids.shift() ?? "unexpected-id" },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: store,
+      inspirationConfig,
+    });
+
+    const [candidate] = await runIdeation({ channelId: "channel-1", count: 1 });
+
+    expect(candidate?.score).toBeGreaterThan(0.7);
+    expect(links).toEqual([
+      expect.objectContaining({
+        candidateId: "candidate-1",
+        ideaId: "idea-1",
+      }),
+    ]);
+  });
+
+  it("does not fail the ideate job when generate fill cannot list ideas", async () => {
+    const briefs = new MemoryBriefRepository();
+    const candidates = new MemoryCandidateRepository();
+    const ids = ["brief-1", "candidate-1"];
+    const llmUsers: string[] = [];
+    let listCalls = 0;
+    const store: InspirationStorePort = {
+      ...emptyInspirationStore(),
+      getLatestOkSyncAt: async () => freshSyncAt,
+      getLatestSuccessfulSyncAt: async () => freshSyncAt,
+      listActiveIdeas: async () => {
+        listCalls += 1;
+        if (listCalls > 1) {
+          throw new Error("inspiration store unavailable");
+        }
+        return [oscherslebenIdea()];
+      },
+    };
+    const runIdeation = createRunIdeation({
+      llm: {
+        complete: async (input) => {
+          llmUsers.push(input.user);
+          return JSON.stringify({
+            ideas: [
+              {
+                hook: "Carbonara in due minuti",
+                script: "Uova, pecorino, pepe.",
+                title: "How to cook pasta carbonara",
+                description: "A kitchen tutorial with eggs and pecorino.",
+                tags: ["cooking"],
+                score: 0.7,
+                voiceProfile: "alloy",
+                brollPlan: ["Kitchen"],
+              },
+            ],
+          });
+        },
+      },
+      tts: { synthesize: async () => ({ durationMs: 4_000 }) },
+      mediaStore: {
+        sourcePath: () => "",
+        renderPath: () => "",
+        audioPath: (id) => `media/audio/${id}.mp3`,
+        brollPath: (filename) => `media/broll/${filename}`,
+        listBroll: async () => [],
+        ensureDirs: async () => {},
+      },
+      briefs,
+      candidates,
+      id: { generate: () => ids.shift() ?? "unexpected-id" },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: store,
+      inspirationConfig,
+    });
+
+    const result = await runIdeation({ channelId: "channel-1", count: 1 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.title).toBe("How to cook pasta carbonara");
+    expect(llmUsers).toHaveLength(1);
+    expect(listCalls).toBe(2);
   });
 });

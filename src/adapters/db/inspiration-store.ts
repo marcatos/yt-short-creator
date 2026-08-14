@@ -116,10 +116,24 @@ export class DrizzleInspirationStore implements InspirationStorePort {
   }
 
   async getLatestOkSyncAt(): Promise<Date | null> {
+    return this.latestSyncAt(["ok"]);
+  }
+
+  async getLatestSuccessfulSyncAt(): Promise<Date | null> {
+    return this.latestSyncAt(["ok", "partial"]);
+  }
+
+  private async latestSyncAt(
+    statuses: Array<InspirationSyncRun["status"]>,
+  ): Promise<Date | null> {
     const rows = await this.db
       .select()
       .from(inspirationSyncRuns)
-      .where(eq(inspirationSyncRuns.status, "ok"))
+      .where(
+        statuses.length === 1
+          ? eq(inspirationSyncRuns.status, statuses[0]!)
+          : inArray(inspirationSyncRuns.status, statuses),
+      )
       .orderBy(
         desc(inspirationSyncRuns.finishedAt),
         desc(inspirationSyncRuns.startedAt),

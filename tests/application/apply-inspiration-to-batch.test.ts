@@ -42,6 +42,7 @@ function capturingLogger() {
 class MemoryInspirationStore implements InspirationStorePort {
   ideas: InspirationIdeaRecord[] = [];
   latestOkSyncAt: Date | null = null;
+  latestSuccessfulSyncAt: Date | null = null;
   links: CandidateInspirationLink[] = [];
 
   async saveSyncRun(): Promise<void> {}
@@ -50,6 +51,9 @@ class MemoryInspirationStore implements InspirationStorePort {
   }
   async getLatestOkSyncAt(): Promise<Date | null> {
     return this.latestOkSyncAt;
+  }
+  async getLatestSuccessfulSyncAt(): Promise<Date | null> {
+    return this.latestSuccessfulSyncAt ?? this.latestOkSyncAt;
   }
   async replaceActiveIdeas(): Promise<void> {}
   async listActiveIdeas(): Promise<InspirationIdeaRecord[]> {
@@ -118,6 +122,29 @@ function clipCandidate(
       endMs: 15_000,
       hookReason: "Immediate battle tension",
       crop: { mode: "center_vertical", focusX: 0.5 },
+    },
+    renderOutputPath: null,
+    scheduledAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function generateCandidate(
+  overrides: Partial<ShortCandidate> & Pick<ShortCandidate, "id" | "title">,
+): ShortCandidate {
+  return {
+    origin: "generate",
+    status: "proposed",
+    description: "Stay smooth.",
+    tags: ["racing"],
+    score: 0.7,
+    provenance: {
+      generationBriefId: "brief-1",
+      scriptVersion: 1,
+      voiceAssetPath: "",
+      timeline: [],
     },
     renderOutputPath: null,
     scheduledAt: null,
@@ -332,6 +359,109 @@ describe("applyInspirationToBatch", () => {
         candidateId: "c-matched",
         ideaId: "idea-1",
       }),
+    );
+  });
+
+  it("warns and still returns biased candidates when link persistence fails", async () => {
+    const store = new MemoryInspirationStore();
+    store.latestOkSyncAt = new Date("2026-08-13T18:00:00.000Z");
+    store.ideas = [ideaRecord({ id: "idea-1" })];
+    store.saveCandidateLinks = async () => {
+      throw new Error("link write failed");
+    };
+    const { logger, warnings } = capturingLogger();
+    const matched = clipCandidate({
+      id: "c-matched",
+      title: "Oschersleben last lap battle",
+      description: "Door-to-door fight at Oschersleben",
+      score: 0.7,
+    });
+
+    const result = await applyInspirationToBatch({
+      store,
+      config,
+      clock: { now: () => now },
+      logger,
+      candidates: [matched],
+    });
+
+    expect(result.stale).toBe(false);
+    expect(result.candidates[0]?.score).toBeGreaterThan(0.7);
+    expect(result.matchedIdeaIds).toEqual(["idea-1"]);
+    expect(
+      warnings.some((entry) =>
+        entry.msg.includes("Inspiration link persistence failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("matches generate candidates when matchTextFor includes hook text", async () => {
+    const store = new MemoryInspirationStore();
+    store.latestOkSyncAt = new Date("2026-08-13T18:00:00.000Z");
+    store.ideas = [ideaRecord({ id: "idea-1" })];
+    const { logger } = capturingLogger();
+    const candidate = generateCandidate({
+      id: "c-hook",
+      title: "A racing tip",
+    });
+
+    const withoutHook = await applyInspirationToBatch({
+      store,
+      config,
+      clock: { now: () => now },
+      logger,
+      candidates: [candidate],
+    });
+    expect(withoutHook.candidates[0]?.score).toBe(0.7);
+    expect(store.links).toEqual([]);
+
+    const withHook = await applyInspirationToBatch({
+      store,
+      config,
+      clock: { now: () => now },
+      logger,
+      candidates: [candidate],
+      matchTextFor: (item) =>
+        [item.title, item.description, "Oschersleben last lap battle door-to-door"]
+          .filter(Boolean)
+          .join(" "),
+    });
+
+    expect(withHook.candidates[0]?.score).toBeGreaterThan(0.7);
+    expect(store.links).toEqual([
+      expect.objectContaining({
+        candidateId: "c-hook",
+        ideaId: "idea-1",
+      }),
+    ]);
+  });
+
+  it("treats a recent partial sync as fresh for hard bias", async () => {
+    const store = new MemoryInspirationStore();
+    store.latestOkSyncAt = null;
+    store.latestSuccessfulSyncAt = new Date("2026-08-13T18:00:00.000Z");
+    store.ideas = [ideaRecord({ id: "idea-1" })];
+    const { logger, warnings } = capturingLogger();
+    const matched = clipCandidate({
+      id: "c-matched",
+      title: "Oschersleben last lap battle",
+      description: "Door-to-door fight at Oschersleben",
+      score: 0.7,
+    });
+
+    const result = await applyInspirationToBatch({
+      store,
+      config,
+      clock: { now: () => now },
+      logger,
+      candidates: [matched],
+    });
+
+    expect(result.stale).toBe(false);
+    expect(result.candidates[0]?.score).toBeGreaterThan(0.7);
+    expect(store.links).toHaveLength(1);
+    expect(warnings.some((entry) => entry.msg === "inspiration_stale")).toBe(
+      false,
     );
   });
 });

@@ -36,6 +36,8 @@ type ApplyInspirationInput = {
   logger: Logger;
   candidates: ShortCandidate[];
   persistCandidates?: (candidates: ShortCandidate[]) => Promise<void>;
+  /** Override match corpus (e.g. generate origin hook from the brief). */
+  matchTextFor?: (candidate: ShortCandidate) => string;
 };
 
 function candidateMatchText(candidate: ShortCandidate): string {
@@ -105,9 +107,9 @@ export async function applyInspirationToBatch(
   }
 
   const ideas = records.map(recordToInspirationIdea);
-  let latestOkSyncAt: Date | null = null;
+  let latestSuccessfulSyncAt: Date | null = null;
   try {
-    latestOkSyncAt = await input.store.getLatestOkSyncAt();
+    latestSuccessfulSyncAt = await input.store.getLatestSuccessfulSyncAt();
   } catch (error) {
     log.warn("Inspiration freshness check failed; skipping hard bias", {
       error: errorMeta(error),
@@ -121,14 +123,14 @@ export async function applyInspirationToBatch(
     };
   }
   const stale = isStale(
-    latestOkSyncAt,
+    latestSuccessfulSyncAt,
     input.clock.now(),
     input.config.staleDays,
   );
 
   if (stale) {
     log.warn("inspiration_stale", {
-      latestOkSyncAt: latestOkSyncAt?.toISOString() ?? null,
+      latestSuccessfulSyncAt: latestSuccessfulSyncAt?.toISOString() ?? null,
       staleDays: input.config.staleDays,
       ideaCount: ideas.length,
       durationMs: Math.round(performance.now() - startedAt),
@@ -142,13 +144,30 @@ export async function applyInspirationToBatch(
     };
   }
 
-  const biased = applyFreshBias(input.candidates, ideas, input.config);
-  await input.persistCandidates?.(biased.ordered);
-  await persistLinks(
-    input.store,
-    input.candidates.map((candidate) => candidate.id),
-    biased.links,
+  const matchTextFor = input.matchTextFor ?? candidateMatchText;
+  const biased = applyFreshBias(
+    input.candidates,
+    ideas,
+    input.config,
+    matchTextFor,
   );
+  await input.persistCandidates?.(biased.ordered);
+  try {
+    await persistLinks(
+      input.store,
+      input.candidates.map((candidate) => candidate.id),
+      biased.links,
+    );
+  } catch (error) {
+    log.warn(
+      "Inspiration link persistence failed; continuing with biased candidates",
+      {
+        error: errorMeta(error),
+        candidateCount: batchSize,
+        linkCount: biased.links.length,
+      },
+    );
+  }
 
   if (biased.shortfall > 0) {
     log.warn("inspiration_quota_shortfall", {
@@ -181,6 +200,7 @@ export async function applyInspirationToBatchIfConfigured(
     config?: InspirationConfig;
     clock: ClockPort;
     logger: Logger;
+    matchTextFor?: (candidate: ShortCandidate) => string;
   },
   candidates: ShortCandidate[],
   persistCandidates?: (candidates: ShortCandidate[]) => Promise<void>,
@@ -201,6 +221,7 @@ export async function applyInspirationToBatchIfConfigured(
     logger: deps.logger,
     candidates,
     persistCandidates,
+    matchTextFor: deps.matchTextFor,
   });
 }
 
@@ -217,6 +238,7 @@ function applyFreshBias(
   candidates: ShortCandidate[],
   ideas: InspirationIdea[],
   config: InspirationConfig,
+  matchTextFor: (candidate: ShortCandidate) => string,
 ): {
   ordered: ShortCandidate[];
   shortfall: number;
@@ -229,7 +251,7 @@ function applyFreshBias(
   const matchedIds = new Set<string>();
 
   const boosted = candidates.map((candidate) => {
-    const text = candidateMatchText(candidate);
+    const text = matchTextFor(candidate);
     const match = matchIdeas(text, ideas, config.matchMin);
     if (match.ideaIds.length === 0) {
       return candidate;

@@ -184,6 +184,7 @@ describe("InspirationStore", () => {
 
     expect(await store.listSyncRuns(2)).toEqual([ok, partial]);
     expect(await store.getLatestOkSyncAt()).toEqual(t2);
+    expect(await store.getLatestSuccessfulSyncAt()).toEqual(t2);
   });
 
   it("getLatestOkSyncAt is null when no ok sync exists", async () => {
@@ -195,6 +196,32 @@ describe("InspirationStore", () => {
     );
 
     expect(await store.getLatestOkSyncAt()).toBeNull();
+    expect(await store.getLatestSuccessfulSyncAt()).toBeNull();
+  });
+
+  it("getLatestSuccessfulSyncAt includes partial when no ok sync exists", async () => {
+    const { db } = openTempDb();
+    const store = createRepositories(db).inspiration;
+
+    await store.saveSyncRun(
+      syncRun({
+        id: "run-failed",
+        status: "failed",
+        ideaCount: 0,
+        finishedAt: t0,
+      }),
+    );
+    await store.saveSyncRun(
+      syncRun({
+        id: "run-partial",
+        status: "partial",
+        ideaCount: 2,
+        finishedAt: t1,
+      }),
+    );
+
+    expect(await store.getLatestOkSyncAt()).toBeNull();
+    expect(await store.getLatestSuccessfulSyncAt()).toEqual(t1);
   });
 
   it("persists idea snapshot fields on listActiveIdeas", async () => {
