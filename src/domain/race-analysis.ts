@@ -5,6 +5,10 @@ import type {
   RacePackage,
   RaceTimelineEntry,
 } from "./entities";
+import {
+  raceHudTimelineSchema,
+  type RaceHudTimeline,
+} from "./race-hud";
 
 /**
  * Structured race analysis (FASE A). Hard facts are nullable when unverified —
@@ -95,6 +99,8 @@ export type RaceAnalysis = {
   /** First-person chronological narrative (Italian) for editorial input. */
   narrativeIt: string;
   audioTranscript: string;
+  /** Structured HUD overlays extracted from burned-in telemetry panels. */
+  hudTimeline: RaceHudTimeline;
 };
 
 const nullableString = z.preprocess(
@@ -189,10 +195,14 @@ export const raceAnalysisSchema = z.object({
   shortCandidates: z.array(shortSegmentAnalysisSchema).min(1).max(12),
   narrativeIt: z.string().trim().min(1),
   audioTranscript: z.string(),
+  hudTimeline: raceHudTimelineSchema.default([]),
 });
 
-/** LLM output before we stamp version / merge telemetry / fill audio. */
-export const raceAnalysisLlmSchema = raceAnalysisSchema.omit({ version: true });
+/** LLM output before we stamp version / merge telemetry / HUD / fill audio. */
+export const raceAnalysisLlmSchema = raceAnalysisSchema.omit({
+  version: true,
+  hudTimeline: true,
+});
 
 export type RaceAnalysisLlmOutput = z.infer<typeof raceAnalysisLlmSchema>;
 
