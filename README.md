@@ -110,10 +110,12 @@ Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated
 | `IRACING_VIDEOS_DIR` | Optional iRacing capture watch folder |
 | `FFMPEG_VIDEO_ENCODER` | Optional encoder override (prefer Settings UI) |
 | `YOUTUBE_STUDIO_PROFILE_DIR` | Persistent Chrome profile for Studio automation (default `data/youtube-studio-profile`) |
-| `YOUTUBE_STUDIO_BROWSER_CHANNEL` | Playwright browser channel (default `chrome`; e.g. `msedge`, `chromium`) |
+| `YOUTUBE_STUDIO_BROWSER_CHANNEL` | Playwright browser channel for workers (default `chrome`) |
+| `YOUTUBE_STUDIO_CHROME_PATH` | Optional path to `chrome.exe` for `studio:login` |
+| `YOUTUBE_STUDIO_CDP_PORT` | Remote-debugging port for login (default `9222`) |
 | `INSPIRATION_SYNC_INTERVAL_HOURS` | Scheduled Inspiration sync interval (default `24`) |
 
-One-time headed sign-in for Studio scraping (Inspiration + related-video): `npm run studio:login` (uses installed Google Chrome). Workers never open an interactive browser.
+One-time headed sign-in: `npm run studio:login` opens **real** Google Chrome (CDP), not a Playwright-controlled window — Google blocks the latter. Complete login in that window; workers reuse the same profile headless afterward.
 
 ## YouTube OAuth
 

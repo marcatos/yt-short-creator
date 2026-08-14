@@ -6,6 +6,8 @@ const DEFAULT_STUDIO_PROFILE_RELATIVE = path.join(
   "youtube-studio-profile",
 );
 
+const DEFAULT_CDP_PORT = 9222;
+
 export function resolveStudioProfileDir(
   env: Record<string, string | undefined> = process.env,
 ): string {
@@ -35,9 +37,8 @@ export function studioProfileExists(profileDir: string): boolean {
 }
 
 /**
- * Playwright channel for Studio automation. Prefer installed Google Chrome
- * so login cookies match a real Chrome profile (not bundled Chromium).
- * Override with YOUTUBE_STUDIO_BROWSER_CHANNEL (e.g. "chromium", "msedge").
+ * Playwright channel for Studio automation after login.
+ * Override with YOUTUBE_STUDIO_BROWSER_CHANNEL (e.g. "msedge", "chromium").
  */
 export function resolveStudioBrowserChannel(
   env: Record<string, string | undefined> = process.env,
@@ -46,7 +47,72 @@ export function resolveStudioBrowserChannel(
   return configured && configured.length > 0 ? configured : "chrome";
 }
 
-/** Shared launch options for login + Inspiration scrape persistent contexts. */
+export function resolveStudioCdpPort(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.YOUTUBE_STUDIO_CDP_PORT?.trim();
+  if (!raw) return DEFAULT_CDP_PORT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65_535) {
+    return DEFAULT_CDP_PORT;
+  }
+  return parsed;
+}
+
+/**
+ * Resolve installed Google Chrome executable (Windows-first).
+ * Override with YOUTUBE_STUDIO_CHROME_PATH.
+ */
+export function resolveChromeExecutablePath(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const configured = env.YOUTUBE_STUDIO_CHROME_PATH?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  const candidates: string[] = [];
+  if (process.platform === "win32") {
+    const localAppData = env.LOCALAPPDATA ?? process.env.LOCALAPPDATA ?? "";
+    const programFiles = env.PROGRAMFILES ?? process.env.PROGRAMFILES ?? "";
+    const programFilesX86 =
+      env["PROGRAMFILES(X86)"] ?? process.env["ProgramFiles(x86)"] ?? "";
+    candidates.push(
+      path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      path.join(
+        programFilesX86,
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe",
+      ),
+      path.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+    );
+  } else if (process.platform === "darwin") {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    );
+  } else {
+    candidates.push(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+    );
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+/** Shared launch options for Inspiration scrape persistent contexts. */
 export function studioPersistentContextOptions(input: {
   headed: boolean;
   env?: Record<string, string | undefined>;
@@ -54,10 +120,15 @@ export function studioPersistentContextOptions(input: {
   headless: boolean;
   channel: string;
   viewport: { width: number; height: number };
+  ignoreDefaultArgs: string[];
+  args: string[];
 } {
   return {
     headless: !input.headed,
     channel: resolveStudioBrowserChannel(input.env),
     viewport: { width: 1280, height: 800 },
+    // Reduce automation fingerprints for post-login Studio pages.
+    ignoreDefaultArgs: ["--enable-automation"],
+    args: ["--disable-blink-features=AutomationControlled"],
   };
 }
