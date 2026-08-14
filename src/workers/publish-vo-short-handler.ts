@@ -22,11 +22,13 @@ import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
 import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import { isReplayProvenance } from "@/src/domain/replay";
 
 import { requireStringPayload } from "./handler-utils";
 import type { JobHandler } from "./job-handler-context";
@@ -48,6 +50,7 @@ type Dependencies = {
   captions?: YouTubeCaptionsPort;
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
+  replaySessions?: ReplaySessionRepository;
   mediaStore?: MediaStorePort;
   queue: InspectableJobQueue & Partial<YoutubePublishDeferQueue>;
 };
@@ -262,6 +265,20 @@ export function createPublishVoiceOverShortHandler(
           );
           if (source?.youtubeVideoId) {
             description = withFullVideoLink(description, source.youtubeVideoId);
+          }
+        } else if (
+          fresh.origin === "replay" &&
+          isReplayProvenance(fresh.provenance) &&
+          deps.replaySessions
+        ) {
+          const session = await deps.replaySessions.getById(
+            fresh.provenance.replaySessionId,
+          );
+          if (session?.fullVideoYoutubeId) {
+            description = withFullVideoLink(
+              description,
+              session.fullVideoYoutubeId,
+            );
           }
         }
         ctx.setProgress(

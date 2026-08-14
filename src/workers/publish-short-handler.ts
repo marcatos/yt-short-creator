@@ -10,6 +10,7 @@ import type { JobRepository } from "@/src/ports/job-repository";
 import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaStorePort } from "@/src/ports/media-store";
+import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SettingsRepository } from "@/src/ports/settings-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
@@ -37,6 +38,7 @@ type Dependencies = {
   captions?: YouTubeCaptionsPort;
   clock: ClockPort;
   sourceVideos: SourceVideoRepository;
+  replaySessions?: ReplaySessionRepository;
   mediaStore?: MediaStorePort;
 };
 
