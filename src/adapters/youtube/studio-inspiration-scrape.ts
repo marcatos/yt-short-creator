@@ -242,7 +242,7 @@ export function createPlaywrightInspirationHelpers(
       let opened =
         (await clickFirstRole(
           page,
-          ["tab", "link", "button"],
+          ["tab"],
           INSPIRATION_SELECTORS.inspirationTabNames,
         )) ||
         (await clickMatchingLocator(
