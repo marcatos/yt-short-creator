@@ -98,6 +98,7 @@ function makeHandlers(options: {
         return [];
       },
       async upsertMany() {},
+      async deleteByIds() {},
     },
     videoDownload: {
       async download() {
@@ -587,6 +588,7 @@ describe("download_source_video handler checkpoints", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       videoDownload: {
         async download() {
@@ -776,6 +778,7 @@ describe("download_source_video handler checkpoints", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       videoDownload: {
         async download() {

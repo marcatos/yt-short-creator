@@ -262,6 +262,23 @@ describe("Drizzle repositories", () => {
     expect(await repos.sourceVideos.listByChannelId("ch-1")).toEqual([updated]);
   });
 
+  it("deletes source videos by id", async () => {
+    const { db } = openTempDb();
+    const repos = createRepositories(db);
+
+    await repos.channels.save(sampleChannel);
+    await repos.sourceVideos.upsertMany([
+      sampleSourceVideo,
+      { ...sampleSourceVideo, id: "sv-2", youtubeVideoId: "yt-vid-2" },
+    ]);
+
+    await repos.sourceVideos.deleteByIds(["sv-1"]);
+
+    expect(await repos.sourceVideos.listByChannelId("ch-1")).toEqual([
+      { ...sampleSourceVideo, id: "sv-2", youtubeVideoId: "yt-vid-2" },
+    ]);
+  });
+
   it("creates parent data directory when missing", () => {
     const dbPath = path.join(
       os.tmpdir(),

@@ -230,6 +230,7 @@ describe("replay pipeline smoke", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       replaySessions: {
         async save(session) {

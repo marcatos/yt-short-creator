@@ -8,4 +8,5 @@ export interface SourceVideoRepository {
   ): Promise<SourceVideo | null>;
   listByChannelId(channelId: string): Promise<SourceVideo[]>;
   upsertMany(videos: SourceVideo[]): Promise<void>;
+  deleteByIds(ids: string[]): Promise<void>;
 }

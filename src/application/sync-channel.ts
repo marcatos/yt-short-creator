@@ -98,11 +98,27 @@ export function createSyncChannel({
       });
 
       await sourceVideos.upsertMany(videos);
+      const liveYoutubeIds = new Set(
+        videos.map((video) => video.youtubeVideoId),
+      );
+      const staleVideos = [...existingByYoutubeId.values()].filter(
+        (video) => !liveYoutubeIds.has(video.youtubeVideoId),
+      );
+      const staleIds = staleVideos.map((video) => video.id);
+      if (staleIds.length > 0) {
+        await sourceVideos.deleteByIds(staleIds);
+        log.info("Removed source videos missing from YouTube catalog", {
+          channelId,
+          removedCount: staleIds.length,
+          youtubeVideoIds: staleVideos.map((video) => video.youtubeVideoId),
+        });
+      }
       const withStats = videos.filter((video) => video.analyticsSnapshot).length;
       log.info("YouTube channel sync completed", {
         channelId,
         videoCount: videos.length,
         videosWithStats: withStats,
+        removedCount: staleIds.length,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return videos;

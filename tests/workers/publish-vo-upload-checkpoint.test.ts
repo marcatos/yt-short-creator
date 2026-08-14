@@ -192,6 +192,7 @@ function makeHarness(
       getByYoutubeVideoId: async () => null,
       listByChannelId: async () => [],
       upsertMany: async () => {},
+      deleteByIds: async () => {},
     },
     mediaStore: {
       sourcePath: () => "",

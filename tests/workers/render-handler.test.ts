@@ -97,6 +97,7 @@ describe("render_short handler", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       videoDownload: {
         async download() {

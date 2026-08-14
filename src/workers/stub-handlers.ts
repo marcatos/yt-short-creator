@@ -23,6 +23,7 @@ const noopDeps: HandlerDeps = {
       return [];
     },
     async upsertMany() {},
+    async deleteByIds() {},
   },
   replaySessions: {
     async save() {},

@@ -283,6 +283,16 @@ export class DrizzleSourceVideoRepository implements SourceVideoRepository {
         },
       });
   }
+
+  async deleteByIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    await this.db
+      .delete(sourceVideos)
+      .where(inArray(sourceVideos.id, ids));
+  }
 }
 
 export class DrizzleGenerationBriefRepository

@@ -154,6 +154,7 @@ describe("pipeline smoke path", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       videoDownload: {
         async download() {

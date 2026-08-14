@@ -180,6 +180,7 @@ describe("candidate approval publishing flow", () => {
           return [];
         },
         async upsertMany() {},
+        async deleteByIds() {},
       },
       videoDownload: { async download() { return ""; } },
       runClipAnalysis: async () => [],

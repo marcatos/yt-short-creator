@@ -180,6 +180,7 @@ describe("publish_short bilingual VO flow", () => {
         getByYoutubeVideoId: async () => null,
         listByChannelId: async () => [],
         upsertMany: async () => {},
+        deleteByIds: async () => {},
       },
     });
 
@@ -325,6 +326,7 @@ describe("publish_short bilingual VO flow", () => {
         getByYoutubeVideoId: async () => null,
         listByChannelId: async () => [],
         upsertMany: async () => {},
+        deleteByIds: async () => {},
       },
     });
 

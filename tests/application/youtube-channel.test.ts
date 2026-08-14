@@ -74,6 +74,10 @@ class MemorySourceVideoRepository implements SourceVideoRepository {
   async upsertMany(videos: SourceVideo[]): Promise<void> {
     videos.forEach((video) => this.items.set(video.id, video));
   }
+
+  async deleteByIds(ids: string[]): Promise<void> {
+    ids.forEach((id) => this.items.delete(id));
+  }
 }
 
 function createAuth(stored: YouTubeTokens | null = tokens): YouTubeAuthPort {
@@ -207,6 +211,62 @@ describe("YouTube channel use cases", () => {
       },
     ]);
     expect(logger.entries).toContain("INFO:YouTube channel sync completed");
+  });
+
+  it("removes source videos that are no longer on the YouTube channel", async () => {
+    const channels = new MemoryChannelRepository();
+    const videos = new MemorySourceVideoRepository();
+    await channels.save({
+      id: "channel-1",
+      youtubeChannelId: "UC42",
+      title: "S.Marcato 42 Racing",
+      connectedAt: now,
+    });
+    await videos.save({
+      id: "source-live",
+      channelId: "channel-1",
+      youtubeVideoId: "video-1",
+      title: "Race highlights",
+      durationSec: 125,
+      localMediaPath: null,
+      analyticsSnapshot: null,
+      publishedAt: new Date("2026-08-10T12:00:00.000Z"),
+      syncedAt: new Date("2026-08-10T10:00:00.000Z"),
+    });
+    await videos.save({
+      id: "source-deleted",
+      channelId: "channel-1",
+      youtubeVideoId: "video-deleted",
+      title: "Old upload",
+      durationSec: 60,
+      localMediaPath: "media/old.mp4",
+      analyticsSnapshot: { viewCount: 10, likeCount: 0, commentCount: 0 },
+      publishedAt: new Date("2026-07-01T12:00:00.000Z"),
+      syncedAt: new Date("2026-08-10T10:00:00.000Z"),
+    });
+    const logger = createLogger();
+    const syncChannel = createSyncChannel({
+      auth: createAuth(),
+      catalog: createCatalog(),
+      channels,
+      sourceVideos: videos,
+      id: { generate: () => "unused-id" },
+      clock: { now: () => now },
+      logger,
+    });
+
+    await syncChannel("channel-1");
+
+    expect(await videos.listByChannelId("channel-1")).toEqual([
+      expect.objectContaining({
+        id: "source-live",
+        youtubeVideoId: "video-1",
+      }),
+    ]);
+    expect(await videos.getById("source-deleted")).toBeNull();
+    expect(logger.entries).toContain(
+      "INFO:Removed source videos missing from YouTube catalog",
+    );
   });
 
   it("rejects sync when the channel is not connected", async () => {

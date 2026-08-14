@@ -28,6 +28,8 @@ class MemorySourceVideoRepository implements SourceVideoRepository {
   }
 
   async upsertMany(): Promise<void> {}
+
+  async deleteByIds(): Promise<void> {}
 }
 
 class MemoryCandidateRepository implements CandidateRepository {
