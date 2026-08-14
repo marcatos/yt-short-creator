@@ -64,6 +64,13 @@
       "when": 1786650000000,
       "tag": "0008_race_analysis_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786720000000,
+      "tag": "0009_inspiration",
+      "breakpoints": true
     }
   ]
 }

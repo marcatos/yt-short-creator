@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import type {
   AnalyticsSnapshot,
@@ -158,5 +158,56 @@ export const queueJobs = sqliteTable(
     // Speeds up claimNext (status = 'queued' ORDER BY position) and reorder
     // scans, which run on every queue mutation.
     index("queue_jobs_status_position_idx").on(table.status, table.position),
+  ],
+);
+
+export const inspirationSyncRuns = sqliteTable("inspiration_sync_runs", {
+  id: text("id").primaryKey(),
+  startedAt: integer("started_at", { mode: "timestamp" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "timestamp" }),
+  status: text("status").$type<"ok" | "partial" | "failed">().notNull(),
+  ideaCount: integer("idea_count").notNull(),
+  errorMessage: text("error_message"),
+  source: text("source").$type<"manual" | "scheduled">().notNull(),
+});
+
+export const inspirationIdeas = sqliteTable(
+  "inspiration_ideas",
+  {
+    id: text("id").primaryKey(),
+    syncRunId: text("sync_run_id")
+      .notNull()
+      .references(() => inspirationSyncRuns.id),
+    externalKey: text("external_key").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    audienceInterest: text("audience_interest"),
+    channelAlignment: text("channel_alignment"),
+    relatedInterest: text("related_interest", { mode: "json" }).$type<unknown>(),
+    outline: text("outline"),
+    suggestedTitles: text("suggested_titles", { mode: "json" })
+      .$type<string[]>()
+      .notNull(),
+    thumbnailNotes: text("thumbnail_notes"),
+    rawSnippet: text("raw_snippet"),
+    capturedAt: integer("captured_at", { mode: "timestamp" }).notNull(),
+    active: integer("active", { mode: "boolean" }).notNull(),
+  },
+  (table) => [index("inspiration_ideas_active_idx").on(table.active)],
+);
+
+export const candidateInspirationLinks = sqliteTable(
+  "candidate_inspiration_links",
+  {
+    candidateId: text("candidate_id")
+      .notNull()
+      .references(() => shortCandidates.id),
+    ideaId: text("idea_id")
+      .notNull()
+      .references(() => inspirationIdeas.id),
+    alignmentScore: real("alignment_score").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.candidateId, table.ideaId] }),
   ],
 );

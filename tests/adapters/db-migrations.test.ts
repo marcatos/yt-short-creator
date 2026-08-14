@@ -82,4 +82,25 @@ describe("database migrations", () => {
     ).toEqual([{ name: "queue_jobs" }]);
     current.close();
   });
+
+  it("creates inspiration tables on a fresh migrate", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "migration-inspiration-"));
+    dirs.push(dir);
+    const current = createDb(path.join(dir, "fresh.db"));
+    try {
+      const names = current.db
+        .all<{ name: string }>(
+          "select name from sqlite_master where type = 'table' and name in ('inspiration_sync_runs', 'inspiration_ideas', 'candidate_inspiration_links') order by name",
+        )
+        .map((row) => row.name);
+
+      expect(names).toEqual([
+        "candidate_inspiration_links",
+        "inspiration_ideas",
+        "inspiration_sync_runs",
+      ]);
+    } finally {
+      current.close();
+    }
+  });
 });

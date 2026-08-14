@@ -12,11 +12,13 @@ import type {
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ChannelRepository } from "@/src/ports/channel-repository";
 import type { GenerationBriefRepository } from "@/src/ports/generation-brief-repository";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 import type { JobRepository } from "@/src/ports/job-repository";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 
 import type { AppDb } from "./client";
+import { DrizzleInspirationStore } from "./inspiration-store";
 import {
   channels,
   generationBriefs,
@@ -620,6 +622,7 @@ export type DbRepositories = {
   candidates: DrizzleCandidateRepository;
   jobs: DrizzleJobRepository;
   replaySessions: DrizzleReplaySessionRepository;
+  inspiration: InspirationStorePort;
 };
 
 export function createRepositories(db: AppDb): DbRepositories {
@@ -630,5 +633,6 @@ export function createRepositories(db: AppDb): DbRepositories {
     candidates: new DrizzleCandidateRepository(db),
     jobs: new DrizzleJobRepository(db),
     replaySessions: new DrizzleReplaySessionRepository(db),
+    inspiration: new DrizzleInspirationStore(db),
   };
 }
