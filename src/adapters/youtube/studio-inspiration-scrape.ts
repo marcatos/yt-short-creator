@@ -186,7 +186,21 @@ export function createPlaywrightInspirationHelpers(
   page: PageLike,
 ): InspirationPageHelpers {
   async function resolveCardList(): Promise<LocatorLike | null> {
+    // Prefer the live Studio custom element discovered via probe.
+    const primary = page.locator("ytci-feed-idea-preview");
+    if ((await primary.count()) > 0) return primary;
     return firstNonEmptyLocator(page, INSPIRATION_SELECTORS.ideaCardCandidates);
+  }
+
+  async function waitForIdeaCards(timeoutMs: number): Promise<number> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const list = await resolveCardList();
+      const count = list ? await list.count() : 0;
+      if (count > 0) return count;
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+    return 0;
   }
 
   return {
@@ -309,21 +323,16 @@ export function createPlaywrightInspirationHelpers(
         }
       }
 
-      const cards = page.locator(
-        INSPIRATION_SELECTORS.ideaCardCandidates.join(", "),
-      );
-      // Studio AI feed often paints cards after a "looking for ideas" pause.
-      try {
-        await cards.first().waitFor({
-          state: "visible",
-          timeout: 60_000,
-        });
-      } catch {
-        // Zero-card handling belongs to scrapeInspirationIdeas.
+      const cardCount = await waitForIdeaCards(90_000);
+      if (cardCount === 0) {
+        // Leave zero-card handling to scrapeInspirationIdeas.
       }
     },
 
     async countCards(): Promise<number> {
+      // One more short wait in case openInspirationFeed raced the AI feed.
+      const waited = await waitForIdeaCards(15_000);
+      if (waited > 0) return waited;
       const list = await resolveCardList();
       return list ? list.count() : 0;
     },
