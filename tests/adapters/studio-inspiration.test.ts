@@ -380,7 +380,7 @@ describe("createPlaywrightInspirationHelpers", () => {
     };
 
     await createPlaywrightInspirationHelpers(page).openInspirationFeed();
-    expect(gotos).toEqual([]);
+    expect(gotos).toEqual([INSPIRATION_SELECTORS.studioHome]);
     expect(clicks).toEqual(["content", "inspiration-tab"]);
   });
 
