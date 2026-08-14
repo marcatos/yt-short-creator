@@ -145,9 +145,11 @@ export function parseIdeaFromTexts(input: {
   const title = (card.preamble[0] ?? detail.preamble[0] ?? "").trim();
   const summary =
     card.preamble.slice(1).join(" ").trim() ||
-    detail.preamble.slice(1).join(" ").trim();
-  if (!title || !summary) {
-    throw new Error("Inspiration card missing title or summary");
+    detail.preamble.slice(1).join(" ").trim() ||
+    // Feed cards often expose only a title line until expanded.
+    title;
+  if (!title) {
+    throw new Error("Inspiration card missing title");
   }
 
   const join = (key: SectionKey): string | null =>

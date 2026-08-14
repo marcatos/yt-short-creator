@@ -51,6 +51,8 @@ export const INSPIRATION_SELECTORS = {
     "text=/Inspiration|Ispirazione/i",
   ],
   ideaCardCandidates: [
+    "ytci-feed-idea-preview",
+    "ytci-feed-idea-card",
     "[data-idea-id]",
     "ytcd-video-idea-card",
     "ytcd-inspiration-idea-card",
@@ -60,13 +62,13 @@ export const INSPIRATION_SELECTORS = {
     "article:has-text('Interesse del pubblico')",
     ":text('Audience interest')",
     ":text('Interesse del pubblico')",
-    ":text(\"Let's brainstorm\")",
-    ":text('Creiamo idee')",
   ],
   detailPanel:
-    "ytcd-idea-detail, ytcp-dialog[opened], [role='dialog'], ytcd-inspiration-detail",
+    "ytci-feed-idea-preview[expanded], ytci-idea-detail, ytcd-idea-detail, ytcp-dialog[opened], [role='dialog'], ytcd-inspiration-detail",
   closeDetail:
     "button[aria-label='Close'], button[aria-label='Chiudi'], #close-button, ytcp-icon-button[aria-label='Close']",
+  /** Loading copy while Studio generates idea cards. */
+  loadingCopy: /cercando idee|ci stiamo lavorando|looking for ideas|working on it/i,
 } as const;
 
 export const INSPIRATION_NAV_TIMEOUT_MS = 30_000;
@@ -310,10 +312,11 @@ export function createPlaywrightInspirationHelpers(
       const cards = page.locator(
         INSPIRATION_SELECTORS.ideaCardCandidates.join(", "),
       );
+      // Studio AI feed often paints cards after a "looking for ideas" pause.
       try {
         await cards.first().waitFor({
           state: "visible",
-          timeout: INSPIRATION_NAV_TIMEOUT_MS,
+          timeout: 60_000,
         });
       } catch {
         // Zero-card handling belongs to scrapeInspirationIdeas.

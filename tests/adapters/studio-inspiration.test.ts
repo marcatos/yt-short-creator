@@ -194,9 +194,15 @@ describe("parseIdeaFromTexts", () => {
     expect(parsed.thumbnailNotes).toContain("Spray");
   });
 
-  it("throws when title or summary is missing", () => {
-    expect(() => parseIdeaFromTexts({ cardText: "Only a title" })).toThrow(
-      /missing title or summary/i,
+  it("uses the title as summary when the feed card has a single line", () => {
+    const parsed = parseIdeaFromTexts({ cardText: "Only a title" });
+    expect(parsed.title).toBe("Only a title");
+    expect(parsed.summary).toBe("Only a title");
+  });
+
+  it("throws when title is missing", () => {
+    expect(() => parseIdeaFromTexts({ cardText: "" })).toThrow(
+      /missing title/i,
     );
   });
 
