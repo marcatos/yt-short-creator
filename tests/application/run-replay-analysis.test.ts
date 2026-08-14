@@ -33,6 +33,7 @@ function emptyInspirationStore(): InspirationStorePort {
     listSyncRuns: async () => [],
     getLatestOkSyncAt: async () => null,
     getLatestSuccessfulSyncAt: async () => null,
+    getLatestFinishedSyncAt: async () => null,
     replaceActiveIdeas: async () => {},
     listActiveIdeas: async () => [],
     deleteLinksForCandidates: async () => {},
@@ -555,6 +556,114 @@ describe("runReplayAnalysis", () => {
     expect(
       sessions.session.raceAnalysis?.events.some(
         (event) => event.kind === "battle" && event.confidence === "verified",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a low-score Inspiration match in the MAX_SHORTS set", async () => {
+    const sessions = new MemoryReplaySessions(baseSession());
+    const candidates = new MemoryCandidates();
+    const pool = Array.from({ length: 20 }, (_, index) => {
+      const startMs = 10_000 + index * 8_000;
+      const matched = index === 19;
+      return {
+        shortScore: matched ? 0.2 : 0.99 - index * 0.01,
+        startMs,
+        endMs: startMs + 15_000,
+        hook: matched
+          ? "Door-to-door last laps at Oschersleben"
+          : `Hook ${index + 1}`,
+        story: matched
+          ? "Door-to-door fight at Oschersleben"
+          : `Story ${index + 1}`,
+        payoff: `Payoff ${index + 1}`,
+        recommendedTitleIt: matched
+          ? "Oschersleben last lap battle"
+          : `Momento ${index + 1}`,
+        recommendedTitleEn: matched
+          ? "Oschersleben last lap battle"
+          : `Moment ${index + 1}`,
+        requiresLocalizedRender: false,
+        tags: ["racing"],
+        descriptionIt: matched
+          ? "Door-to-door fight at Oschersleben"
+          : `Descrizione ${index + 1}`,
+        descriptionEn: matched
+          ? "Door-to-door fight at Oschersleben"
+          : `Description ${index + 1}`,
+      };
+    });
+    const freshSyncAt = new Date("2026-08-13T10:00:00.000Z");
+    const store: InspirationStorePort = {
+      ...emptyInspirationStore(),
+      getLatestOkSyncAt: async () => freshSyncAt,
+      getLatestSuccessfulSyncAt: async () => freshSyncAt,
+      listActiveIdeas: async () => [
+        {
+          id: "idea-1",
+          syncRunId: "run-1",
+          externalKey: "ext-1",
+          title: "Oschersleben battle for P2",
+          summary: "Door-to-door last laps at Oschersleben",
+          audienceInterest: null,
+          channelAlignment: null,
+          relatedInterest: null,
+          outline: null,
+          suggestedTitles: ["Last lap fight at Oschersleben"],
+          thumbnailNotes: null,
+          rawSnippet: null,
+          capturedAt: freshSyncAt,
+          active: true,
+        },
+      ],
+    };
+
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: fakeTranscription(),
+      mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor(),
+      llm: {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({ moments: [] });
+          }
+          return JSON.stringify({
+            raceAnalysis: raceAnalysisLlmFixture({
+              shortCandidates: pool,
+            }),
+          });
+        },
+      },
+      id: {
+        generate: (() => {
+          let n = 0;
+          return () => `id-${++n}`;
+        })(),
+      },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: store,
+    });
+
+    const proposed = await run({ sessionId: "session-1" });
+    expect(proposed).toHaveLength(16);
+    expect(
+      proposed.some((candidate) =>
+        candidate.title.toLowerCase().includes("oschersleben"),
+      ),
+    ).toBe(true);
+    expect(candidates.items).toHaveLength(16);
+    expect(
+      candidates.items.some((candidate) =>
+        candidate.title.toLowerCase().includes("oschersleben"),
       ),
     ).toBe(true);
   });

@@ -48,6 +48,8 @@ import { applyInspirationToBatchIfConfigured } from "./apply-inspiration-to-batc
 import { loadInspirationPromptBlock } from "./inspiration-prompt-block";
 
 const MAX_SHORTS = 16;
+/** LLM may propose extra windows so Inspiration can promote matches into the kept set. */
+const CANDIDATE_POOL_MAX = 24;
 const MIN_SHORTS = 10;
 const VISION_CHUNK_SIZE = 24;
 const MIN_WINDOW_MS = 8_000;
@@ -211,7 +213,7 @@ const responseJsonSchema = {
         shortCandidates: {
           type: "array",
           minItems: 1,
-          maxItems: MAX_SHORTS,
+          maxItems: CANDIDATE_POOL_MAX,
           items: {
             type: "object",
             additionalProperties: false,
@@ -781,7 +783,7 @@ export function createRunReplayAnalysis(
           "whyWatch deve rispondere: perché uno sconosciuto guarderebbe questo video? NON perché è una gara di Simone.",
           "shortScore: immediatezza, comprensione senza contesto, qualità sorpasso, rischio, vicinanza, tensione, payoff, hook.",
           "requiresLocalizedRender=true SOLO se lo Short ha bisogno di testo burned-in in lingua (caption dinamiche IT/EN diverse).",
-          `Proponi tra ${MIN_SHORTS} e ${MAX_SHORTS} shortCandidates (15–45s tipici, max 60s). segments opzionali non contigui.`,
+          `Proponi tra ${MIN_SHORTS} e ${CANDIDATE_POOL_MAX} shortCandidates (15–45s tipici, max 60s); ne terremo ${MAX_SHORTS} dopo il ranking. segments opzionali non contigui.`,
           `Focus car: ${focusCarHint}.`,
         ].join(" "),
         user: [
@@ -1053,9 +1055,7 @@ export function createRunReplayAnalysis(
         });
       }
 
-      candidates = candidates
-        .sort((a, b) => b.score - a.score)
-        .slice(0, MAX_SHORTS);
+      candidates = candidates.sort((a, b) => b.score - a.score);
 
       const applied = await applyInspirationToBatchIfConfigured(
         {
@@ -1065,13 +1065,11 @@ export function createRunReplayAnalysis(
           logger: log,
         },
         candidates,
-        async (ordered) => {
-          await Promise.all(
-            ordered.map((candidate) => deps.candidates.save(candidate)),
-          );
-        },
       );
-      candidates = applied.candidates;
+      candidates = applied.candidates.slice(0, MAX_SHORTS);
+      await Promise.all(
+        candidates.map((candidate) => deps.candidates.save(candidate)),
+      );
 
       await deps.replaySessions.save({
         ...session,

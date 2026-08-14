@@ -13,17 +13,28 @@ const ACTIVE_SYNC_JOB_STATUSES = new Set<JobRecord["status"]>([
 
 let lastScheduledEnqueueAt: Date | null = null;
 
+function laterDate(a: Date | null, b: Date | null): Date | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
 export function shouldEnqueueInspirationSync(input: {
-  latestOkSyncAt: Date | null;
+  latestOkSyncAt?: Date | null;
+  lastAttemptAt?: Date | null;
   now: Date;
   intervalHours: number;
 }): boolean {
-  const intervalMs = input.intervalHours * MS_PER_HOUR;
-  if (input.latestOkSyncAt === null) {
+  const lastAttemptAt = laterDate(
+    input.lastAttemptAt ?? null,
+    input.latestOkSyncAt ?? null,
+  );
+  if (lastAttemptAt === null) {
     return true;
   }
   return (
-    input.now.getTime() - input.latestOkSyncAt.getTime() >= intervalMs
+    input.now.getTime() - lastAttemptAt.getTime() >=
+    input.intervalHours * MS_PER_HOUR
   );
 }
 
@@ -38,7 +49,7 @@ function hasActiveSyncInspirationJob(
 }
 
 type EnqueueScheduledInspirationSyncDeps = {
-  store: Pick<InspirationStorePort, "getLatestOkSyncAt">;
+  store: Pick<InspirationStorePort, "getLatestFinishedSyncAt">;
   queue: Pick<DurableJobQueue, "listJobs" | "enqueue">;
   intervalHours: number;
   logger: Logger;
@@ -47,8 +58,7 @@ type EnqueueScheduledInspirationSyncDeps = {
 
 /**
  * Enqueues a scheduled Inspiration sync when the interval has elapsed since the
- * last successful sync (or when never synced). At most one scheduled enqueue per
- * interval while no ok sync exists yet.
+ * last finished sync attempt (any status) or in-memory scheduled enqueue.
  */
 export async function enqueueScheduledInspirationSyncIfDue(
   deps: EnqueueScheduledInspirationSyncDeps,
@@ -57,23 +67,15 @@ export async function enqueueScheduledInspirationSyncIfDue(
     operation: "enqueueScheduledInspirationSyncIfDue",
   });
   const now = deps.now?.() ?? new Date();
-  const intervalMs = deps.intervalHours * MS_PER_HOUR;
-  const latestOkSyncAt = await deps.store.getLatestOkSyncAt();
+  const latestFinishedAt = await deps.store.getLatestFinishedSyncAt();
+  const lastAttemptAt = laterDate(latestFinishedAt, lastScheduledEnqueueAt);
 
   if (
     !shouldEnqueueInspirationSync({
-      latestOkSyncAt,
+      lastAttemptAt,
       now,
       intervalHours: deps.intervalHours,
     })
-  ) {
-    return { enqueued: false };
-  }
-
-  if (
-    latestOkSyncAt === null &&
-    lastScheduledEnqueueAt !== null &&
-    now.getTime() - lastScheduledEnqueueAt.getTime() < intervalMs
   ) {
     return { enqueued: false };
   }
@@ -91,7 +93,7 @@ export async function enqueueScheduledInspirationSyncIfDue(
   log.info("Enqueued scheduled Inspiration sync", {
     jobId,
     intervalHours: deps.intervalHours,
-    latestOkSyncAt: latestOkSyncAt?.toISOString() ?? null,
+    lastAttemptAt: lastAttemptAt?.toISOString() ?? null,
   });
   return { enqueued: true };
 }

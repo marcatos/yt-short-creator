@@ -68,6 +68,10 @@ class MemoryInspirationStore implements InspirationStorePort {
     return this.latestSyncAt("ok", "partial");
   }
 
+  async getLatestFinishedSyncAt(): Promise<Date | null> {
+    return this.latestSyncAt("ok", "partial", "failed");
+  }
+
   private latestSyncAt(
     ...statuses: Array<"ok" | "partial" | "failed">
   ): Date | null {

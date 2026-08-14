@@ -123,6 +123,10 @@ export class DrizzleInspirationStore implements InspirationStorePort {
     return this.latestSyncAt(["ok", "partial"]);
   }
 
+  async getLatestFinishedSyncAt(): Promise<Date | null> {
+    return this.latestSyncAt(["ok", "partial", "failed"]);
+  }
+
   private async latestSyncAt(
     statuses: Array<InspirationSyncRun["status"]>,
   ): Promise<Date | null> {

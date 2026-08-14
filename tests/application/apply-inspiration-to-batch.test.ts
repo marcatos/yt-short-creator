@@ -55,6 +55,9 @@ class MemoryInspirationStore implements InspirationStorePort {
   async getLatestSuccessfulSyncAt(): Promise<Date | null> {
     return this.latestSuccessfulSyncAt ?? this.latestOkSyncAt;
   }
+  async getLatestFinishedSyncAt(): Promise<Date | null> {
+    return this.latestSuccessfulSyncAt ?? this.latestOkSyncAt;
+  }
   async replaceActiveIdeas(): Promise<void> {}
   async listActiveIdeas(): Promise<InspirationIdeaRecord[]> {
     return this.ideas.filter((idea) => idea.active);

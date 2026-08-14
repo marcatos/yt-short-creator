@@ -192,7 +192,7 @@ export const raceAnalysisSchema = z.object({
   mainStoryline: z.string().trim().min(1),
   whyWatch: z.string().trim().min(1),
   potentialHooks: z.array(z.string().trim().min(1)).max(12),
-  shortCandidates: z.array(shortSegmentAnalysisSchema).min(1).max(12),
+  shortCandidates: z.array(shortSegmentAnalysisSchema).min(1).max(24),
   narrativeIt: z.string().trim().min(1),
   audioTranscript: z.string(),
   hudTimeline: raceHudTimelineSchema.default([]),

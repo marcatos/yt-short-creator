@@ -44,6 +44,8 @@ export interface InspirationStorePort {
   getLatestOkSyncAt(): Promise<Date | null>;
   /** Latest finished sync with status `ok` or `partial` (successful snapshots). */
   getLatestSuccessfulSyncAt(): Promise<Date | null>;
+  /** Latest sync run finish time, any status (`ok` / `partial` / `failed`). */
+  getLatestFinishedSyncAt(): Promise<Date | null>;
   replaceActiveIdeas(
     syncRunId: string,
     ideas: InspirationIdeaRecord[],

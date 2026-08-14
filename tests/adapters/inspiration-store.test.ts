@@ -224,6 +224,35 @@ describe("InspirationStore", () => {
     expect(await store.getLatestSuccessfulSyncAt()).toEqual(t1);
   });
 
+  it("getLatestFinishedSyncAt includes failed follow-up runs", async () => {
+    const { db } = openTempDb();
+    const store = createRepositories(db).inspiration;
+
+    await store.saveSyncRun(
+      syncRun({
+        id: "run-ok",
+        status: "ok",
+        ideaCount: 9,
+        finishedAt: t0,
+      }),
+    );
+    await store.saveSyncRun(
+      syncRun({
+        id: "run-failed",
+        status: "failed",
+        ideaCount: 0,
+        errorMessage: "studio ui missing",
+        source: "scheduled",
+        startedAt: t1,
+        finishedAt: t1,
+      }),
+    );
+
+    expect(await store.getLatestOkSyncAt()).toEqual(t0);
+    expect(await store.getLatestSuccessfulSyncAt()).toEqual(t0);
+    expect(await store.getLatestFinishedSyncAt()).toEqual(t1);
+  });
+
   it("persists idea snapshot fields on listActiveIdeas", async () => {
     const { db } = openTempDb();
     const store = createRepositories(db).inspiration;
