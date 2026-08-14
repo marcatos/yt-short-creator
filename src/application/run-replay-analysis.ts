@@ -15,8 +15,10 @@ import {
 import {
   battleWindowsToEvents,
   boostScoreNearHudBattles,
+  boostScoreNearHudCallouts,
   collectRecurringRivals,
   detectBattleWindows,
+  detectCalloutWindows,
   formatHudTimelineForPrompt,
   inferResultsFromHud,
   resolveFocusSubject,
@@ -729,6 +731,7 @@ export function createRunReplayAnalysis(
       const focusSubject = resolveFocusSubject(hudTimeline, FOCUS_CAR_DEFAULT);
       const focusCarHint = focusSubject.hint;
       const battleWindows = detectBattleWindows(hudTimeline);
+      const calloutWindows = detectCalloutWindows(hudTimeline);
       const hudPromptBlock = formatHudTimelineForPrompt(hudTimeline);
 
       const visionMoments = await analyzeVisionChunks(
@@ -752,7 +755,7 @@ export function createRunReplayAnalysis(
           "FASE A — Race Analysis: estrai la STORIA interessante della gara, non una descrizione passiva.",
           "Stile narrativo (narrativeIt, storylines, hook/story/payoff): prima persona del pilota. Fatti concreti.",
           "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria/HUD.",
-          "I fatti HUD overlay (session strip, focus card, battle/relative, standings) sono VERIFIED quando presenti: non contraddarli.",
+          "I fatti HUD overlay (session strip, focus card, battle/relative, standings, battle-for-P callout, field ticker) sono VERIFIED quando presenti: non contraddarli.",
           "Il Focus card identifica il soggetto camera (car # / nome), anche se il branding del canale è #42.",
           "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
           "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
@@ -813,7 +816,10 @@ export function createRunReplayAnalysis(
           hudResults.startPosition,
           hudResults.finishPosition,
         );
-      const hudEvents = battleWindowsToEvents(battleWindows);
+      const hudEvents = [
+        ...battleWindowsToEvents(battleWindows),
+        ...battleWindowsToEvents(calloutWindows),
+      ];
       const hudRivals = collectRecurringRivals(
         hudTimeline,
         focusSubject.carNumber,
@@ -851,7 +857,7 @@ export function createRunReplayAnalysis(
           .slice(0, 120),
         timeline: mergeHudIntoTimeline(
           mergeTelemetryIntoTimeline(llmAnalysis.timeline, telemetryEvents),
-          battleWindows,
+          [...battleWindows, ...calloutWindows],
         ),
         audioTranscript:
           audioTranscriptText || llmAnalysis.audioTranscript || "",
@@ -917,16 +923,21 @@ export function createRunReplayAnalysis(
           endMs: number;
           segments?: ReplaySegment[];
         }) => {
-          const score = boostScoreNearHudBattles(
-            boostScoreNearTelemetry(
-              window.shortScore,
+          const score = boostScoreNearHudCallouts(
+            boostScoreNearHudBattles(
+              boostScoreNearTelemetry(
+                window.shortScore,
+                window.startMs,
+                window.endMs,
+                telemetryEvents,
+              ),
               window.startMs,
               window.endMs,
-              telemetryEvents,
+              battleWindows,
             ),
             window.startMs,
             window.endMs,
-            battleWindows,
+            calloutWindows,
           );
           const event: ReplayEvent = {
             id: deps.id.generate(),

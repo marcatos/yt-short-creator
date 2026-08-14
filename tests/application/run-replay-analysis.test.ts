@@ -378,6 +378,9 @@ describe("runReplayAnalysis", () => {
             lastLap: null,
             bestLap: null,
             gapToLeader: "+2.0s",
+            deltaBest: null,
+            fuelPct: null,
+            sectors: null,
           },
           battle: {
             rows: [
@@ -408,9 +411,12 @@ describe("runReplayAnalysis", () => {
                 carNumber: 7,
                 driverName: "Simone Marcato",
                 gapText: "+2.0s",
+                positionDelta: null,
               },
             ],
           },
+          battleCallout: null,
+          fieldTicker: null,
           confidence: "verified",
         },
         {
@@ -431,6 +437,9 @@ describe("runReplayAnalysis", () => {
             lastLap: "1:41.143",
             bestLap: null,
             gapToLeader: "+0.86s",
+            deltaBest: null,
+            fuelPct: null,
+            sectors: null,
           },
           battle: {
             rows: [
@@ -455,15 +464,35 @@ describe("runReplayAnalysis", () => {
                 carNumber: 4,
                 driverName: "Yoan",
                 gapText: "LEADER",
+                positionDelta: null,
               },
               {
                 position: 2,
                 carNumber: 7,
                 driverName: "Simone Marcato",
                 gapText: "+0.86s",
+                positionDelta: null,
               },
             ],
           },
+          battleCallout: {
+            contestedPosition: 2,
+            rows: [
+              {
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapSec: 0,
+                note: null,
+              },
+              {
+                carNumber: 5,
+                driverName: "Kike",
+                gapSec: 0.2,
+                note: null,
+              },
+            ],
+          },
+          fieldTicker: null,
           confidence: "verified",
         },
       ]),

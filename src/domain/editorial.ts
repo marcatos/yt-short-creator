@@ -136,9 +136,11 @@ export function analysisContextForEditorial(analysis: RaceAnalysis): string {
                     driverName: snap.focus.driverName,
                     position: snap.focus.position,
                     gapToLeader: snap.focus.gapToLeader,
+                    deltaBest: snap.focus.deltaBest,
                   }
                 : null,
               battle: snap.battle?.rows.slice(0, 4) ?? null,
+              battleCallout: snap.battleCallout ?? null,
               session: snap.session
                 ? {
                     lap: snap.session.lap,

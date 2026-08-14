@@ -535,6 +535,9 @@ describe("candidateContext HUD enrichment", () => {
             lastLap: "1:41.143",
             bestLap: null,
             gapToLeader: "+0.86s",
+            deltaBest: "-0.71s",
+            fuelPct: "0%",
+            sectors: null,
           },
           battle: {
             rows: [
@@ -565,9 +568,28 @@ describe("candidateContext HUD enrichment", () => {
                 carNumber: 7,
                 driverName: "Simone Marcato",
                 gapText: "+0.86s",
+                positionDelta: null,
               },
             ],
           },
+          battleCallout: {
+            contestedPosition: 2,
+            rows: [
+              {
+                carNumber: 7,
+                driverName: "Simone Marcato",
+                gapSec: 0,
+                note: null,
+              },
+              {
+                carNumber: 5,
+                driverName: "Kike",
+                gapSec: 0.06,
+                note: null,
+              },
+            ],
+          },
+          fieldTicker: null,
           confidence: "verified",
         },
       ],
@@ -578,5 +600,6 @@ describe("candidateContext HUD enrichment", () => {
     expect(ctx.raceFacts.eventsInWindow[0].kind).toBe("battle");
     expect(ctx.hudWindow.focus.carNumber).toBe(7);
     expect(ctx.hudWindow.lastFocus.gapToLeader).toBe("+0.86s");
+    expect(ctx.hudWindow.lastBattleCallout.contestedPosition).toBe(2);
   });
 });

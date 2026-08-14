@@ -2,11 +2,13 @@ import { z } from "zod";
 
 /**
  * Structured race HUD overlays burned into OBS / replay captures
- * (session strip, focus card, battle/relative, standings).
+ * (session strip, focus card, battle/relative, standings, battle callout, field ticker).
  */
 
 export const BATTLE_GAP_THRESHOLD_SEC = 1.0;
 export const HUD_BATTLE_SCORE_BOOST = 0.08;
+/** Extra boost when the explicit "Battle for Px" callout is near a Short window. */
+export const HUD_CALLOUT_SCORE_BOOST = 0.12;
 
 export type SessionStripState = {
   sessionType: string | null;
@@ -17,6 +19,12 @@ export type SessionStripState = {
   flag: string | null;
 };
 
+export type FocusSectorTimes = {
+  s1: string | null;
+  s2: string | null;
+  s3: string | null;
+};
+
 export type FocusCardState = {
   carNumber: number | null;
   driverName: string | null;
@@ -25,6 +33,11 @@ export type FocusCardState = {
   lastLap: string | null;
   bestLap: string | null;
   gapToLeader: string | null;
+  /** Delta to personal best (e.g. "-0.71s" / "+0.23s") as shown on FOCUS. */
+  deltaBest: string | null;
+  /** Fuel percent text or null when blank/unreadable. */
+  fuelPct: string | null;
+  sectors: FocusSectorTimes | null;
 };
 
 export type BattleRelativeRole = "ahead" | "focus" | "behind";
@@ -45,10 +58,37 @@ export type StandingsRow = {
   carNumber: number | null;
   driverName: string | null;
   gapText: string | null;
+  /** Positions gained (+) / lost (-) from standings arrows; null if absent. */
+  positionDelta: number | null;
 };
 
 export type StandingsState = {
   rows: StandingsRow[];
+};
+
+export type BattleCalloutRow = {
+  carNumber: number | null;
+  driverName: string | null;
+  gapSec: number | null;
+  /** Extra label on the callout (e.g. "SIDE"). */
+  note: string | null;
+};
+
+export type BattleCalloutState = {
+  /** Contested place, e.g. 2 for "Battle for P2". */
+  contestedPosition: number | null;
+  rows: BattleCalloutRow[];
+};
+
+export type FieldTickerRow = {
+  position: number | null;
+  carNumber: number | null;
+  driverName: string | null;
+  gapText: string | null;
+};
+
+export type FieldTickerState = {
+  rows: FieldTickerRow[];
 };
 
 export type RaceHudSnapshot = {
@@ -57,6 +97,8 @@ export type RaceHudSnapshot = {
   focus: FocusCardState | null;
   battle: BattleRelativeState | null;
   standings: StandingsState | null;
+  battleCallout: BattleCalloutState | null;
+  fieldTicker: FieldTickerState | null;
   confidence: "verified" | "inferred" | "unknown";
 };
 
@@ -95,6 +137,12 @@ export const sessionStripStateSchema = z.object({
   flag: nullableString,
 });
 
+export const focusSectorTimesSchema = z.object({
+  s1: nullableString,
+  s2: nullableString,
+  s3: nullableString,
+});
+
 export const focusCardStateSchema = z.object({
   carNumber: nullablePositiveInt,
   driverName: nullableString,
@@ -103,6 +151,9 @@ export const focusCardStateSchema = z.object({
   lastLap: nullableString,
   bestLap: nullableString,
   gapToLeader: nullableString,
+  deltaBest: nullableString.default(null),
+  fuelPct: nullableString.default(null),
+  sectors: focusSectorTimesSchema.nullable().default(null),
 });
 
 export const battleRelativeRowSchema = z.object({
@@ -121,10 +172,37 @@ export const standingsRowSchema = z.object({
   carNumber: nullablePositiveInt,
   driverName: nullableString,
   gapText: nullableString,
+  positionDelta: nullableNumber.default(null),
 });
 
 export const standingsStateSchema = z.object({
   rows: z.array(standingsRowSchema).max(40),
+});
+
+export const battleCalloutRowSchema = z.object({
+  carNumber: nullablePositiveInt,
+  driverName: nullableString,
+  gapSec: nullableNumber,
+  note: nullableString,
+});
+
+export const battleCalloutStateSchema = z.object({
+  contestedPosition: nullablePositiveInt,
+  rows: z.array(battleCalloutRowSchema).max(6),
+});
+
+export const fieldTickerRowSchema = z.object({
+  position: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.number().int().positive().nullable(),
+  ),
+  carNumber: nullablePositiveInt,
+  driverName: nullableString,
+  gapText: nullableString,
+});
+
+export const fieldTickerStateSchema = z.object({
+  rows: z.array(fieldTickerRowSchema).max(15),
 });
 
 export const raceHudSnapshotSchema = z.object({
@@ -133,6 +211,8 @@ export const raceHudSnapshotSchema = z.object({
   focus: focusCardStateSchema.nullable(),
   battle: battleRelativeStateSchema.nullable(),
   standings: standingsStateSchema.nullable(),
+  battleCallout: battleCalloutStateSchema.nullable().default(null),
+  fieldTicker: fieldTickerStateSchema.nullable().default(null),
   confidence: z.enum(["verified", "inferred", "unknown"]),
 });
 
@@ -158,6 +238,9 @@ function emptyFocus(): FocusCardState {
     lastLap: null,
     bestLap: null,
     gapToLeader: null,
+    deltaBest: null,
+    fuelPct: null,
+    sectors: null,
   };
 }
 
@@ -399,6 +482,147 @@ export function battleWindowsToEvents(windows: HudBattleWindow[]): Array<{
   }));
 }
 
+function formatCalloutSummary(callout: BattleCalloutState): string {
+  const pos =
+    callout.contestedPosition != null
+      ? `P${callout.contestedPosition}`
+      : "position";
+  const cars = callout.rows
+    .map((row) => {
+      const id =
+        row.carNumber != null
+          ? `#${row.carNumber}`
+          : row.driverName
+            ? row.driverName
+            : null;
+      if (!id) return null;
+      const gap =
+        row.gapSec != null && Number.isFinite(row.gapSec)
+          ? ` ${row.gapSec.toFixed(2)}s`
+          : "";
+      const note = row.note ? ` (${row.note})` : "";
+      return `${id}${gap}${note}`;
+    })
+    .filter(Boolean);
+  if (!cars.length) return `Battle for ${pos}`;
+  return `Battle for ${pos}: ${cars.join(" vs ")}`;
+}
+
+/**
+ * Contiguous snapshots where the bottom-center "Battle for Px" callout is visible.
+ */
+export function detectCalloutWindows(
+  timeline: RaceHudTimeline,
+): HudBattleWindow[] {
+  const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
+  const windows: HudBattleWindow[] = [];
+  let open: HudBattleWindow | null = null;
+
+  for (const snap of ordered) {
+    const callout = snap.battleCallout;
+    const active =
+      callout != null &&
+      (callout.contestedPosition != null || callout.rows.length > 0);
+    if (active && callout) {
+      const summary = formatCalloutSummary(callout);
+      const gaps = callout.rows
+        .map((row) => row.gapSec)
+        .filter((gap): gap is number => gap != null && Number.isFinite(gap))
+        .map((gap) => Math.abs(gap));
+      const minGap = gaps.length ? Math.min(...gaps) : 0;
+      if (!open) {
+        open = {
+          startMs: snap.timeMs,
+          endMs: snap.timeMs,
+          summary,
+          minGapSec: minGap,
+        };
+      } else {
+        open.endMs = snap.timeMs;
+        open.minGapSec = Math.min(open.minGapSec, minGap);
+        open.summary = summary;
+      }
+    } else if (open) {
+      windows.push(open);
+      open = null;
+    }
+  }
+  if (open) windows.push(open);
+
+  return windows.map((window) => ({
+    ...window,
+    endMs: Math.max(window.endMs, window.startMs + 1_000),
+  }));
+}
+
+function parseGapSeconds(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed || /^leader$/i.test(trimmed)) return 0;
+  const match = trimmed.match(/([+-]?\d+(?:\.\d+)?)\s*s?/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Cross-check FOCUS vs STANDINGS; downgrade confidence when panels disagree.
+ * Prefers standings row for the focus car number when positions conflict.
+ */
+export function reconcileHudSnapshot(snap: RaceHudSnapshot): RaceHudSnapshot {
+  const focus = snap.focus;
+  const standings = snap.standings;
+  if (!focus || focus.carNumber == null || !standings?.rows.length) {
+    return snap;
+  }
+
+  const standingRow = standings.rows.find(
+    (row) => row.carNumber === focus.carNumber,
+  );
+  if (!standingRow) return snap;
+
+  let conflict = false;
+  let nextFocus = focus;
+
+  if (
+    focus.position != null &&
+    standingRow.position !== focus.position
+  ) {
+    conflict = true;
+    nextFocus = { ...nextFocus, position: standingRow.position };
+  }
+
+  const focusGap = parseGapSeconds(focus.gapToLeader);
+  const standingsGap = parseGapSeconds(standingRow.gapText);
+  if (
+    focusGap != null &&
+    standingsGap != null &&
+    Math.abs(focusGap - standingsGap) > 0.35
+  ) {
+    conflict = true;
+    nextFocus = {
+      ...nextFocus,
+      gapToLeader: standingRow.gapText ?? nextFocus.gapToLeader,
+    };
+  }
+
+  if (!conflict) return snap;
+
+  const confidence =
+    snap.confidence === "unknown" ? "unknown" : "inferred";
+  return {
+    ...snap,
+    focus: nextFocus,
+    confidence,
+  };
+}
+
+export function reconcileHudTimeline(
+  timeline: RaceHudTimeline,
+): RaceHudTimeline {
+  return timeline.map(reconcileHudSnapshot);
+}
+
 export function collectRecurringRivals(
   timeline: RaceHudTimeline,
   focusCarNumber: number | null,
@@ -428,6 +652,12 @@ export function collectRecurringRivals(
     for (const row of snap.standings?.rows ?? []) {
       consider(row.carNumber, row.driverName);
     }
+    for (const row of snap.battleCallout?.rows ?? []) {
+      consider(row.carNumber, row.driverName);
+    }
+    for (const row of snap.fieldTicker?.rows ?? []) {
+      consider(row.carNumber, row.driverName);
+    }
   }
 
   return [...counts.entries()]
@@ -438,7 +668,7 @@ export function collectRecurringRivals(
 
 /**
  * Downsample for FASE A prompts: keep first, last, and changes in focus
- * position / closest battle gap / session lap.
+ * position / closest battle gap / session lap / battle callout presence.
  */
 export function downsampleHudTimeline(
   timeline: RaceHudTimeline,
@@ -453,6 +683,7 @@ export function downsampleHudTimeline(
   let lastFocusPos: number | null = null;
   let lastLap: number | null = null;
   let lastGapBucket: number | null = null;
+  let lastCalloutKey: string | null = null;
 
   for (let i = 0; i < ordered.length; i++) {
     const snap = ordered[i]!;
@@ -461,17 +692,25 @@ export function downsampleHudTimeline(
     const gap = minAbsBattleGap(snap.battle);
     const gapBucket =
       gap == null ? null : Math.floor(gap / 0.25); /* 0.25s buckets */
+    const calloutKey =
+      snap.battleCallout &&
+      (snap.battleCallout.contestedPosition != null ||
+        snap.battleCallout.rows.length > 0)
+        ? `P${snap.battleCallout.contestedPosition ?? "?"}`
+        : null;
     const isEdge = i === 0 || i === ordered.length - 1;
     const changed =
       focusPos !== lastFocusPos ||
       lap !== lastLap ||
-      gapBucket !== lastGapBucket;
+      gapBucket !== lastGapBucket ||
+      calloutKey !== lastCalloutKey;
 
     if (isEdge || changed) {
       kept.push(snap);
       lastFocusPos = focusPos;
       lastLap = lap;
       lastGapBucket = gapBucket;
+      lastCalloutKey = calloutKey;
     }
   }
 
@@ -501,7 +740,7 @@ export function formatHudTimelineForPrompt(timeline: RaceHudTimeline): string {
       if (snap.focus) {
         const f = snap.focus;
         parts.push(
-          `focus=#${f.carNumber ?? "?"} ${f.driverName ?? "?"} P${f.position ?? "?"}/${f.fieldSize ?? "?"} gap=${f.gapToLeader ?? "—"} last=${f.lastLap ?? "—"}`,
+          `focus=#${f.carNumber ?? "?"} ${f.driverName ?? "?"} P${f.position ?? "?"}/${f.fieldSize ?? "?"} gap=${f.gapToLeader ?? "—"} last=${f.lastLap ?? "—"} best=${f.bestLap ?? "—"} Δbest=${f.deltaBest ?? "—"} fuel=${f.fuelPct ?? "—"}`,
         );
       }
       if (snap.battle?.rows.length) {
@@ -516,12 +755,35 @@ export function formatHudTimelineForPrompt(timeline: RaceHudTimeline): string {
       if (snap.standings?.rows.length) {
         const top = snap.standings.rows
           .slice(0, 10)
-          .map(
-            (row) =>
-              `P${row.position}:#${row.carNumber ?? "?"} ${row.driverName ?? "?"} ${row.gapText ?? ""}`,
-          )
+          .map((row) => {
+            const delta =
+              row.positionDelta != null
+                ? ` Δ${row.positionDelta > 0 ? "+" : ""}${row.positionDelta}`
+                : "";
+            return `P${row.position}:#${row.carNumber ?? "?"} ${row.driverName ?? "?"} ${row.gapText ?? ""}${delta}`;
+          })
           .join("; ");
         parts.push(`standings=[${top}]`);
+      }
+      if (
+        snap.battleCallout &&
+        (snap.battleCallout.contestedPosition != null ||
+          snap.battleCallout.rows.length > 0)
+      ) {
+        parts.push(`callout=${formatCalloutSummary(snap.battleCallout)}`);
+      }
+      if (snap.fieldTicker?.rows.length) {
+        const ticker = snap.fieldTicker.rows
+          .slice(0, 10)
+          .map(
+            (row) =>
+              `P${row.position ?? "?"}:#${row.carNumber ?? "?"} ${row.driverName ?? "?"} ${row.gapText ?? ""}`,
+          )
+          .join("; ");
+        parts.push(`fieldTicker=[${ticker}]`);
+      }
+      if (snap.confidence !== "verified") {
+        parts.push(`confidence=${snap.confidence}`);
       }
       return parts.join(" ");
     })
@@ -542,6 +804,20 @@ export function boostScoreNearHudBattles(
   return near ? Math.min(1, score + HUD_BATTLE_SCORE_BOOST) : score;
 }
 
+export function boostScoreNearHudCallouts(
+  score: number,
+  startMs: number,
+  endMs: number,
+  windows: HudBattleWindow[],
+): number {
+  const mid = (startMs + endMs) / 2;
+  const near = windows.some((window) => {
+    const windowMid = (window.startMs + window.endMs) / 2;
+    return Math.abs(windowMid - mid) <= 8_000;
+  });
+  return near ? Math.min(1, score + HUD_CALLOUT_SCORE_BOOST) : score;
+}
+
 export function summarizeHudForNarration(
   timeline: RaceHudTimeline,
   focusCarNumber: number | null,
@@ -551,7 +827,17 @@ export function summarizeHudForNarration(
   }
   const subject = resolveFocusSubject(timeline, "");
   const results = inferResultsFromHud(timeline, focusCarNumber ?? subject.carNumber);
-  const last = [...timeline].sort((a, b) => a.timeMs - b.timeMs).at(-1);
+  const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
+  const last = ordered.at(-1);
+  const callouts = detectCalloutWindows(timeline);
+  const lastCallout = [...ordered]
+    .reverse()
+    .find(
+      (snap) =>
+        snap.battleCallout &&
+        (snap.battleCallout.contestedPosition != null ||
+          snap.battleCallout.rows.length > 0),
+    )?.battleCallout;
   return {
     snapshots: timeline.length,
     focus: {
@@ -562,6 +848,14 @@ export function summarizeHudForNarration(
     lastFocus: last?.focus ?? null,
     lastBattle: last?.battle ?? null,
     lastSession: last?.session ?? null,
+    lastBattleCallout: lastCallout ?? null,
+    lastFieldTicker: last?.fieldTicker ?? null,
+    calloutWindows: callouts.map((window) => ({
+      startMs: window.startMs,
+      endMs: window.endMs,
+      summary: window.summary,
+      minGapSec: window.minGapSec,
+    })),
     rivals: collectRecurringRivals(
       timeline,
       focusCarNumber ?? subject.carNumber,
@@ -577,6 +871,8 @@ export function emptyHudSnapshot(timeMs: number): RaceHudSnapshot {
     focus: emptyFocus(),
     battle: { rows: [] },
     standings: { rows: [] },
+    battleCallout: null,
+    fieldTicker: null,
     confidence: "unknown",
   };
 }

@@ -3,14 +3,45 @@ import { describe, expect, it } from "vitest";
 import {
   battleWindowsToEvents,
   boostScoreNearHudBattles,
+  boostScoreNearHudCallouts,
   collectRecurringRivals,
   detectBattleWindows,
+  detectCalloutWindows,
+  formatHudTimelineForPrompt,
+  HUD_CALLOUT_SCORE_BOOST,
   inferResultsFromHud,
+  reconcileHudSnapshot,
   resolveFocusSubject,
   sliceHudWindow,
+  type FocusCardState,
   type RaceHudSnapshot,
   type RaceHudTimeline,
+  type StandingsRow,
 } from "@/src/domain/race-hud";
+
+function focus(
+  partial: Partial<FocusCardState> &
+    Pick<FocusCardState, "carNumber" | "driverName" | "position" | "fieldSize">,
+): FocusCardState {
+  return {
+    lastLap: null,
+    bestLap: null,
+    gapToLeader: null,
+    deltaBest: null,
+    fuelPct: null,
+    sectors: null,
+    ...partial,
+  };
+}
+
+function standing(
+  partial: Omit<StandingsRow, "positionDelta"> & { positionDelta?: number | null },
+): StandingsRow {
+  return {
+    positionDelta: partial.positionDelta ?? null,
+    ...partial,
+  };
+}
 
 function snap(partial: Partial<RaceHudSnapshot> & { timeMs: number }): RaceHudSnapshot {
   return {
@@ -19,6 +50,8 @@ function snap(partial: Partial<RaceHudSnapshot> & { timeMs: number }): RaceHudSn
     focus: partial.focus ?? null,
     battle: partial.battle ?? null,
     standings: partial.standings ?? null,
+    battleCallout: partial.battleCallout ?? null,
+    fieldTicker: partial.fieldTicker ?? null,
     confidence: partial.confidence ?? "verified",
   };
 }
@@ -27,19 +60,22 @@ function sampleTimeline(): RaceHudTimeline {
   return [
     snap({
       timeMs: 0,
-      focus: {
+      focus: focus({
         carNumber: 7,
         driverName: "Simone Marcato",
         position: 5,
         fieldSize: 19,
-        lastLap: null,
-        bestLap: null,
         gapToLeader: "+2.10s",
-      },
+      }),
       standings: {
         rows: [
-          { position: 1, carNumber: 4, driverName: "Yoan", gapText: "LEADER" },
-          { position: 5, carNumber: 7, driverName: "Simone Marcato", gapText: "+2.10s" },
+          standing({ position: 1, carNumber: 4, driverName: "Yoan", gapText: "LEADER" }),
+          standing({
+            position: 5,
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapText: "+2.10s",
+          }),
         ],
       },
       battle: {
@@ -52,15 +88,14 @@ function sampleTimeline(): RaceHudTimeline {
     }),
     snap({
       timeMs: 4_000,
-      focus: {
+      focus: focus({
         carNumber: 7,
         driverName: "Simone Marcato",
         position: 2,
         fieldSize: 19,
         lastLap: "1:41.143",
-        bestLap: null,
         gapToLeader: "+0.86s",
-      },
+      }),
       battle: {
         rows: [
           { role: "ahead", carNumber: 4, driverName: "Yoan", gapSec: -0.86 },
@@ -70,23 +105,36 @@ function sampleTimeline(): RaceHudTimeline {
       },
       standings: {
         rows: [
-          { position: 1, carNumber: 4, driverName: "Yoan", gapText: "LEADER" },
-          { position: 2, carNumber: 7, driverName: "Simone Marcato", gapText: "+0.86s" },
-          { position: 3, carNumber: 5, driverName: "Kike", gapText: "+0.92s" },
+          standing({ position: 1, carNumber: 4, driverName: "Yoan", gapText: "LEADER" }),
+          standing({
+            position: 2,
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapText: "+0.86s",
+            positionDelta: 3,
+          }),
+          standing({ position: 3, carNumber: 5, driverName: "Kike", gapText: "+0.92s" }),
+        ],
+      },
+      battleCallout: {
+        contestedPosition: 2,
+        rows: [
+          { carNumber: 7, driverName: "S. Marcato", gapSec: 0, note: null },
+          { carNumber: 2, driverName: "M. Gorissen", gapSec: 0.2, note: "SIDE" },
+          { carNumber: 5, driverName: "K. Martin2", gapSec: 0.25, note: null },
         ],
       },
     }),
     snap({
       timeMs: 8_000,
-      focus: {
+      focus: focus({
         carNumber: 7,
         driverName: "Simone Marcato",
         position: 2,
         fieldSize: 19,
         lastLap: "1:41.143",
-        bestLap: null,
         gapToLeader: "+0.80s",
-      },
+      }),
       battle: {
         rows: [
           { role: "ahead", carNumber: 4, driverName: "Yoan", gapSec: -0.8 },
@@ -94,18 +142,33 @@ function sampleTimeline(): RaceHudTimeline {
           { role: "behind", carNumber: 5, driverName: "Kike", gapSec: 0.1 },
         ],
       },
+      battleCallout: {
+        contestedPosition: 2,
+        rows: [
+          { carNumber: 7, driverName: "S. Marcato", gapSec: 0, note: null },
+          { carNumber: 2, driverName: "M. Gorissen", gapSec: 0.1, note: null },
+        ],
+      },
+      fieldTicker: {
+        rows: [
+          {
+            position: 12,
+            carNumber: 12,
+            driverName: "Marino Separovic",
+            gapText: "+11.14s",
+          },
+        ],
+      },
     }),
     snap({
       timeMs: 20_000,
-      focus: {
+      focus: focus({
         carNumber: 7,
         driverName: "Simone Marcato",
         position: 2,
         fieldSize: 19,
-        lastLap: null,
-        bestLap: null,
         gapToLeader: "+1.50s",
-      },
+      }),
       battle: {
         rows: [
           { role: "ahead", carNumber: 4, driverName: "Yoan", gapSec: -1.5 },
@@ -158,6 +221,16 @@ describe("race-hud", () => {
     expect(events[0]!.confidence).toBe("verified");
   });
 
+  it("detects battle callout windows with contested position summary", () => {
+    const windows = detectCalloutWindows(sampleTimeline());
+    expect(windows.length).toBe(1);
+    expect(windows[0]!.startMs).toBe(4_000);
+    expect(windows[0]!.endMs).toBeGreaterThanOrEqual(8_000);
+    expect(windows[0]!.summary).toContain("Battle for P2");
+    expect(windows[0]!.summary).toContain("#7");
+    expect(windows[0]!.minGapSec).toBeLessThanOrEqual(0.2);
+  });
+
   it("slices HUD window by time range", () => {
     const sliced = sliceHudWindow(sampleTimeline(), 3_000, 9_000);
     expect(sliced.map((s) => s.timeMs)).toEqual([4_000, 8_000]);
@@ -175,5 +248,46 @@ describe("race-hud", () => {
     expect(boosted).toBeGreaterThan(0.8);
     const far = boostScoreNearHudBattles(0.8, 100_000, 115_000, windows);
     expect(far).toBe(0.8);
+  });
+
+  it("boosts short score near HUD callout windows more than battles", () => {
+    const callouts = detectCalloutWindows(sampleTimeline());
+    const boosted = boostScoreNearHudCallouts(0.8, 3_000, 12_000, callouts);
+    expect(boosted).toBeCloseTo(0.8 + HUD_CALLOUT_SCORE_BOOST, 5);
+  });
+
+  it("reconciles focus position against standings and downgrades confidence", () => {
+    const conflicted = snap({
+      timeMs: 1_000,
+      confidence: "verified",
+      focus: focus({
+        carNumber: 7,
+        driverName: "Simone Marcato",
+        position: 4,
+        fieldSize: 18,
+        gapToLeader: "+6.99s",
+      }),
+      standings: {
+        rows: [
+          standing({
+            position: 2,
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapText: "+6.14s",
+          }),
+        ],
+      },
+    });
+    const reconciled = reconcileHudSnapshot(conflicted);
+    expect(reconciled.focus?.position).toBe(2);
+    expect(reconciled.focus?.gapToLeader).toBe("+6.14s");
+    expect(reconciled.confidence).toBe("inferred");
+  });
+
+  it("formats callout and ticker into FASE A prompt block", () => {
+    const block = formatHudTimelineForPrompt(sampleTimeline());
+    expect(block).toContain("callout=Battle for P2");
+    expect(block).toContain("fieldTicker=");
+    expect(block).toContain("Δbest=");
   });
 });

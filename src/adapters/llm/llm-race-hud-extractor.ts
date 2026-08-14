@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 
 import {
   raceHudSnapshotSchema,
+  reconcileHudTimeline,
   type RaceHudSnapshot,
   type RaceHudTimeline,
 } from "@/src/domain/race-hud";
@@ -19,12 +20,16 @@ import { z } from "zod";
 /**
  * Normalized ROI for fixed burned-in overlay layout (16:9 OBS capture).
  * Values are fractions of frame width/height: { x, y, w, h }.
+ * Calibrated against 2560×1440 broadcast overlays (session/focus/battle/standings
+ * + bottom battle callout + field ticker).
  */
 export const HUD_ROI = {
-  session: { x: 0.22, y: 0.02, w: 0.56, h: 0.08 },
-  focus: { x: 0.01, y: 0.06, w: 0.28, h: 0.18 },
-  battle: { x: 0.01, y: 0.26, w: 0.28, h: 0.28 },
-  standings: { x: 0.72, y: 0.05, w: 0.27, h: 0.42 },
+  session: { x: 0.2, y: 0.015, w: 0.6, h: 0.07 },
+  focus: { x: 0.005, y: 0.04, w: 0.3, h: 0.22 },
+  battle: { x: 0.005, y: 0.28, w: 0.3, h: 0.3 },
+  standings: { x: 0.7, y: 0.04, w: 0.295, h: 0.45 },
+  battleCallout: { x: 0.22, y: 0.78, w: 0.56, h: 0.14 },
+  fieldTicker: { x: 0.05, y: 0.93, w: 0.9, h: 0.06 },
 } as const;
 
 const HUD_CHUNK_SIZE = 8;
@@ -50,6 +55,9 @@ const focusSchema = {
     "lastLap",
     "bestLap",
     "gapToLeader",
+    "deltaBest",
+    "fuelPct",
+    "sectors",
   ],
   properties: {
     carNumber: nullableIntSchema,
@@ -59,6 +67,18 @@ const focusSchema = {
     lastLap: nullableStringSchema,
     bestLap: nullableStringSchema,
     gapToLeader: nullableStringSchema,
+    deltaBest: nullableStringSchema,
+    fuelPct: nullableStringSchema,
+    sectors: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["s1", "s2", "s3"],
+      properties: {
+        s1: nullableStringSchema,
+        s2: nullableStringSchema,
+        s3: nullableStringSchema,
+      },
+    },
   },
 } as const;
 
@@ -83,6 +103,53 @@ const sessionSchema = {
   },
 } as const;
 
+const battleCalloutSchema = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  required: ["contestedPosition", "rows"],
+  properties: {
+    contestedPosition: nullableIntSchema,
+    rows: {
+      type: "array",
+      maxItems: 6,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["carNumber", "driverName", "gapSec", "note"],
+        properties: {
+          carNumber: nullableIntSchema,
+          driverName: nullableStringSchema,
+          gapSec: nullableNumberSchema,
+          note: nullableStringSchema,
+        },
+      },
+    },
+  },
+} as const;
+
+const fieldTickerSchema = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  required: ["rows"],
+  properties: {
+    rows: {
+      type: "array",
+      maxItems: 15,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["position", "carNumber", "driverName", "gapText"],
+        properties: {
+          position: nullableIntSchema,
+          carNumber: nullableIntSchema,
+          driverName: nullableStringSchema,
+          gapText: nullableStringSchema,
+        },
+      },
+    },
+  },
+} as const;
+
 const hudChunkJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -99,6 +166,8 @@ const hudChunkJsonSchema = {
           "focus",
           "battle",
           "standings",
+          "battleCallout",
+          "fieldTicker",
           "confidence",
         ],
         properties: {
@@ -138,17 +207,26 @@ const hudChunkJsonSchema = {
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["position", "carNumber", "driverName", "gapText"],
+                  required: [
+                    "position",
+                    "carNumber",
+                    "driverName",
+                    "gapText",
+                    "positionDelta",
+                  ],
                   properties: {
                     position: { type: "integer", minimum: 1 },
                     carNumber: nullableIntSchema,
                     driverName: nullableStringSchema,
                     gapText: nullableStringSchema,
+                    positionDelta: nullableNumberSchema,
                   },
                 },
               },
             },
           },
+          battleCallout: battleCalloutSchema,
+          fieldTicker: fieldTickerSchema,
           confidence: {
             type: "string",
             enum: ["verified", "inferred", "unknown"],
@@ -222,7 +300,10 @@ function cropFilter(roi: HudRoi, label: string): string {
 }
 
 /**
- * Build a 2x2 collage of the four HUD panels for denser OCR-style reading.
+ * Build a 2x3 collage of the six HUD panels for denser OCR-style reading.
+ * Layout: session | focus
+ *          battle | standings
+ *          callout | ticker
  */
 async function cropHudCollage(
   ffmpegPath: string,
@@ -235,7 +316,9 @@ async function cropHudCollage(
     cropFilter(HUD_ROI.focus, "focus"),
     cropFilter(HUD_ROI.battle, "battle"),
     cropFilter(HUD_ROI.standings, "standings"),
-    "[session][focus][battle][standings]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0",
+    cropFilter(HUD_ROI.battleCallout, "callout"),
+    cropFilter(HUD_ROI.fieldTicker, "ticker"),
+    "[session][focus][battle][standings][callout][ticker]xstack=inputs=6:layout=0_0|w0_0|0_h0|w0_h0|0_h0+h2|w0_h0+h2",
   ].join(";");
 
   try {
@@ -307,13 +390,16 @@ export function createLlmRaceHudExtractor(
               "Extract ONLY the burned-in race HUD overlays from each image.",
               "Panels (fixed layout):",
               "1) SESSION STRIP — top center: status (REPLAY/RACE), track, lap, session time, flag (GREEN/…).",
-              "2) FOCUS CARD — top left: camera focus driver (#, name, P/field, last/best lap, gap).",
+              "2) FOCUS CARD — top left: camera focus driver (#, name, P/field, last/best lap, gap, ΔBEST, FUEL, S1/S2/S3).",
               "3) BATTLE / RELATIVE — middle left: ahead / focus / behind with gap seconds.",
-              "4) STANDINGS — top right: position list with gaps (LEADER or +Xs).",
-              "Images may be a 2x2 collage of those panels (session, focus, battle, standings) or a full frame.",
-              "Return one snapshot per frame timestamp. Use null for unreadable fields. NEVER invent numbers or names.",
+              "4) STANDINGS — top right: position list with gaps (LEADER or +Xs) and green/red position-change arrows → positionDelta (+gained / −lost / null).",
+              "5) BATTLE CALLOUT — bottom center graphic like \"Battle for P2\" with 2–3 cars and interval gaps; null when absent.",
+              "6) FIELD TICKER — bottom edge scrolling list of mid/back-field cars; only include rows clearly readable in this frame; null when absent.",
+              "Images may be a 2x3 collage of those panels or a full frame.",
+              "Ignore watermarks (e.g. SM), iRacing logos, and track-map dots — they are not HUD text panels.",
+              "Return one snapshot per frame timestamp. Use null for unreadable fields or missing panels. NEVER invent numbers or names.",
               "gapSec: negative or positive seconds as shown (ahead usually negative).",
-              "confidence=verified when text is clearly readable; unknown if panels missing.",
+              "confidence=verified when text is clearly readable; unknown if panels missing; inferred only if partially readable.",
               `Frame timestamps in order: ${stampList}`,
             ].join("\n"),
           },
@@ -372,7 +458,7 @@ export function createLlmRaceHudExtractor(
         }
       }
 
-      const timeline = dedupeSnapshots(snapshots);
+      const timeline = reconcileHudTimeline(dedupeSnapshots(snapshots));
       log.info("HUD extract completed", {
         frameCount: frames.length,
         snapshotCount: timeline.length,
