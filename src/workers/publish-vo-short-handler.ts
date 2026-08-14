@@ -230,6 +230,11 @@ export function createPublishVoiceOverShortHandler(
         if (candidate.status === "ready") {
           candidate = applyCandidateEvent(candidate, { type: "mark_publishing" });
           await deps.candidates.save(candidate);
+        } else if (candidate.status === "failed") {
+          // Replacement jobs start with a fresh checkpoint while the candidate
+          // was marked failed after the prior attempt — re-enter publishing.
+          candidate = applyCandidateEvent(candidate, { type: "retry_upload" });
+          await deps.candidates.save(candidate);
         } else if (
           candidate.status !== "publishing" &&
           candidate.status !== "published"

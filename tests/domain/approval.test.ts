@@ -52,10 +52,37 @@ describe("assertCanPublish", () => {
   it("blocks retry_upload without render artifact", () => {
     expect(() =>
       applyCandidateEvent(
-        { ...base(), status: "failed", renderOutputPath: null },
+        { ...base(), status: "failed", renderOutputPath: null, voiceOvers: null },
         { type: "retry_upload" },
       ),
     ).toThrow();
+  });
+
+  it("allows retry_upload when failed with a voice-over render artifact", () => {
+    const next = applyCandidateEvent(
+      {
+        ...base(),
+        status: "failed",
+        renderOutputPath: null,
+        voiceOvers: [
+          {
+            language: "it",
+            script: "s",
+            title: "t",
+            description: "d",
+            voiceProfile: "coral",
+            audioPath: "a.mp3",
+            words: [],
+            srtPath: "a.srt",
+            assPath: "a.ass",
+            scriptHash: "h",
+            renderOutputPath: "media/renders/vo-it.mp4",
+          },
+        ],
+      },
+      { type: "retry_upload" },
+    );
+    expect(next.status).toBe("publishing");
   });
 
   it("allows retry_upload when failed with render artifact", () => {

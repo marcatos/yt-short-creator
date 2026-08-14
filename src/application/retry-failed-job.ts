@@ -22,7 +22,11 @@ export function createRetryFailedJob(deps: Dependencies): RetryFailedJob {
     try {
       const candidate = await deps.candidates.getById(candidateId);
       if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
-      const retryUpload = candidate.renderOutputPath !== null;
+      const retryUpload =
+        candidate.renderOutputPath !== null ||
+        (candidate.voiceOvers ?? []).some((voiceOver) =>
+          Boolean(voiceOver.renderOutputPath),
+        );
       const retried = applyCandidateEvent(candidate, {
         type: retryUpload ? "retry_upload" : "retry_render",
       });

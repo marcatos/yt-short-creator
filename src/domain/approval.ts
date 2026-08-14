@@ -21,8 +21,15 @@ export function assertCanPublish(candidate: ShortCandidate): void {
   }
 }
 
+function hasPublishableRender(candidate: ShortCandidate): boolean {
+  if (candidate.renderOutputPath) return true;
+  return (candidate.voiceOvers ?? []).some((voiceOver) =>
+    Boolean(voiceOver.renderOutputPath),
+  );
+}
+
 function assertCanRetryUpload(candidate: ShortCandidate): void {
-  if (candidate.status !== "failed" || !candidate.renderOutputPath) {
+  if (candidate.status !== "failed" || !hasPublishableRender(candidate)) {
     throw new NotPublishableError(candidate.status);
   }
 }
