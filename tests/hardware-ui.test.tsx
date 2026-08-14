@@ -15,6 +15,8 @@ describe("hardware setup UI", () => {
     expect(markup).toContain("AMD Ryzen 7 9800X3D");
     expect(markup).toContain("TREQ One");
     expect(markup).toContain("VRS DirectForce Pro 20Nm");
+    expect(markup).toContain("Formula VRS DirectForce Pro");
+    expect(markup).toContain("Sector 17 LED iFlag");
     expect(markup).toContain("Triple Samsung Odyssey G5 32");
     expect(markup).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(markup).toContain("MY SIM RACING SETUP");

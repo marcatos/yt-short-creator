@@ -9,9 +9,11 @@ const hardwareSchema = z.object({
   ram: z.string(),
   rig: z.string(),
   wheelbase: z.string(),
+  wheel: z.string(),
   pedals: z.string(),
   seat: z.string(),
   buttonBox: z.string(),
+  flagIndicator: z.string(),
   monitors: z.string(),
   resolution: z.string(),
 });

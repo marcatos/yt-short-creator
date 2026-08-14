@@ -12,7 +12,11 @@ describe("hardware block", () => {
     const block = renderHardwareBlock(DEFAULT_HARDWARE, "it");
     expect(block).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(block).toContain("Base volante:");
+    expect(block).toContain("Volante:");
+    expect(block).toContain("Indicatore bandiere:");
     expect(block).toContain(DEFAULT_HARDWARE.wheelbase);
+    expect(block).toContain(DEFAULT_HARDWARE.wheel);
+    expect(block).toContain(DEFAULT_HARDWARE.flagIndicator);
   });
 
   it("renders English labels", () => {
@@ -22,6 +26,8 @@ describe("hardware block", () => {
     );
     expect(block).toContain("MY SIM RACING SETUP");
     expect(block).toContain("Wheelbase:");
+    expect(block).toContain("Wheel:");
+    expect(block).toContain("Flag indicator:");
     expect(block).toContain("GPU: RTX 4080");
   });
 
@@ -51,9 +57,11 @@ describe("hardware block", () => {
       ram: "",
       rig: "",
       wheelbase: "",
+      wheel: "",
       pedals: "",
       seat: "",
       buttonBox: "",
+      flagIndicator: "",
       monitors: "",
       resolution: "",
     }, {
@@ -62,9 +70,11 @@ describe("hardware block", () => {
       ram: "",
       rig: "",
       wheelbase: "",
+      wheel: "",
       pedals: "",
       seat: "",
       buttonBox: "",
+      flagIndicator: "",
       monitors: "",
       resolution: "",
     });

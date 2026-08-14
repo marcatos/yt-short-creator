@@ -1,12 +1,14 @@
 {
   "cpu": "AMD Ryzen 7 9800X3D",
   "gpu": "NVIDIA GeForce RTX 4070 12GB",
-  "ram": "32GB DDR5 6000MHz",
+  "ram": "Crucial Pro RAM DDR5 32GB 6000MHz CL36",
   "rig": "TREQ One",
   "wheelbase": "VRS DirectForce Pro 20Nm",
+  "wheel": "Formula VRS DirectForce Pro",
   "pedals": "SimRuito PD-1 Load Cell",
   "seat": "Next Level Racing ERS3",
   "buttonBox": "PXN CB1",
+  "flagIndicator": "Sector 17 LED iFlag",
   "monitors": "Triple Samsung Odyssey G5 32\"",
   "resolution": "7680×1440"
 }

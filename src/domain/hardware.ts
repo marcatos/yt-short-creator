@@ -9,9 +9,11 @@ export type HardwareConfig = {
   ram: string;
   rig: string;
   wheelbase: string;
+  wheel: string;
   pedals: string;
   seat: string;
   buttonBox: string;
+  flagIndicator: string;
   monitors: string;
   resolution: string;
 };
@@ -33,9 +35,11 @@ export const DEFAULT_HARDWARE: HardwareConfig = {
   ram: "32GB DDR5 6000MHz",
   rig: "TREQ One",
   wheelbase: "VRS DirectForce Pro 20Nm",
+  wheel: "Formula VRS DirectForce Pro",
   pedals: "SimRuito PD-1 Load Cell",
   seat: "Next Level Racing ERS3",
   buttonBox: "PXN CB1",
+  flagIndicator: "Sector 17 LED iFlag",
   monitors: 'Triple Samsung Odyssey G5 32"',
   resolution: "7680×1440",
 };
@@ -51,7 +55,15 @@ export const HARDWARE_GROUPS: HardwareGroup[] = [
   {
     id: "simRig",
     heading: { it: "SIM RIG", en: "SIM RIG" },
-    fields: ["rig", "wheelbase", "pedals", "seat", "buttonBox"],
+    fields: [
+      "rig",
+      "wheelbase",
+      "wheel",
+      "pedals",
+      "seat",
+      "buttonBox",
+      "flagIndicator",
+    ],
   },
   {
     id: "monitors",
@@ -75,9 +87,11 @@ const LABELS: Record<
       ram: "RAM",
       rig: "Cockpit",
       wheelbase: "Base volante",
+      wheel: "Volante",
       pedals: "Pedaliera",
       seat: "Sedile",
       buttonBox: "Button box",
+      flagIndicator: "Indicatore bandiere",
       monitors: "Monitor",
       resolution: "Risoluzione",
     },
@@ -90,9 +104,11 @@ const LABELS: Record<
       ram: "RAM",
       rig: "Rig",
       wheelbase: "Wheelbase",
+      wheel: "Wheel",
       pedals: "Pedals",
       seat: "Seat",
       buttonBox: "Button box",
+      flagIndicator: "Flag indicator",
       monitors: "Monitors",
       resolution: "Resolution",
     },
@@ -133,16 +149,11 @@ export function mergeHardware(
   partial: Partial<HardwareConfig> | null | undefined,
   defaults: HardwareConfig = DEFAULT_HARDWARE,
 ): HardwareConfig {
-  return {
-    cpu: pickField(partial?.cpu, defaults.cpu),
-    gpu: pickField(partial?.gpu, defaults.gpu),
-    ram: pickField(partial?.ram, defaults.ram),
-    rig: pickField(partial?.rig, defaults.rig),
-    wheelbase: pickField(partial?.wheelbase, defaults.wheelbase),
-    pedals: pickField(partial?.pedals, defaults.pedals),
-    seat: pickField(partial?.seat, defaults.seat),
-    buttonBox: pickField(partial?.buttonBox, defaults.buttonBox),
-    monitors: pickField(partial?.monitors, defaults.monitors),
-    resolution: pickField(partial?.resolution, defaults.resolution),
-  };
+  const merged = { ...defaults };
+  for (const group of HARDWARE_GROUPS) {
+    for (const field of group.fields) {
+      merged[field] = pickField(partial?.[field], defaults[field]);
+    }
+  }
+  return merged;
 }
