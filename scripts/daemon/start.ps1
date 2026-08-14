@@ -16,7 +16,13 @@ $env:PORT = "$Port"
 $env:WORKER_PROCESS = "1"
 
 $node = Get-NodeExecutable
+$nodeDir = Split-Path $node
+$env:PATH = "$nodeDir;$env:PATH"
 Write-Host "Using Node: $node ($((& $node -v).Trim()))"
+& $node (Join-Path $Root "scripts\check-node-version.mjs")
+if ($LASTEXITCODE -ne 0) {
+  throw "This project requires Node 25. Install it from https://nodejs.org"
+}
 $nextBin = Join-Path $Root "node_modules\next\dist\bin\next"
 $tsxBin = Join-Path $Root "node_modules\tsx\dist\cli.mjs"
 

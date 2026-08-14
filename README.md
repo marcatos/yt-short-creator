@@ -6,7 +6,7 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 
 ## Prerequisites
 
-- **Node.js** 20+ and npm
+- **Node.js** 25 (see `.nvmrc`) and npm
 - **FFmpeg** on your `PATH` (video download, analysis, and render)
 - **yt-dlp** on your `PATH` (YouTube media download)
 - Sibling brand repo at `BRAND_ROOT` (default: `../smarcato42-racing`) with brand tokens and assets

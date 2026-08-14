@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "check-node": "node scripts/check-node-version.mjs",
+    "predev": "node scripts/check-node-version.mjs",
     "dev": "next dev",
+    "preworkers": "node scripts/check-node-version.mjs",
     "workers": "tsx scripts/run-workers.ts",
+    "prebuild": "node scripts/check-node-version.mjs",
     "build": "next build",
+    "prestart": "node scripts/check-node-version.mjs",
     "start": "next start",
     "daemon:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/start.ps1",
     "daemon:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/stop.ps1",
@@ -14,6 +19,7 @@
     "daemon:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/logs.ps1",
     "daemon:install-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/install-autostart.ps1",
     "daemon:uninstall-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/uninstall-autostart.ps1",
+    "pretest": "node scripts/check-node-version.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -30,9 +36,12 @@
     "react-dom": "^19.1.0",
     "zod": "^3.24.4"
   },
+  "engines": {
+    "node": ">=25 <26"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.15.3",
+    "@types/node": "^25.9.5",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "drizzle-kit": "^0.31.1",
