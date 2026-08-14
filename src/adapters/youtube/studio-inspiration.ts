@@ -1,6 +1,7 @@
+import { chromium } from "playwright";
+
 import type { Logger } from "@/src/ports/logger";
 import {
-  StudioInspirationUiError,
   StudioSessionUnavailableError,
   type InspirationCaptureResult,
   type YouTubeStudioInspirationPort,
@@ -8,43 +9,130 @@ import {
 
 import { withStudioLock } from "./studio-mutex";
 import {
+  isStudioHeaded,
   resolveStudioProfileDir,
   studioProfileExists,
 } from "./studio-profile";
+import {
+  createPlaywrightInspirationHelpers,
+  scrapeInspirationIdeas,
+  wrapInspirationScrapeError,
+  type InspirationPageHelpers,
+  type PageLike,
+} from "./studio-inspiration-scrape";
 
-export function createYouTubeStudioInspirationAdapter(deps?: {
+export {
+  INSPIRATION_SELECTORS,
+  createPlaywrightInspirationHelpers,
+  scrapeInspirationIdeas,
+} from "./studio-inspiration-scrape";
+export {
+  buildInspirationExternalKey,
+  parseIdeaFromTexts,
+} from "./studio-inspiration-parse";
+
+export type StudioPersistentContext = {
+  pages(): unknown[];
+  newPage(): Promise<unknown>;
+  close(): Promise<void>;
+};
+
+export type StudioBrowserFactory = (input: {
+  profileDir: string;
+  headed: boolean;
+}) => Promise<StudioPersistentContext>;
+
+export type InspirationPageHelpersFactory = (
+  page: unknown,
+) => InspirationPageHelpers;
+
+export type StudioInspirationAdapterDeps = {
   env?: Record<string, string | undefined>;
   logger?: Logger;
-}): YouTubeStudioInspirationPort {
+  browserFactory?: StudioBrowserFactory;
+  pageHelpersFactory?: InspirationPageHelpersFactory;
+  withLock?: <T>(fn: () => Promise<T>) => Promise<T>;
+  profileExists?: (profileDir: string) => boolean;
+};
+
+async function defaultBrowserFactory(input: {
+  profileDir: string;
+  headed: boolean;
+}): Promise<StudioPersistentContext> {
+  return chromium.launchPersistentContext(input.profileDir, {
+    headless: !input.headed,
+    viewport: { width: 1280, height: 800 },
+  });
+}
+
+function defaultPageHelpersFactory(page: unknown): InspirationPageHelpers {
+  return createPlaywrightInspirationHelpers(page as PageLike);
+}
+
+function errorMeta(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message, stack: error.stack };
+  }
+  return { error: String(error) };
+}
+
+export function createYouTubeStudioInspirationAdapter(
+  deps?: StudioInspirationAdapterDeps,
+): YouTubeStudioInspirationPort {
   const env = deps?.env ?? process.env;
   const log = deps?.logger?.child({ component: "StudioInspiration" });
+  const browserFactory = deps?.browserFactory ?? defaultBrowserFactory;
+  const pageHelpersFactory =
+    deps?.pageHelpersFactory ?? defaultPageHelpersFactory;
+  const withLock = deps?.withLock ?? withStudioLock;
+  const profileExists = deps?.profileExists ?? studioProfileExists;
 
   return {
     async sync(): Promise<InspirationCaptureResult> {
       const startedAt = performance.now();
       log?.info("Studio inspiration sync starting");
       try {
-        return await withStudioLock(async () => {
+        const result = await withLock(async () => {
           const profileDir = resolveStudioProfileDir(env);
-          if (!studioProfileExists(profileDir)) {
+          if (!profileExists(profileDir)) {
             throw new StudioSessionUnavailableError(
               "YouTube Studio profile is missing; run npm run studio:login",
             );
           }
-          // DOM scrape lands in Task 4.
-          throw new StudioInspirationUiError(
-            "Inspiration DOM scrape is not implemented yet",
-          );
+
+          const headed = isStudioHeaded(env);
+          const launchStartedAt = performance.now();
+          const context = await browserFactory({ profileDir, headed });
+          log?.info("Studio Chromium launched", {
+            headed,
+            durationMs: Math.round(performance.now() - launchStartedAt),
+          });
+
+          try {
+            const page = context.pages()[0] ?? (await context.newPage());
+            const helpers = pageHelpersFactory(page);
+            return await scrapeInspirationIdeas(helpers, log);
+          } finally {
+            await context.close().catch((closeError: unknown) => {
+              log?.warn("Studio browser context close failed", {
+                error: errorMeta(closeError),
+              });
+            });
+          }
         });
+
+        log?.info("Studio inspiration sync finished", {
+          status: result.status,
+          ideaCount: result.ideas.length,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        return result;
       } catch (error) {
         log?.error("Studio inspiration sync failed", {
           durationMs: Math.round(performance.now() - startedAt),
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
+          error: errorMeta(error),
         });
-        throw error;
+        wrapInspirationScrapeError(error);
       }
     },
   };
