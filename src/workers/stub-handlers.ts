@@ -54,6 +54,17 @@ const noopDeps: HandlerDeps = {
   async runIdeation() {
     return [];
   },
+  syncInspiration: {
+    async run() {
+      return {
+        id: "",
+        status: "failed",
+        ideaCount: 0,
+        source: "manual",
+        errorMessage: "syncInspiration is not wired",
+      };
+    },
+  },
   async assembleGeneratePreview({ candidateId }) {
     throw new Error(`Generate candidate not found: ${candidateId}`);
   },

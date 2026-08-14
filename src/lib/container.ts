@@ -33,6 +33,7 @@ import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
 import { createGoogleYouTubeUpload } from "@/src/adapters/youtube/upload";
 import { createGoogleYouTubeCaptions } from "@/src/adapters/youtube/youtube-captions";
+import { createYouTubeStudioInspirationAdapter } from "@/src/adapters/youtube/studio-inspiration";
 import {
   createApproveCandidate,
   type ApproveCandidate,
@@ -137,6 +138,10 @@ import {
   createRunReplayDirectorCapture,
   type RunReplayDirectorCapture,
 } from "@/src/application/run-replay-director-capture";
+import {
+  createSyncInspiration,
+  type SyncInspiration,
+} from "@/src/application/sync-inspiration";
 import type { Logger } from "@/src/ports/logger";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { MediaStorePort } from "@/src/ports/media-store";
@@ -180,6 +185,7 @@ export type AppContainer = {
   editorialLocalize: EditorialLocalize;
   packageFullDeliveryAssets: PackageFullDeliveryAssets;
   runReplayDirectorCapture: RunReplayDirectorCapture;
+  syncInspiration: SyncInspiration;
   approveCandidate: ApproveCandidate;
   rejectCandidate: RejectCandidate;
   requestRevision: RequestRevision;
@@ -301,6 +307,13 @@ export function createContainer(env: AppEnv): AppContainer {
     clock,
     logger,
   });
+  const syncInspiration = createSyncInspiration({
+    studio: createYouTubeStudioInspirationAdapter({ logger }),
+    store: repositories.inspiration,
+    id,
+    clock,
+    logger,
+  });
   const assembleGeneratePreview = createAssembleGeneratePreview({
     tts,
     mediaStore,
@@ -372,6 +385,7 @@ export function createContainer(env: AppEnv): AppContainer {
     }),
     runReplayAnalysis,
     runIdeation,
+    syncInspiration,
     assembleGeneratePreview,
     createReplaySession: createCreateReplaySession({
       replaySessions: repositories.replaySessions,
@@ -569,6 +583,7 @@ export function startWorkers(): void {
       requestReplayCapture: container.requestReplayCapture,
       runReplayDirectorCapture: container.runReplayDirectorCapture,
       runIdeation: container.runIdeation,
+      syncInspiration: container.syncInspiration,
       assembleGeneratePreview: container.assembleGeneratePreview,
       candidates: container.repositories.candidates,
       jobs: container.repositories.jobs,

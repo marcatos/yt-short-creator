@@ -30,6 +30,7 @@ export function isJobCancelledError(error: unknown): error is JobCancelledError 
 /** Ordered steps per job type (last completed step name stored in checkpoint). */
 export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   sync_channel: ["run"],
+  sync_inspiration: ["run"],
   download_source_video: ["download"],
   analyze_clips: ["run"],
   analyze_replay: ["run"],

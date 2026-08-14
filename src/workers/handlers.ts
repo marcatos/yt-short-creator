@@ -6,6 +6,7 @@ import type {
 } from "@/src/application/run-ideation";
 import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
 import type { RunReplayDirectorCapture } from "@/src/application/run-replay-director-capture";
+import type { SyncInspiration } from "@/src/application/sync-inspiration";
 import type { BrandPackPort } from "@/src/ports/brand-pack";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ClockPort } from "@/src/ports/clock";
@@ -25,6 +26,7 @@ import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
 import type { PackageFullDeliveryAssets } from "@/src/application/package-full-delivery-assets";
+import type { InspirationSyncSource } from "@/src/ports/inspiration-store";
 
 import { requireNumberPayload, requireStringPayload } from "./handler-utils";
 import type { JobHandlerContext, JobHandler, JobHandlers } from "./job-handler-context";
@@ -45,6 +47,7 @@ export type HandlerDeps = {
   requestReplayCapture: RequestReplayCapture;
   runReplayDirectorCapture: RunReplayDirectorCapture;
   runIdeation: RunIdeation;
+  syncInspiration: SyncInspiration;
   assembleGeneratePreview: AssembleGeneratePreview;
   candidates: CandidateRepository;
   jobs: JobRepository;
@@ -77,6 +80,16 @@ function singleStep(
   return (ctx) => runStep(ctx, jobType, step, () => fn(ctx));
 }
 
+function requireInspirationSource(
+  payload: Record<string, unknown>,
+): InspirationSyncSource {
+  const source = requireStringPayload(payload, "source");
+  if (source !== "manual" && source !== "scheduled") {
+    throw new Error(`Job payload has invalid source: ${source}`);
+  }
+  return source;
+}
+
 export function createHandlers(
   deps: HandlerDeps,
 ): JobHandlers & { director_capture_replay: JobHandler } {
@@ -84,6 +97,27 @@ export function createHandlers(
 
   return {
     sync_channel: stub("Channel sync", "sync_channel"),
+    sync_inspiration: singleStep("sync_inspiration", "run", async (ctx) => {
+      const source = requireInspirationSource(ctx.payload);
+      const startedAt = performance.now();
+      handlerLogger.info("sync_inspiration started", {
+        jobId: ctx.jobId,
+        source,
+      });
+      ctx.setProgress(10, "Syncing YouTube Studio Inspiration");
+      const summary = await deps.syncInspiration.run({ source });
+      ctx.setProgress(
+        100,
+        `Inspiration sync ${summary.status} (${summary.ideaCount} ideas)`,
+      );
+      handlerLogger.info("sync_inspiration completed", {
+        jobId: ctx.jobId,
+        source,
+        status: summary.status,
+        ideaCount: summary.ideaCount,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    }),
     download_source_video: async (ctx) => {
       const sourceVideoId = requireStringPayload(ctx.payload, "sourceVideoId");
       const video = await deps.sourceVideos.getById(sourceVideoId);
