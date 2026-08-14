@@ -17,6 +17,7 @@ import { resumeDeferredYoutubeUploads } from "@/src/application/resume-deferred-
 import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
 import { isYoutubeDailyUploadLimitCheckpoint } from "@/src/domain/youtube-upload-limit";
 import { createOpenAiCompatibleLlm } from "@/src/adapters/llm/openai-compatible";
+import { createLlmRaceHudExtractor } from "@/src/adapters/llm/llm-race-hud-extractor";
 import { createLogger } from "@/src/adapters/logging/pino-logger";
 import { createFsMediaStore } from "@/src/adapters/media/fs-media-store";
 import { createFfmpegMediaProxy } from "@/src/adapters/media/ffmpeg-media-proxy";
@@ -257,6 +258,7 @@ export function createContainer(env: AppEnv): AppContainer {
     logger,
   });
   const mediaProxy = createFfmpegMediaProxy({ logger });
+  const raceHudExtractor = createLlmRaceHudExtractor({ llm, logger });
   const tts = createOpenAiCompatibleTts({
     apiKey: env.TTS_API_KEY,
     baseUrl: env.TTS_BASE_URL,
@@ -314,6 +316,7 @@ export function createContainer(env: AppEnv): AppContainer {
     mediaProxy,
     transcription,
     mediaStore,
+    raceHudExtractor,
     llm,
     id,
     clock,
@@ -413,6 +416,7 @@ export function createContainer(env: AppEnv): AppContainer {
       mediaDuration,
       mediaStore,
       candidates: repositories.candidates,
+      replaySessions: repositories.replaySessions,
       settings,
       logger,
     }),

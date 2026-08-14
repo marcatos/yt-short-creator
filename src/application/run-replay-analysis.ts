@@ -13,6 +13,17 @@ import {
   type ShortSegmentAnalysis,
 } from "@/src/domain/race-analysis";
 import {
+  battleWindowsToEvents,
+  boostScoreNearHudBattles,
+  collectRecurringRivals,
+  detectBattleWindows,
+  formatHudTimelineForPrompt,
+  inferResultsFromHud,
+  resolveFocusSubject,
+  type HudBattleWindow,
+  type RaceHudTimeline,
+} from "@/src/domain/race-hud";
+import {
   selectTelemetryEvents,
   windowAroundEvent,
 } from "@/src/domain/replay";
@@ -24,6 +35,7 @@ import type { LlmPort, LlmUserPart } from "@/src/ports/llm";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaProxyPort, ProxyFrame } from "@/src/ports/media-proxy";
 import type { MediaStorePort } from "@/src/ports/media-store";
+import type { RaceHudExtractorPort } from "@/src/ports/race-hud-extractor";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { TranscriptionPort } from "@/src/ports/transcription";
 import { z } from "zod";
@@ -280,6 +292,7 @@ type Dependencies = {
   mediaProxy: MediaProxyPort;
   transcription: TranscriptionPort;
   mediaStore: MediaStorePort;
+  raceHudExtractor: RaceHudExtractorPort;
   llm: LlmPort;
   id: IdPort;
   clock: ClockPort;
@@ -363,6 +376,36 @@ function boostScoreNearTelemetry(
     return Math.abs(eventMid - mid) <= 8_000;
   });
   return near ? Math.min(1, score + 0.08) : score;
+}
+
+function mergeHudIntoTimeline(
+  timeline: RaceTimelineEntry[],
+  battleWindows: HudBattleWindow[],
+): RaceTimelineEntry[] {
+  const extras: RaceTimelineEntry[] = battleWindows.map((window) => ({
+    startMs: window.startMs,
+    endMs: window.endMs,
+    summary: window.summary,
+    involvingFocusCar: true,
+  }));
+  return [...timeline, ...extras].sort((a, b) => a.startMs - b.startMs);
+}
+
+function mergeUniqueRivals(
+  fromLlm: string[],
+  fromHud: string[],
+  limit = 20,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const rival of [...fromHud, ...fromLlm]) {
+    const key = rival.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(rival.trim());
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 function clampWindow(
@@ -630,7 +673,6 @@ export function createRunReplayAnalysis(
       const durationSec = session.durationSec ?? proxy.durationSec;
       const maxEndMs =
         durationSec > 0 ? durationSec * 1_000 : Number.POSITIVE_INFINITY;
-      const focusCarHint = FOCUS_CAR_DEFAULT;
 
       let audioTranscriptText = "";
       let audioSegmentsText = "";
@@ -661,6 +703,34 @@ export function createRunReplayAnalysis(
         });
       }
 
+      let hudTimeline: RaceHudTimeline = [];
+      const hudStarted = performance.now();
+      try {
+        hudTimeline = await deps.raceHudExtractor.extract({
+          frames: proxy.frames,
+          workDir: deps.mediaStore.replayAnalysisDir(sessionId),
+        });
+        log.info("HUD overlay extract ready", {
+          sessionId,
+          snapshotCount: hudTimeline.length,
+          durationMs: Math.round(performance.now() - hudStarted),
+        });
+      } catch (error) {
+        log.warn("HUD overlay extract failed; continuing without HUD facts", {
+          sessionId,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : String(error),
+          durationMs: Math.round(performance.now() - hudStarted),
+        });
+      }
+
+      const focusSubject = resolveFocusSubject(hudTimeline, FOCUS_CAR_DEFAULT);
+      const focusCarHint = focusSubject.hint;
+      const battleWindows = detectBattleWindows(hudTimeline);
+      const hudPromptBlock = formatHudTimelineForPrompt(hudTimeline);
+
       const visionMoments = await analyzeVisionChunks(
         deps,
         proxy.frames,
@@ -681,7 +751,9 @@ export function createRunReplayAnalysis(
           "Sei l'analista editoriale del canale YouTube di Simone Marcato (pilota #42).",
           "FASE A — Race Analysis: estrai la STORIA interessante della gara, non una descrizione passiva.",
           "Stile narrativo (narrativeIt, storylines, hook/story/payoff): prima persona del pilota. Fatti concreti.",
-          "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria.",
+          "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria/HUD.",
+          "I fatti HUD overlay (session strip, focus card, battle/relative, standings) sono VERIFIED quando presenti: non contraddarli.",
+          "Il Focus card identifica il soggetto camera (car # / nome), anche se il branding del canale è #42.",
           "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
           "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
           "whyWatch deve rispondere: perché uno sconosciuto guarderebbe questo video? NON perché è una gara di Simone.",
@@ -695,12 +767,21 @@ export function createRunReplayAnalysis(
           trackName ? `Pista: ${trackName}` : null,
           `Durata media: ${durationSec} secondi`,
           `Focus car: ${focusCarHint}`,
+          focusSubject.carNumber != null
+            ? `Focus car number (HUD): #${focusSubject.carNumber}`
+            : null,
+          focusSubject.driverName
+            ? `Focus driver (HUD): ${focusSubject.driverName}`
+            : null,
           "",
           "=== Transcript audio (può essere vuoto / solo engine) ===",
           audioTranscriptText || "(nessun parlato rilevato)",
           audioSegmentsText
             ? `Segmenti audio:\n${audioSegmentsText}`
             : null,
+          "",
+          "=== HUD overlay (verified when present) ===",
+          hudPromptBlock,
           "",
           "=== Momenti vision (campionati) ===",
           visionMoments
@@ -721,34 +802,60 @@ export function createRunReplayAnalysis(
 
       const parsed = analysisSchema.parse(JSON.parse(response));
       const llmAnalysis = parsed.raceAnalysis;
+      const hudResults = inferResultsFromHud(
+        hudTimeline,
+        focusSubject.carNumber,
+        llmAnalysis.results,
+      );
       const positionsGained =
-        llmAnalysis.results.positionsGained ??
+        hudResults.positionsGained ??
         computePositionsGained(
-          llmAnalysis.results.startPosition,
-          llmAnalysis.results.finishPosition,
+          hudResults.startPosition,
+          hudResults.finishPosition,
         );
+      const hudEvents = battleWindowsToEvents(battleWindows);
+      const hudRivals = collectRecurringRivals(
+        hudTimeline,
+        focusSubject.carNumber,
+      );
 
       const raceAnalysis: RaceAnalysis = {
         ...llmAnalysis,
         version: 1,
-        focusCarHint: llmAnalysis.focusCarHint || focusCarHint,
+        focusCarHint:
+          focusSubject.carNumber != null || focusSubject.driverName
+            ? focusCarHint
+            : llmAnalysis.focusCarHint || focusCarHint,
         context: {
           ...llmAnalysis.context,
-          track: llmAnalysis.context.track || trackName || null,
+          track:
+            llmAnalysis.context.track ||
+            trackName ||
+            hudTimeline.find((snap) => snap.session?.trackName)?.session
+              ?.trackName ||
+            null,
           durationSec:
             llmAnalysis.context.durationSec ??
             (durationSec > 0 ? durationSec : null),
         },
         results: {
-          ...llmAnalysis.results,
+          ...hudResults,
           positionsGained,
         },
-        timeline: mergeTelemetryIntoTimeline(
-          llmAnalysis.timeline,
-          telemetryEvents,
+        recurringRivals: mergeUniqueRivals(
+          llmAnalysis.recurringRivals,
+          hudRivals,
+        ),
+        events: [...llmAnalysis.events, ...hudEvents]
+          .sort((a, b) => a.startMs - b.startMs)
+          .slice(0, 120),
+        timeline: mergeHudIntoTimeline(
+          mergeTelemetryIntoTimeline(llmAnalysis.timeline, telemetryEvents),
+          battleWindows,
         ),
         audioTranscript:
           audioTranscriptText || llmAnalysis.audioTranscript || "",
+        hudTimeline,
       };
 
       const racePackage = raceAnalysisToRacePackage(raceAnalysis);
@@ -757,6 +864,8 @@ export function createRunReplayAnalysis(
         sessionId,
         shortCount: raceAnalysis.shortCandidates.length,
         timelineCount: raceAnalysis.timeline.length,
+        hudSnapshotCount: hudTimeline.length,
+        focusCarHint: raceAnalysis.focusCarHint.slice(0, 80),
         whyWatch: raceAnalysis.whyWatch.slice(0, 120),
         durationMs: Math.round(performance.now() - packageStarted),
       });
@@ -808,11 +917,16 @@ export function createRunReplayAnalysis(
           endMs: number;
           segments?: ReplaySegment[];
         }) => {
-          const score = boostScoreNearTelemetry(
-            window.shortScore,
+          const score = boostScoreNearHudBattles(
+            boostScoreNearTelemetry(
+              window.shortScore,
+              window.startMs,
+              window.endMs,
+              telemetryEvents,
+            ),
             window.startMs,
             window.endMs,
-            telemetryEvents,
+            battleWindows,
           );
           const event: ReplayEvent = {
             id: deps.id.generate(),
