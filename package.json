@@ -21,6 +21,7 @@
     "daemon:uninstall-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/uninstall-autostart.ps1",
     "pretest": "node scripts/check-node-version.mjs",
     "test": "vitest run",
+    "studio:login": "tsx scripts/studio-login.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node -e \"require('fs').mkdirSync('./data',{recursive:true})\" && drizzle-kit migrate"
@@ -32,6 +33,7 @@
     "next": "^15.3.2",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
+    "playwright": "^1.62.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^3.24.4"
