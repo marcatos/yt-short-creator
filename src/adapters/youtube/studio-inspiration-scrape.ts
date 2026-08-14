@@ -217,14 +217,60 @@ export function createPlaywrightInspirationHelpers(
     },
 
     async openInspirationFeed(): Promise<void> {
-      const channelId = extractStudioChannelId(page.url());
+      let channelId = extractStudioChannelId(page.url());
+      if (!channelId) {
+        // Studio home usually redirects to /channel/UC…/; re-read after a hop.
+        await page.goto(INSPIRATION_SELECTORS.studioHome, {
+          waitUntil: "domcontentloaded",
+          timeout: INSPIRATION_NAV_TIMEOUT_MS,
+        });
+        channelId = extractStudioChannelId(page.url());
+      }
 
-      // Prefer the canonical Content → Inspiration URL when we know the channel.
       if (channelId) {
         await page.goto(INSPIRATION_SELECTORS.inspirationPath(channelId), {
           waitUntil: "domcontentloaded",
           timeout: INSPIRATION_NAV_TIMEOUT_MS,
         });
+
+        if (!/\/inspiration\b/i.test(page.url())) {
+          let opened = false;
+          for (const path of INSPIRATION_SELECTORS.inspirationPaths(channelId)) {
+            if (path === INSPIRATION_SELECTORS.inspirationPath(channelId)) {
+              continue;
+            }
+            await page.goto(path, {
+              waitUntil: "domcontentloaded",
+              timeout: INSPIRATION_NAV_TIMEOUT_MS,
+            });
+            if (/\/inspiration\b/i.test(page.url())) {
+              opened = true;
+              break;
+            }
+          }
+          if (!opened) {
+            await page.goto(INSPIRATION_SELECTORS.contentPath(channelId), {
+              waitUntil: "domcontentloaded",
+              timeout: INSPIRATION_NAV_TIMEOUT_MS,
+            });
+            opened =
+              (await clickFirstRole(
+                page,
+                ["tab"],
+                INSPIRATION_SELECTORS.inspirationTabNames,
+              )) ||
+              (await clickMatchingLocator(
+                page,
+                INSPIRATION_SELECTORS.inspirationTabCandidates,
+                INSPIRATION_SELECTORS.inspirationTabNames,
+              ));
+          }
+          if (!opened && !/\/inspiration\b/i.test(page.url())) {
+            throw new StudioInspirationUiError(
+              `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
+            );
+          }
+        }
       } else {
         const clickedNav = await clickFirstRole(
           page,
@@ -255,47 +301,6 @@ export function createPlaywrightInspirationHelpers(
             INSPIRATION_SELECTORS.inspirationTabNames,
           ));
         if (!clickedTab) {
-          throw new StudioInspirationUiError(
-            `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
-          );
-        }
-      }
-
-      // If the direct URL bounced away, try fallbacks / tab click on Content.
-      if (
-        channelId &&
-        !/\/content\/inspiration\b/i.test(page.url()) &&
-        !/\/inspiration\b/i.test(page.url())
-      ) {
-        let opened = false;
-        for (const path of INSPIRATION_SELECTORS.inspirationPaths(channelId)) {
-          await page.goto(path, {
-            waitUntil: "domcontentloaded",
-            timeout: INSPIRATION_NAV_TIMEOUT_MS,
-          });
-          if (/\/inspiration\b/i.test(page.url())) {
-            opened = true;
-            break;
-          }
-        }
-        if (!opened) {
-          await page.goto(INSPIRATION_SELECTORS.contentPath(channelId), {
-            waitUntil: "domcontentloaded",
-            timeout: INSPIRATION_NAV_TIMEOUT_MS,
-          });
-          opened =
-            (await clickFirstRole(
-              page,
-              ["tab"],
-              INSPIRATION_SELECTORS.inspirationTabNames,
-            )) ||
-            (await clickMatchingLocator(
-              page,
-              INSPIRATION_SELECTORS.inspirationTabCandidates,
-              INSPIRATION_SELECTORS.inspirationTabNames,
-            ));
-        }
-        if (!opened && !/\/inspiration\b/i.test(page.url())) {
           throw new StudioInspirationUiError(
             `YouTube Studio Inspiration tab was not found (url=${page.url()})`,
           );

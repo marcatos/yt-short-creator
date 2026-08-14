@@ -324,6 +324,12 @@ describe("createPlaywrightInspirationHelpers", () => {
       url: () => currentUrl,
       async goto(url) {
         gotos.push(url);
+        // Mimic Studio home redirect into the channel dashboard.
+        if (url === INSPIRATION_SELECTORS.studioHome) {
+          currentUrl =
+            "https://studio.youtube.com/channel/UC123abc/content/videos";
+          return;
+        }
         currentUrl = url;
       },
       locator: (selector) => locators.get(selector) ?? emptyLocator(),
