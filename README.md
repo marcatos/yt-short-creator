@@ -39,6 +39,9 @@ See [design spec](docs/superpowers/specs/2026-08-11-yt-short-creator-design.md) 
 
    Optional: auto-start at Windows logon → `npm run daemon:install-autostart`
 
+   After a development, agents must **restart the daemon only if it is already
+   running**. If it is stopped, leave it stopped. See [daemon policy](docs/daemon.md).
+
    For local UI development instead (two terminals):
 
    ```bash

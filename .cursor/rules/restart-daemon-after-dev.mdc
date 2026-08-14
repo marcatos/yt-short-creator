@@ -1,0 +1,18 @@
+---
+description: After finishing development, restart the production daemon only if it is already running on this PC.
+alwaysApply: true
+---
+
+# Restart production daemon after development
+
+When you finish implementing or changing code the production daemon would serve (`app/`, `src/`, `scripts/`, `config/`, `package.json`, or Next config), reload the **already running** daemon on this machine.
+
+1. Run `npm run daemon:status`.
+2. If `web` and/or `workers` show **RUNNING**, run `npm run daemon:restart`, then re-check status until HTTP `http://127.0.0.1:3000` is OK.
+3. If they show **STOPPED** (or there is no running daemon): **stop**. Do not start it.
+
+Do not call `npm run daemon:start` or `daemon:restart` just to "bring it up". A stopped daemon is intentional (dev mode, operator stopped it, or this PC is not the runtime host).
+
+Skip this step for docs-only or comment-only changes that cannot affect the running process.
+
+Full policy: `docs/daemon.md`.

@@ -30,6 +30,8 @@ npm-debug.log*
 !.vscode/settings.json
 
 # Local agent / SDD scratch
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .superpowers/
 .worktrees/
