@@ -11,6 +11,7 @@ import { withStudioLock } from "./studio-mutex";
 import {
   isStudioHeaded,
   resolveStudioProfileDir,
+  studioPersistentContextOptions,
   studioProfileExists,
 } from "./studio-profile";
 import {
@@ -59,10 +60,10 @@ async function defaultBrowserFactory(input: {
   profileDir: string;
   headed: boolean;
 }): Promise<StudioPersistentContext> {
-  return chromium.launchPersistentContext(input.profileDir, {
-    headless: !input.headed,
-    viewport: { width: 1280, height: 800 },
-  });
+  return chromium.launchPersistentContext(
+    input.profileDir,
+    studioPersistentContextOptions({ headed: input.headed }),
+  );
 }
 
 function defaultPageHelpersFactory(page: unknown): InspirationPageHelpers {

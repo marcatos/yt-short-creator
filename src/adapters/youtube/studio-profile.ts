@@ -25,11 +25,39 @@ export function isStudioHeaded(
   return value === "1" || value === "true" || value === "yes";
 }
 
-/** True when Chromium has created a persistent Default profile directory. */
+/** True when the browser has created a persistent Default profile directory. */
 export function studioProfileExists(profileDir: string): boolean {
   try {
     return fs.statSync(path.join(profileDir, "Default")).isDirectory();
   } catch {
     return false;
   }
+}
+
+/**
+ * Playwright channel for Studio automation. Prefer installed Google Chrome
+ * so login cookies match a real Chrome profile (not bundled Chromium).
+ * Override with YOUTUBE_STUDIO_BROWSER_CHANNEL (e.g. "chromium", "msedge").
+ */
+export function resolveStudioBrowserChannel(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const configured = env.YOUTUBE_STUDIO_BROWSER_CHANNEL?.trim();
+  return configured && configured.length > 0 ? configured : "chrome";
+}
+
+/** Shared launch options for login + Inspiration scrape persistent contexts. */
+export function studioPersistentContextOptions(input: {
+  headed: boolean;
+  env?: Record<string, string | undefined>;
+}): {
+  headless: boolean;
+  channel: string;
+  viewport: { width: number; height: number };
+} {
+  return {
+    headless: !input.headed,
+    channel: resolveStudioBrowserChannel(input.env),
+    viewport: { width: 1280, height: 800 },
+  };
 }

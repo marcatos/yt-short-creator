@@ -1,8 +1,9 @@
 /**
- * One-time headed Google login into the shared YouTube Studio Chromium profile.
+ * One-time headed Google login into the shared YouTube Studio Chrome profile.
  *
  * Run: npm run studio:login
  * Then complete sign-in in the browser. Exits 0 when Studio looks signed in.
+ * Uses installed Google Chrome (channel: chrome), not bundled Chromium.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,7 +12,11 @@ import { chromium, type Page } from "playwright";
 
 import { createLogger } from "../src/adapters/logging/pino-logger";
 import { withStudioLock } from "../src/adapters/youtube/studio-mutex";
-import { resolveStudioProfileDir } from "../src/adapters/youtube/studio-profile";
+import {
+  resolveStudioBrowserChannel,
+  resolveStudioProfileDir,
+  studioPersistentContextOptions,
+} from "../src/adapters/youtube/studio-profile";
 import type { LogLevel } from "../src/ports/logger";
 
 const STUDIO_URL = "https://studio.youtube.com";
@@ -77,15 +82,18 @@ async function main(): Promise<void> {
   );
 
   await withStudioLock(async () => {
-    log.info("Launching headed Chromium persistent context", {
+    const channel = resolveStudioBrowserChannel(process.env);
+    log.info("Launching headed Chrome persistent context", {
       customProfile,
+      channel,
     });
     const launchStartedAt = performance.now();
-    const context = await chromium.launchPersistentContext(profileDir, {
-      headless: false,
-      viewport: { width: 1280, height: 800 },
-    });
-    log.info("Chromium launched", {
+    const context = await chromium.launchPersistentContext(
+      profileDir,
+      studioPersistentContextOptions({ headed: true }),
+    );
+    log.info("Chrome launched", {
+      channel,
       durationMs: Math.round(performance.now() - launchStartedAt),
     });
 
