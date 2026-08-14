@@ -193,14 +193,17 @@ export function createPlaywrightInspirationHelpers(
   }
 
   async function waitForIdeaCards(timeoutMs: number): Promise<number> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const list = await resolveCardList();
-      const count = list ? await list.count() : 0;
-      if (count > 0) return count;
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    const primary = page.locator("ytci-feed-idea-preview");
+    try {
+      await primary.first().waitFor({
+        state: "attached",
+        timeout: timeoutMs,
+      });
+    } catch {
+      // Fall through to a final count of whatever is present.
     }
-    return 0;
+    const list = await resolveCardList();
+    return list ? list.count() : 0;
   }
 
   return {
@@ -330,9 +333,6 @@ export function createPlaywrightInspirationHelpers(
     },
 
     async countCards(): Promise<number> {
-      // One more short wait in case openInspirationFeed raced the AI feed.
-      const waited = await waitForIdeaCards(15_000);
-      if (waited > 0) return waited;
       const list = await resolveCardList();
       return list ? list.count() : 0;
     },
