@@ -15,6 +15,7 @@ export type CandidateQueueItem = {
   createdAt: string;
   endedAt: string | null;
   previewUrl: string;
+  inspirationTitles?: string[];
 };
 
 const INBOX_STATUSES = new Set(["proposed", "revising"]);
@@ -113,6 +114,15 @@ export function CandidateQueue({
               <span className={`chip status-${candidate.status}`}>
                 {candidate.status}
               </span>
+              {candidate.inspirationTitles &&
+              candidate.inspirationTitles.length > 0 ? (
+                <span
+                  className="chip chip-inspiration"
+                  title={candidate.inspirationTitles.join(" · ")}
+                >
+                  Inspiration
+                </span>
+              ) : null}
             </div>
             <h2 className="compact-title">{candidate.title}</h2>
             <p>{candidate.sourceHint}</p>

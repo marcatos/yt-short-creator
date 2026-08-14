@@ -12,7 +12,21 @@ export default async function CandidateReviewPage({
 }) {
   const { id } = await params;
   try {
-    const candidate = await getContainer().getCandidate({ candidateId: id });
+    const container = getContainer();
+    const candidate = await container.getCandidate({ candidateId: id });
+    const links =
+      await container.repositories.inspiration.listLinksForCandidates([id]);
+    let inspirationTitles: string[] | undefined;
+    if (links.length > 0) {
+      const ideas = await container.repositories.inspiration.listActiveIdeas();
+      const titleById = new Map(ideas.map((idea) => [idea.id, idea.title]));
+      inspirationTitles = links
+        .map((link) => titleById.get(link.ideaId))
+        .filter((title): title is string => Boolean(title));
+      if (inspirationTitles.length === 0) {
+        inspirationTitles = ["Matched idea"];
+      }
+    }
     return (
       <main className="page-shell">
         <ReviewPanel
@@ -34,6 +48,7 @@ export default async function CandidateReviewPage({
               hasRender: Boolean(voiceOver.renderOutputPath),
               isPublished: Boolean(voiceOver.youtubeVideoId),
             })),
+            inspirationTitles,
           }}
         />
       </main>

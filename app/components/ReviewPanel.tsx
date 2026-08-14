@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type CandidateReview = {
@@ -21,6 +22,7 @@ type CandidateReview = {
     hasRender: boolean;
     isPublished: boolean;
   }>;
+  inspirationTitles?: string[];
 };
 
 function localDateTime(iso: string | null): string {
@@ -197,9 +199,21 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
             <p className="eyebrow">{candidate.origin} candidate</p>
             <h1>Decision surface</h1>
           </div>
-          <span className={`chip status-${candidate.status}`}>
-            {candidate.status}
-          </span>
+          <div className="chip-row">
+            {candidate.inspirationTitles &&
+            candidate.inspirationTitles.length > 0 ? (
+              <Link
+                className="chip chip-inspiration"
+                href="/inspiration"
+                title={candidate.inspirationTitles.join(" · ")}
+              >
+                Inspiration
+              </Link>
+            ) : null}
+            <span className={`chip status-${candidate.status}`}>
+              {candidate.status}
+            </span>
+          </div>
         </div>
         <label>
           Title

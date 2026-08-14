@@ -434,3 +434,77 @@
     display: none;
   }
 }
+
+.chip-inspiration {
+  border-color: #5b7fd6;
+  color: #9db4ff;
+  text-decoration: none;
+}
+
+.chip-stale {
+  border-color: #bb893d;
+  color: #f2bd69;
+}
+
+.inspiration-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.inspiration-card p {
+  white-space: normal;
+  color: var(--silver);
+}
+
+.inspiration-suggested {
+  margin: 0.7rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--ice);
+}
+
+.inspiration-card details {
+  margin-top: 0.85rem;
+}
+
+.inspiration-card summary {
+  cursor: pointer;
+  color: var(--ice-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inspiration-history-heading {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.history-table th,
+.history-table td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--silver);
+}
+
+.history-table th {
+  color: var(--ice-dim);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.history-table th:first-child,
+.history-table td:first-child {
+  padding-left: 0;
+}

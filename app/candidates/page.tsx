@@ -1,6 +1,7 @@
 import { CandidateQueue } from "@/app/components/CandidateQueue";
 import { CANDIDATE_STATUSES } from "@/src/domain/status";
 import { getContainer } from "@/src/lib/container";
+import type { CandidateInspirationLink } from "@/src/ports/inspiration-store";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,21 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
     );
   const publishedAtByCandidateId = new Map(
     publishJobs.map((job) => [job.candidateId, job.publishedAt]),
+  );
+  const inspirationLinks =
+    await container.repositories.inspiration.listLinksForCandidates(
+      candidates.map((candidate) => candidate.id),
+    );
+  const inspirationTitleByIdeaId = new Map(
+    inspirationLinks.length === 0
+      ? []
+      : (await container.repositories.inspiration.listActiveIdeas()).map(
+          (idea) => [idea.id, idea.title],
+        ),
+  );
+  const inspirationTitlesByCandidateId = titlesByCandidateId(
+    inspirationLinks,
+    inspirationTitleByIdeaId,
   );
 
   return (
@@ -102,6 +118,8 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
             createdAt: candidate.createdAt.toISOString(),
             endedAt: endedAt?.toISOString() ?? null,
             previewUrl: `/api/candidates/${candidate.id}/media`,
+            inspirationTitles:
+              inspirationTitlesByCandidateId.get(candidate.id),
             sourceHint:
               candidate.origin === "clip"
                 ? `Source ${"sourceVideoId" in candidate.provenance ? candidate.provenance.sourceVideoId : "video"}`
@@ -113,4 +131,25 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
       />
     </main>
   );
+}
+
+function titlesByCandidateId(
+  links: CandidateInspirationLink[],
+  titleByIdeaId: Map<string, string>,
+): Map<string, string[]> {
+  const titles = new Map<string, string[]>();
+  for (const link of links) {
+    const existing = titles.get(link.candidateId) ?? [];
+    const title = titleByIdeaId.get(link.ideaId);
+    if (title && !existing.includes(title)) {
+      existing.push(title);
+    }
+    titles.set(link.candidateId, existing);
+  }
+  for (const [candidateId, list] of titles) {
+    if (list.length === 0) {
+      titles.set(candidateId, ["Matched idea"]);
+    }
+  }
+  return titles;
 }
