@@ -154,7 +154,7 @@ export function createEditorialLocalize(
     log.info("Editorial localize completed", {
       titleIt: result.it.title,
       titleEn: result.en.title,
-      hasHardwareIt: descriptionIt.includes("Setup / Hardware"),
+      hasHardwareIt: descriptionIt.includes("LA MIA POSTAZIONE SIM RACING"),
       durationMs: Math.round(performance.now() - startedAt),
     });
     return result;

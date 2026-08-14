@@ -145,7 +145,7 @@ describe("Oschersleben vertical slice fixture", () => {
       hashtags: ["iRacing", "GR86"],
     });
     expect(description).toContain("Circuito: Oschersleben");
-    expect(description).toContain("Setup / Hardware");
+    expect(description).toContain("LA MIA POSTAZIONE SIM RACING");
 
     const topShort = [...race.shortCandidates].sort(
       (a, b) => b.shortScore - a.shortScore,

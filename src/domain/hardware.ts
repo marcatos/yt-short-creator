@@ -16,31 +16,59 @@ export type HardwareConfig = {
   resolution: string;
 };
 
-/** Default Marcato / S.Marcato 42 Racing desk — edit via config/hardware.json. */
+export type HardwareField = keyof HardwareConfig;
+
+export type HardwareGroupId = "pc" | "simRig" | "monitors";
+
+export type HardwareGroup = {
+  id: HardwareGroupId;
+  heading: Record<HardwareLanguage, string>;
+  fields: HardwareField[];
+};
+
+/** Default Marcato / S.Marcato 42 Racing desk — sourced from video `_0H55Bo383k`. */
 export const DEFAULT_HARDWARE: HardwareConfig = {
-  cpu: "AMD Ryzen (desktop)",
-  gpu: "NVIDIA GeForce RTX",
-  ram: "32 GB+",
-  rig: "Sim racing cockpit",
-  wheelbase: "Direct drive wheelbase",
-  pedals: "Load-cell pedals",
-  seat: "Bucket seat",
-  buttonBox: "Button box",
-  monitors: "Triple / ultrawide",
-  resolution: "1440p+",
+  cpu: "AMD Ryzen 7 9800X3D",
+  gpu: "NVIDIA GeForce RTX 4070 12GB",
+  ram: "32GB DDR5 6000MHz",
+  rig: "TREQ One",
+  wheelbase: "VRS DirectForce Pro 20Nm",
+  pedals: "SimRuito PD-1 Load Cell",
+  seat: "Next Level Racing ERS3",
+  buttonBox: "PXN CB1",
+  monitors: 'Triple Samsung Odyssey G5 32"',
+  resolution: "7680×1440",
 };
 
 export type HardwareLanguage = "it" | "en";
+
+export const HARDWARE_GROUPS: HardwareGroup[] = [
+  {
+    id: "pc",
+    heading: { it: "PC", en: "PC" },
+    fields: ["cpu", "gpu", "ram"],
+  },
+  {
+    id: "simRig",
+    heading: { it: "SIM RIG", en: "SIM RIG" },
+    fields: ["rig", "wheelbase", "pedals", "seat", "buttonBox"],
+  },
+  {
+    id: "monitors",
+    heading: { it: "MONITOR", en: "MONITORS" },
+    fields: ["monitors", "resolution"],
+  },
+];
 
 const LABELS: Record<
   HardwareLanguage,
   {
     heading: string;
-    fields: Record<keyof HardwareConfig, string>;
+    fields: Record<HardwareField, string>;
   }
 > = {
   it: {
-    heading: "Setup / Hardware",
+    heading: "🛠️ LA MIA POSTAZIONE SIM RACING",
     fields: {
       cpu: "CPU",
       gpu: "GPU",
@@ -55,7 +83,7 @@ const LABELS: Record<
     },
   },
   en: {
-    heading: "Setup / Hardware",
+    heading: "🛠️ MY SIM RACING SETUP",
     fields: {
       cpu: "CPU",
       gpu: "GPU",
@@ -71,29 +99,34 @@ const LABELS: Record<
   },
 };
 
-const FIELD_ORDER: (keyof HardwareConfig)[] = [
-  "cpu",
-  "gpu",
-  "ram",
-  "rig",
-  "wheelbase",
-  "pedals",
-  "seat",
-  "buttonBox",
-  "monitors",
-  "resolution",
-];
+export function hardwareFieldLabel(
+  field: HardwareField,
+  language: HardwareLanguage,
+): string {
+  return LABELS[language].fields[field];
+}
+
+function pickField(
+  value: string | undefined,
+  fallback: string,
+): string {
+  return value === undefined ? fallback : value.trim();
+}
 
 export function renderHardwareBlock(
   hardware: HardwareConfig,
   language: HardwareLanguage,
 ): string {
   const labels = LABELS[language];
-  const lines = FIELD_ORDER.filter((key) => hardware[key]?.trim()).map(
-    (key) => `${labels.fields[key]}: ${hardware[key].trim()}`,
-  );
-  if (lines.length === 0) return "";
-  return [`${labels.heading}:`, ...lines].join("\n");
+  const groups = HARDWARE_GROUPS.map((group) => {
+    const lines = group.fields
+      .filter((key) => hardware[key]?.trim())
+      .map((key) => `• ${labels.fields[key]}: ${hardware[key].trim()}`);
+    if (lines.length === 0) return "";
+    return [group.heading[language], ...lines].join("\n");
+  }).filter((block) => block.length > 0);
+  if (groups.length === 0) return "";
+  return [labels.heading, ...groups].join("\n\n");
 }
 
 export function mergeHardware(
@@ -101,15 +134,15 @@ export function mergeHardware(
   defaults: HardwareConfig = DEFAULT_HARDWARE,
 ): HardwareConfig {
   return {
-    cpu: partial?.cpu?.trim() || defaults.cpu,
-    gpu: partial?.gpu?.trim() || defaults.gpu,
-    ram: partial?.ram?.trim() || defaults.ram,
-    rig: partial?.rig?.trim() || defaults.rig,
-    wheelbase: partial?.wheelbase?.trim() || defaults.wheelbase,
-    pedals: partial?.pedals?.trim() || defaults.pedals,
-    seat: partial?.seat?.trim() || defaults.seat,
-    buttonBox: partial?.buttonBox?.trim() || defaults.buttonBox,
-    monitors: partial?.monitors?.trim() || defaults.monitors,
-    resolution: partial?.resolution?.trim() || defaults.resolution,
+    cpu: pickField(partial?.cpu, defaults.cpu),
+    gpu: pickField(partial?.gpu, defaults.gpu),
+    ram: pickField(partial?.ram, defaults.ram),
+    rig: pickField(partial?.rig, defaults.rig),
+    wheelbase: pickField(partial?.wheelbase, defaults.wheelbase),
+    pedals: pickField(partial?.pedals, defaults.pedals),
+    seat: pickField(partial?.seat, defaults.seat),
+    buttonBox: pickField(partial?.buttonBox, defaults.buttonBox),
+    monitors: pickField(partial?.monitors, defaults.monitors),
+    resolution: pickField(partial?.resolution, defaults.resolution),
   };
 }

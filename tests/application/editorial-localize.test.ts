@@ -82,7 +82,7 @@ describe("editorial description assembly", () => {
     });
     expect(description).toContain("Circuito: Oschersleben");
     expect(description).toContain("Partenza: P18/20");
-    expect(description).toContain("Setup / Hardware");
+    expect(description).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(description).toContain(DEFAULT_HARDWARE.wheelbase);
     expect(description).toContain("#iRacing");
   });
@@ -129,9 +129,9 @@ describe("editorialLocalize", () => {
     expect(pack.it.title).toContain("P18");
     expect(pack.en.title).toContain("Comeback");
     expect(pack.it.title).not.toBe(pack.en.title);
-    expect(pack.it.description).toContain("Setup / Hardware");
+    expect(pack.it.description).toContain("LA MIA POSTAZIONE SIM RACING");
     expect(pack.en.description).toContain("Wheelbase:");
-    expect(pack.it.voiceOverScript).not.toContain("Setup / Hardware");
+    expect(pack.it.voiceOverScript).not.toContain("LA MIA POSTAZIONE SIM RACING");
     expect(pack.thumbnailConcept.universalText).toBe("P18 → P8");
   });
 });
