@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-15  
 **Brand:** S.Marcato 42 Racing  
-**Status:** Design approved (Approach A) — awaiting operator review of this file  
+**Status:** Design approved — implementation plan ready (`docs/superpowers/plans/2026-08-15-operator-match-shorts.md`)  
 **Related:** [2026-08-14-youtube-inspiration-design.md](./2026-08-14-youtube-inspiration-design.md), [2026-08-15-short-control-ui-redesign.md](./2026-08-15-short-control-ui-redesign.md)
 
 ## 1. Purpose
