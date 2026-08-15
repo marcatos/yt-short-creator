@@ -71,6 +71,25 @@ function defaultPageHelpersFactory(page: unknown): InspirationPageHelpers {
   return createPlaywrightInspirationHelpers(page as PageLike);
 }
 
+/**
+ * Reuse the first open tab (close extras). Closing every tab then calling
+ * `newPage()` fails on some Chrome/profile sessions with:
+ * "Protocol error (Target.createTarget): Failed to open a new tab".
+ */
+export async function acquireStudioWorkPage(
+  context: StudioPersistentContext,
+): Promise<unknown> {
+  const open = context.pages();
+  const primary = open[0];
+  for (const page of open.slice(1)) {
+    await (page as { close(): Promise<void> }).close().catch(() => undefined);
+  }
+  if (primary) {
+    return primary;
+  }
+  return context.newPage();
+}
+
 function errorMeta(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     return { name: error.name, message: error.message, stack: error.stack };
@@ -111,14 +130,9 @@ export function createYouTubeStudioInspirationAdapter(
           });
 
           try {
-            // Prefer a fresh tab — restored Studio tabs from the persistent
-            // profile often ignore SPA route changes under automation.
-            for (const existing of context.pages()) {
-              await (existing as { close(): Promise<void> })
-                .close()
-                .catch(() => undefined);
-            }
-            const page = await context.newPage();
+            // Reuse the first tab — closing all tabs then newPage() can fail with
+            // "Failed to open a new tab" on persistent Studio profiles.
+            const page = await acquireStudioWorkPage(context);
             const helpers = pageHelpersFactory(page);
             const scrapeMax = parseInspirationConfig(env).scrapeMax;
             log?.info("Studio inspiration scrape max", { scrapeMax });

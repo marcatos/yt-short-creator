@@ -614,7 +614,10 @@ describe("createYouTubeStudioInspirationAdapter", () => {
         order.push(headed ? "headed" : "headless");
         return {
           pages: () => [{ close: async () => order.push("page-close") }],
-          newPage: async () => ({}),
+          newPage: async () => {
+            order.push("new-page");
+            return {};
+          },
           close: async () => {
             order.push("close");
           },
@@ -629,7 +632,35 @@ describe("createYouTubeStudioInspirationAdapter", () => {
     });
 
     await expect(adapter.sync()).rejects.toBeInstanceOf(StudioInspirationUiError);
-    expect(order).toEqual(["lock", "headed", "page-close", "close"]);
+    // Reuses the existing tab (no close-all / newPage).
+    expect(order).toEqual(["lock", "headed", "close"]);
+  });
+
+  it("opens a new page only when the context has no tabs", async () => {
+    const order: string[] = [];
+    const adapter = createYouTubeStudioInspirationAdapter({
+      env: {},
+      profileExists: () => true,
+      withLock: async (fn) => fn(),
+      browserFactory: async () => ({
+        pages: () => [],
+        newPage: async () => {
+          order.push("new-page");
+          return {};
+        },
+        close: async () => {
+          order.push("close");
+        },
+      }),
+      pageHelpersFactory: () =>
+        helpersFromCards([
+          { idea: idea({ externalKey: "studio:only" }) },
+        ]),
+    });
+
+    const result = await adapter.sync();
+    expect(result.ideas).toHaveLength(1);
+    expect(order).toEqual(["new-page", "close"]);
   });
 
   it("returns captured ideas from injectable page helpers", async () => {
