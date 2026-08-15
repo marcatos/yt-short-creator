@@ -518,8 +518,16 @@
   background: var(--carbon-mid);
 }
 
-.inspiration-row .compact-copy {
-  min-width: 0;
+.inspiration-row .chip {
+  max-width: min(100%, 18rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspiration-summary {
+  margin: 0.35rem 0 0;
+  line-height: 1.45;
 }
 
 .inspiration-row .compact-title {

@@ -101,20 +101,20 @@ export default async function InspirationPage() {
 function IdeaRow({ idea }: { idea: InspirationIdeaRecord }) {
   const related = formatRelatedInterest(idea.relatedInterest);
   const hasDetails = Boolean(idea.outline || related || idea.thumbnailNotes);
+  const audienceChip = chipText(idea.audienceInterest);
+  const alignmentChip = chipText(idea.channelAlignment);
 
   return (
     <article className="compact-row inspiration-row">
       <div className="compact-copy">
-        <div className="chip-row">
-          {idea.audienceInterest ? (
-            <span className="chip">{idea.audienceInterest}</span>
-          ) : null}
-          {idea.channelAlignment ? (
-            <span className="chip">{idea.channelAlignment}</span>
-          ) : null}
-        </div>
+        {audienceChip || alignmentChip ? (
+          <div className="chip-row">
+            {audienceChip ? <span className="chip">{audienceChip}</span> : null}
+            {alignmentChip ? <span className="chip">{alignmentChip}</span> : null}
+          </div>
+        ) : null}
         <h2 className="compact-title">{idea.title}</h2>
-        <p className="muted">{idea.summary}</p>
+        <p className="muted inspiration-summary">{summaryText(idea.summary)}</p>
         {idea.suggestedTitles.length > 0 ? (
           <ul className="inspiration-suggested">
             {idea.suggestedTitles.map((title) => (
@@ -145,6 +145,22 @@ function IdeaRow({ idea }: { idea: InspirationIdeaRecord }) {
       </div>
     </article>
   );
+}
+
+const CHIP_MAX = 48;
+const SUMMARY_MAX = 220;
+
+function chipText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.length > CHIP_MAX) return null;
+  return trimmed;
+}
+
+function summaryText(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= SUMMARY_MAX) return trimmed;
+  return `${trimmed.slice(0, SUMMARY_MAX - 1)}…`;
 }
 
 function SyncHistoryTable({ runs }: { runs: InspirationSyncRun[] }) {
