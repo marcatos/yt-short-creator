@@ -1,84 +1,111 @@
 import Link from "next/link";
 
+import { PageHeader } from "@/app/components/PageHeader";
+import { formatListDateTime } from "@/app/lib/format";
+import { parseInspirationConfig } from "@/src/domain/inspiration-config";
 import { getContainer } from "@/src/lib/container";
 
 export const dynamic = "force-dynamic";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "paused"]);
+
+function isInspirationStale(
+  latestSuccessfulSyncAt: Date | null,
+  now: Date,
+  staleDays: number,
+): boolean {
+  if (!latestSuccessfulSyncAt) return true;
+  return now.getTime() - latestSuccessfulSyncAt.getTime() > staleDays * MS_PER_DAY;
+}
+
 export default async function HomePage() {
-  const channels = await getContainer().repositories.channels.list();
+  const container = getContainer();
+  const channels = await container.repositories.channels.list();
   const connectedChannel = channels[0] ?? null;
 
+  const [reviewCandidates, sourceVideos, latestInspirationSync] =
+    await Promise.all([
+      container.listCandidates({ status: "proposed" }),
+      connectedChannel
+        ? container.repositories.sourceVideos.listByChannelId(
+            connectedChannel.id,
+          )
+        : Promise.resolve([]),
+      container.repositories.inspiration.getLatestSuccessfulSyncAt(),
+    ]);
+
+  const activeJobs = container.jobQueue
+    .listJobs()
+    .filter((job) => ACTIVE_JOB_STATUSES.has(job.status)).length;
+
+  const inspirationConfig = parseInspirationConfig(process.env);
+  const inspirationStale = isInspirationStale(
+    latestInspirationSync,
+    new Date(),
+    inspirationConfig.staleDays,
+  );
+
+  const primaryHref = !connectedChannel
+    ? "/connect"
+    : reviewCandidates.length > 0
+      ? "/candidates?status=proposed"
+      : "/library";
+  const primaryLabel = !connectedChannel
+    ? "Connect YouTube"
+    : reviewCandidates.length > 0
+      ? "Review queue"
+      : "View library";
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem",
-        textAlign: "center",
-        gap: "1.5rem",
-      }}
-    >
-      <p
-        style={{
-          margin: 0,
-          fontSize: "0.875rem",
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          color: "var(--ice-dim)",
-        }}
-      >
-        S.Marcato 42 Racing
-      </p>
-      <h1
-        style={{
-          margin: 0,
-          fontSize: "clamp(2rem, 5vw, 3rem)",
-          fontWeight: 700,
-          color: "var(--ice)",
-        }}
-      >
-        YT Short Creator
-      </h1>
-      <p
-        style={{
-          margin: 0,
-          maxWidth: "36rem",
-          color: "var(--ice-dim)",
-          fontSize: "1.125rem",
-        }}
-      >
-        {connectedChannel
-          ? `${connectedChannel.title} is connected and ready to sync.`
-          : "Analyze your channel, propose branded Shorts from clips and generation, approve locally, and upload to YouTube."}
-      </p>
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        <Link
-          href={connectedChannel ? "/library" : "/connect"}
-          style={{
-            display: "inline-block",
-            marginTop: "0.5rem",
-            padding: "0.75rem 1.5rem",
-            backgroundColor: "var(--rosso)",
-            color: "var(--ice)",
-            borderRadius: "4px",
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          {connectedChannel ? "View library" : "Connect YouTube"}
+    <main className="page-shell">
+      <section className="home-hero" aria-label="Short Control desk">
+        <span className="home-hero-stripe" aria-hidden="true" />
+        <PageHeader
+          eyebrow="S.Marcato 42 Racing"
+          title="Short Control"
+          description={
+            connectedChannel
+              ? `${connectedChannel.title} is connected and ready to sync.`
+              : "Analyze your channel, propose branded Shorts from clips and generation, approve locally, and upload to YouTube."
+          }
+          actions={
+            <div className="home-cta-row">
+              <Link className="button button-primary" href={primaryHref}>
+                {primaryLabel}
+              </Link>
+              {connectedChannel ? (
+                <Link className="button button-ghost" href="/connect">
+                  Connection
+                </Link>
+              ) : null}
+            </div>
+          }
+        />
+      </section>
+
+      <section className="pulse-strip" aria-label="Pipeline pulse">
+        <Link className="pulse-card" href="/candidates?status=proposed">
+          <strong>{reviewCandidates.length}</strong>
+          <span>To review</span>
         </Link>
-        {connectedChannel ? (
-          <Link
-            href="/connect"
-            style={{ alignSelf: "center", marginTop: "0.5rem" }}
-          >
-            Connection settings
-          </Link>
-        ) : null}
-      </div>
+        <Link className="pulse-card" href="/jobs">
+          <strong>{activeJobs}</strong>
+          <span>Active jobs</span>
+        </Link>
+        <Link className="pulse-card" href="/library">
+          <strong>{sourceVideos.length}</strong>
+          <span>Library videos</span>
+        </Link>
+        <Link className="pulse-card" href="/inspiration">
+          <strong>{inspirationStale ? "Stale" : "Fresh"}</strong>
+          <span>
+            {latestInspirationSync
+              ? `Sync ${formatListDateTime(latestInspirationSync)}`
+              : "Never synced"}
+          </span>
+        </Link>
+      </section>
     </main>
   );
 }
