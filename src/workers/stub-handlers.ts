@@ -54,6 +54,9 @@ const noopDeps: HandlerDeps = {
   async runIdeation() {
     return [];
   },
+  async runMatchProposeShorts() {
+    return { candidates: [], successes: 0, fillCount: 0 };
+  },
   syncInspiration: {
     async run() {
       return {

@@ -113,6 +113,11 @@ describe("render_short handler", () => {
         throw new Error(`unused director capture ${sessionId}`);
       },
       runIdeation: async () => [],
+      runMatchProposeShorts: async () => ({
+        candidates: [],
+        successes: 0,
+        fillCount: 0,
+      }),
       assembleGeneratePreview: async () => candidate,
       candidates: {
         async save(value) {

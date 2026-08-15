@@ -111,6 +111,11 @@ function makeHandlers(options: {
       throw new Error(`unused capture ${sessionId}`);
     },
     runIdeation: async () => [],
+    runMatchProposeShorts: async () => ({
+      candidates: [],
+      successes: 0,
+      fillCount: 0,
+    }),
     assembleGeneratePreview: async () => candidate,
     candidates: {
       async save(value) {
@@ -602,6 +607,11 @@ describe("download_source_video handler checkpoints", () => {
         throw new Error(`unused capture ${sessionId}`);
       },
       runIdeation: async () => [],
+      runMatchProposeShorts: async () => ({
+        candidates: [],
+        successes: 0,
+        fillCount: 0,
+      }),
       assembleGeneratePreview: async () => {
         throw new Error("unused");
       },
@@ -792,6 +802,11 @@ describe("download_source_video handler checkpoints", () => {
         throw new Error(`unused capture ${sessionId}`);
       },
       runIdeation: async () => [],
+      runMatchProposeShorts: async () => ({
+        candidates: [],
+        successes: 0,
+        fillCount: 0,
+      }),
       assembleGeneratePreview: async () => {
         throw new Error("unused");
       },

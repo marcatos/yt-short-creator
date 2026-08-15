@@ -266,6 +266,11 @@ describe("replay pipeline smoke", () => {
         return { session, candidates: [] };
       },
       runIdeation: async () => [],
+      runMatchProposeShorts: async () => ({
+        candidates: [],
+        successes: 0,
+        fillCount: 0,
+      }),
       assembleGeneratePreview: async ({ candidateId }) => {
         const candidate = candidates.get(candidateId);
         if (!candidate) throw new Error("missing");

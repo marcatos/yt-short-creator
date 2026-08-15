@@ -192,6 +192,11 @@ describe("candidate approval publishing flow", () => {
         throw new Error(`unused director ${sessionId}`);
       },
       runIdeation: async () => [],
+      runMatchProposeShorts: async () => ({
+        candidates: [],
+        successes: 0,
+        fillCount: 0,
+      }),
       assembleGeneratePreview: async () => candidate,
       candidates,
       replaySessions: {
