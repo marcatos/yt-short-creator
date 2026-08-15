@@ -22,11 +22,16 @@ export function recordToInspirationIdea(
 
 export async function loadInspirationPromptBlock(
   store: InspirationStorePort | undefined,
+  ideaIds?: string[],
 ): Promise<string> {
   if (!store) {
     return "";
   }
-  const records = await store.listActiveIdeas();
+  let records = await store.listActiveIdeas();
+  if (ideaIds?.length) {
+    const allow = new Set(ideaIds);
+    records = records.filter((record) => allow.has(record.id));
+  }
   return formatInspirationPromptBlock(records.map(recordToInspirationIdea));
 }
 

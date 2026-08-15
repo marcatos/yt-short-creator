@@ -38,6 +38,8 @@ type ApplyInspirationInput = {
   persistCandidates?: (candidates: ShortCandidate[]) => Promise<void>;
   /** Override match corpus (e.g. generate origin hook from the brief). */
   matchTextFor?: (candidate: ShortCandidate) => string;
+  ideaIds?: string[];
+  bypassStaleGate?: boolean;
 };
 
 function candidateMatchText(candidate: ShortCandidate): string {
@@ -106,6 +108,25 @@ export async function applyInspirationToBatch(
     };
   }
 
+  if (input.ideaIds?.length) {
+    const allow = new Set(input.ideaIds);
+    records = records.filter((record) => allow.has(record.id));
+  }
+
+  if (records.length === 0) {
+    log.info("inspiration_no_active_ideas", {
+      candidateCount: batchSize,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    await input.persistCandidates?.(input.candidates);
+    return {
+      candidates: input.candidates,
+      shortfall: 0,
+      stale: false,
+      matchedIdeaIds: [],
+    };
+  }
+
   const ideas = records.map(recordToInspirationIdea);
   let latestSuccessfulSyncAt: Date | null = null;
   try {
@@ -122,11 +143,13 @@ export async function applyInspirationToBatch(
       matchedIdeaIds: [],
     };
   }
-  const stale = isStale(
-    latestSuccessfulSyncAt,
-    input.clock.now(),
-    input.config.staleDays,
-  );
+  const stale =
+    !input.bypassStaleGate &&
+    isStale(
+      latestSuccessfulSyncAt,
+      input.clock.now(),
+      input.config.staleDays,
+    );
 
   if (stale) {
     log.warn("inspiration_stale", {

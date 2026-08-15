@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { applyInspirationToBatch } from "@/src/application/apply-inspiration-to-batch";
-import { formatInspirationPromptBlock } from "@/src/application/inspiration-prompt-block";
+import {
+  formatInspirationPromptBlock,
+  loadInspirationPromptBlock,
+} from "@/src/application/inspiration-prompt-block";
 import type { InspirationConfig } from "@/src/domain/inspiration-config";
 import type { ShortCandidate } from "@/src/domain/entities";
 import type {
@@ -156,6 +159,21 @@ function generateCandidate(
     ...overrides,
   };
 }
+
+describe("loadInspirationPromptBlock", () => {
+  it("loads only ideas in ideaIds subset", async () => {
+    const store = new MemoryInspirationStore();
+    store.ideas = [
+      ideaRecord({ id: "idea-1", title: "First idea" }),
+      ideaRecord({ id: "idea-2", title: "Second idea" }),
+    ];
+
+    const block = await loadInspirationPromptBlock(store, ["idea-1"]);
+
+    expect(block).toContain("First idea");
+    expect(block).not.toContain("Second idea");
+  });
+});
 
 describe("formatInspirationPromptBlock", () => {
   it("returns empty string when there are no ideas", () => {
@@ -437,6 +455,45 @@ describe("applyInspirationToBatch", () => {
         ideaId: "idea-1",
       }),
     ]);
+  });
+
+  it("applies only selected ideaIds and bypasses stale gate when requested", async () => {
+    const store = new MemoryInspirationStore();
+    store.latestOkSyncAt = new Date("2026-08-01T18:00:00.000Z");
+    store.ideas = [
+      ideaRecord({ id: "only-this", title: "Oschersleben battle for P2" }),
+      ideaRecord({ id: "other-idea", title: "Monza qualifying pace" }),
+    ];
+    const { logger, warnings } = capturingLogger();
+    const matched = clipCandidate({
+      id: "c-matched",
+      title: "Oschersleben last lap battle",
+      description: "Door-to-door fight at Oschersleben",
+      score: 0.7,
+    });
+
+    const result = await applyInspirationToBatch({
+      store,
+      config,
+      clock: { now: () => now },
+      logger,
+      candidates: [matched],
+      ideaIds: ["only-this"],
+      bypassStaleGate: true,
+    });
+
+    expect(result.stale).toBe(false);
+    expect(result.candidates[0]?.score).toBeGreaterThan(0.7);
+    expect(store.links).toEqual([
+      expect.objectContaining({
+        candidateId: "c-matched",
+        ideaId: "only-this",
+      }),
+    ]);
+    expect(store.links.some((link) => link.ideaId === "other-idea")).toBe(false);
+    expect(warnings.some((entry) => entry.msg === "inspiration_stale")).toBe(
+      false,
+    );
   });
 
   it("treats a recent partial sync as fresh for hard bias", async () => {
