@@ -35,6 +35,7 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   analyze_clips: ["run"],
   analyze_replay: ["run"],
   ideate: ["run"],
+  match_propose_shorts: ["run"],
   capture_replay: ["capture"],
   // The handler only checkpoints a single "assemble" step (TTS + assembly
   // run atomically); this list must match handlers.ts exactly.

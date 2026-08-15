@@ -4,6 +4,7 @@ import type {
   AssembleGeneratePreview,
   RunIdeation,
 } from "@/src/application/run-ideation";
+import type { RunMatchProposeShorts } from "@/src/application/run-match-propose-shorts";
 import type { RunReplayAnalysis } from "@/src/application/run-replay-analysis";
 import type { RunReplayDirectorCapture } from "@/src/application/run-replay-director-capture";
 import type { SyncInspiration } from "@/src/application/sync-inspiration";
@@ -47,6 +48,7 @@ export type HandlerDeps = {
   requestReplayCapture: RequestReplayCapture;
   runReplayDirectorCapture: RunReplayDirectorCapture;
   runIdeation: RunIdeation;
+  runMatchProposeShorts: RunMatchProposeShorts;
   syncInspiration: SyncInspiration;
   assembleGeneratePreview: AssembleGeneratePreview;
   candidates: CandidateRepository;
@@ -274,6 +276,63 @@ export function createHandlers(
         durationMs: Math.round(performance.now() - startedAt),
       });
     }),
+    match_propose_shorts: singleStep(
+      "match_propose_shorts",
+      "run",
+      async (ctx) => {
+        const channelId = requireStringPayload(ctx.payload, "channelId");
+        const pairsRaw = ctx.payload.pairs;
+        if (!Array.isArray(pairsRaw) || pairsRaw.length === 0) {
+          throw new Error("Job payload missing required non-empty pairs array");
+        }
+        const pairs = pairsRaw.map((entry, index) => {
+          if (
+            entry == null ||
+            typeof entry !== "object" ||
+            typeof (entry as { sourceVideoId?: unknown }).sourceVideoId !==
+              "string" ||
+            !(entry as { sourceVideoId: string }).sourceVideoId ||
+            typeof (entry as { ideaId?: unknown }).ideaId !== "string" ||
+            !(entry as { ideaId: string }).ideaId
+          ) {
+            throw new Error(
+              `Job payload pairs[${index}] must include sourceVideoId and ideaId`,
+            );
+          }
+          return {
+            sourceVideoId: (entry as { sourceVideoId: string }).sourceVideoId,
+            ideaId: (entry as { ideaId: string }).ideaId,
+          };
+        });
+        const startedAt = performance.now();
+        handlerLogger.info("match_propose_shorts started", {
+          jobId: ctx.jobId,
+          channelId,
+          pairCount: pairs.length,
+        });
+        ctx.setProgress(5, `Matching ${pairs.length} video×idea pairs`);
+        const result = await deps.runMatchProposeShorts({
+          channelId,
+          pairs,
+          onProgress: async (pct, message) => {
+            ctx.setProgress(pct, message);
+          },
+        });
+        ctx.setProgress(
+          100,
+          `Match complete: ${result.candidates.length} candidates (${result.successes} pairs, ${result.fillCount} fill)`,
+        );
+        handlerLogger.info("match_propose_shorts completed", {
+          jobId: ctx.jobId,
+          channelId,
+          pairCount: pairs.length,
+          candidateCount: result.candidates.length,
+          successes: result.successes,
+          fillCount: result.fillCount,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      },
+    ),
     // `assembleGeneratePreview` synthesizes TTS and assembles the preview in
     // one atomic call (see src/application/run-ideation.ts). Splitting it
     // into `tts` + `assemble` checkpoints would require an invasive rewrite

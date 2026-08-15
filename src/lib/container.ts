@@ -52,10 +52,15 @@ import {
 } from "@/src/application/run-clip-analysis";
 import {
   createAssembleGeneratePreview,
+  createInspirationGenerateFill,
   createRunIdeation,
   type AssembleGeneratePreview,
   type RunIdeation,
 } from "@/src/application/run-ideation";
+import {
+  createRunMatchProposeShorts,
+  type RunMatchProposeShorts,
+} from "@/src/application/run-match-propose-shorts";
 import {
   createRejectCandidate,
   type RejectCandidate,
@@ -172,6 +177,7 @@ export type AppContainer = {
   runClipAnalysis: RunClipAnalysis;
   runReplayAnalysis: RunReplayAnalysis;
   runIdeation: RunIdeation;
+  runMatchProposeShorts: RunMatchProposeShorts;
   assembleGeneratePreview: AssembleGeneratePreview;
   createReplaySession: CreateReplaySession;
   attachReplayMedia: AttachReplayMedia;
@@ -297,7 +303,7 @@ export function createContainer(env: AppEnv): AppContainer {
   const upload = createGoogleYouTubeUpload({ logger });
   const captions = createGoogleYouTubeCaptions({ logger });
   const inspirationConfig = parseInspirationConfig(process.env);
-  const runIdeation = createRunIdeation({
+  const ideationDeps = {
     llm,
     tts,
     mediaStore,
@@ -307,6 +313,24 @@ export function createContainer(env: AppEnv): AppContainer {
     clock,
     logger,
     inspirationStore: repositories.inspiration,
+    inspirationConfig,
+  };
+  const runIdeation = createRunIdeation(ideationDeps);
+  const runClipAnalysis = createRunClipAnalysis({
+    llm,
+    videoDownload,
+    sourceVideos: repositories.sourceVideos,
+    candidates: repositories.candidates,
+    id,
+    clock,
+    logger,
+    inspirationStore: repositories.inspiration,
+    inspirationConfig,
+  });
+  const runMatchProposeShorts = createRunMatchProposeShorts({
+    runClipAnalysis,
+    runIdeationFill: createInspirationGenerateFill(ideationDeps),
+    logger,
     inspirationConfig,
   });
   const syncInspiration = createSyncInspiration({
@@ -378,19 +402,10 @@ export function createContainer(env: AppEnv): AppContainer {
       clock,
       logger,
     }),
-    runClipAnalysis: createRunClipAnalysis({
-      llm,
-      videoDownload,
-      sourceVideos: repositories.sourceVideos,
-      candidates: repositories.candidates,
-      id,
-      clock,
-      logger,
-      inspirationStore: repositories.inspiration,
-      inspirationConfig,
-    }),
+    runClipAnalysis,
     runReplayAnalysis,
     runIdeation,
+    runMatchProposeShorts,
     syncInspiration,
     assembleGeneratePreview,
     createReplaySession: createCreateReplaySession({
@@ -609,6 +624,7 @@ export function startWorkers(): void {
       requestReplayCapture: container.requestReplayCapture,
       runReplayDirectorCapture: container.runReplayDirectorCapture,
       runIdeation: container.runIdeation,
+      runMatchProposeShorts: container.runMatchProposeShorts,
       syncInspiration: container.syncInspiration,
       assembleGeneratePreview: container.assembleGeneratePreview,
       candidates: container.repositories.candidates,
