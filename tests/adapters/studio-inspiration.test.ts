@@ -94,6 +94,9 @@ function helpersFromCards(
   return {
     async gotoAndEnsureSignedIn() {},
     async openInspirationFeed() {},
+    async expandFeed(maxCards) {
+      return Math.min(cards.length, maxCards);
+    },
     async countCards() {
       return cards.length;
     },
@@ -126,6 +129,7 @@ function emptyLocator(): LocatorLike {
     waitFor: async () => {
       throw new Error("waitFor timeout");
     },
+    scrollIntoViewIfNeeded: async () => {},
   };
   return self;
 }
@@ -235,6 +239,43 @@ describe("scrapeInspirationIdeas", () => {
       "studio:a",
       "studio:b",
     ]);
+  });
+
+  it("expands the feed before capture and respects maxCards", async () => {
+    const expandCaps: number[] = [];
+    let visible = 3;
+    const helpers: InspirationPageHelpers = {
+      async gotoAndEnsureSignedIn() {},
+      async openInspirationFeed() {},
+      async expandFeed(maxCards) {
+        expandCaps.push(maxCards);
+        visible = Math.min(12, maxCards);
+        return visible;
+      },
+      async countCards() {
+        return visible;
+      },
+      async captureCard(index) {
+        return {
+          idea: idea({
+            externalKey: `studio:${index + 1}`,
+            title: `Idea ${index + 1}`,
+          }),
+          expanded: true,
+        };
+      },
+      currentUrl() {
+        return "https://studio.youtube.com/channel/UC_test/content/inspiration";
+      },
+    };
+
+    const result = await scrapeInspirationIdeas(helpers, undefined, {
+      maxCards: 40,
+    });
+    expect(expandCaps).toEqual([40]);
+    expect(result.ideas).toHaveLength(12);
+    expect(result.ideas[0]?.externalKey).toBe("studio:1");
+    expect(result.ideas[11]?.externalKey).toBe("studio:12");
   });
 
   it("returns partial and warns when a card fails", async () => {

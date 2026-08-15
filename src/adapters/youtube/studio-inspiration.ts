@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 
+import { parseInspirationConfig } from "@/src/domain/inspiration-config";
 import type { Logger } from "@/src/ports/logger";
 import {
   StudioSessionUnavailableError,
@@ -119,7 +120,11 @@ export function createYouTubeStudioInspirationAdapter(
             }
             const page = await context.newPage();
             const helpers = pageHelpersFactory(page);
-            return await scrapeInspirationIdeas(helpers, log);
+            const scrapeMax = parseInspirationConfig(env).scrapeMax;
+            log?.info("Studio inspiration scrape max", { scrapeMax });
+            return await scrapeInspirationIdeas(helpers, log, {
+              maxCards: scrapeMax,
+            });
           } finally {
             await context.close().catch((closeError: unknown) => {
               log?.warn("Studio browser context close failed", {

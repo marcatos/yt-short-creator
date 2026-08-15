@@ -63,7 +63,7 @@ Approve enqueues render, then publish. Workers also handle analysis, ideation, r
 Inspiration is a **bias**, not a separate pipeline. After ideas are mirrored locally:
 
 1. Open **`/inspiration`** — confirm active ideas, last sync status, and the **Stale** badge (default: sync older than 7 days).
-2. Sync when Studio’s feed changes: **Sync now** on that page, or wait for the scheduled job (`INSPIRATION_SYNC_INTERVAL_HOURS`, default `24`). One-time Studio login: `npm run studio:login`.
+2. Sync when Studio’s feed changes: **Sync now** on that page, or wait for the scheduled job (`INSPIRATION_SYNC_INTERVAL_HOURS`, default `24`). Sync scroll-loads up to `INSPIRATION_SCRAPE_MAX` cards (default `80`). One-time Studio login: `npm run studio:login`.
 3. Run **clip**, **generate**, or **replay** as usual. While active ideas are fresh, proposals get:
    - a soft LLM prompt block (title / summary / suggested titles),
    - score boost for matched candidates,

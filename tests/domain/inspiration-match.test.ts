@@ -184,6 +184,13 @@ describe("inspiration config", () => {
       quotaRatio: 0.4,
       staleDays: 7,
       generateFillMax: 3,
+      scrapeMax: 80,
     });
+  });
+
+  it("reads INSPIRATION_SCRAPE_MAX", () => {
+    expect(
+      parseInspirationConfig({ INSPIRATION_SCRAPE_MAX: "120" }).scrapeMax,
+    ).toBe(120);
   });
 });

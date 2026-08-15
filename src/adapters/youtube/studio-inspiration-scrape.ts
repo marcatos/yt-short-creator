@@ -76,6 +76,11 @@ export const INSPIRATION_SELECTORS = {
 
 export const INSPIRATION_NAV_TIMEOUT_MS = 30_000;
 export const INSPIRATION_CARD_TIMEOUT_MS = 8_000;
+/** Default cap for scroll-loaded Inspiration cards per sync. */
+export const DEFAULT_INSPIRATION_SCRAPE_MAX = 80;
+export const INSPIRATION_FEED_EXPAND_IDLE_MS = 1_200;
+export const INSPIRATION_FEED_EXPAND_MAX_ROUNDS = 40;
+export const INSPIRATION_FEED_EXPAND_STABLE_ROUNDS = 3;
 
 export type LocatorLike = {
   first(): LocatorLike;
@@ -86,6 +91,7 @@ export type LocatorLike = {
   getAttribute(name: string): Promise<string | null>;
   isVisible(): Promise<boolean>;
   waitFor(options?: { state?: string; timeout?: number }): Promise<void>;
+  scrollIntoViewIfNeeded?(): Promise<void>;
 };
 
 export type PageLike = {
@@ -97,6 +103,8 @@ export type PageLike = {
   locator(selector: string): LocatorLike;
   getByRole(role: string, options?: { name?: string | RegExp }): LocatorLike;
   keyboard: { press(key: string): Promise<void> };
+  evaluate?<T>(fn: () => T): Promise<T>;
+  mouse?: { wheel(deltaX: number, deltaY: number): Promise<void> };
 };
 
 export type CapturedInspirationCard = {
@@ -107,9 +115,15 @@ export type CapturedInspirationCard = {
 export type InspirationPageHelpers = {
   gotoAndEnsureSignedIn(): Promise<void>;
   openInspirationFeed(): Promise<void>;
+  /** Scroll-load more feed cards up to maxCards; returns visible count. */
+  expandFeed(maxCards: number): Promise<number>;
   countCards(): Promise<number>;
   captureCard(index: number): Promise<CapturedInspirationCard>;
   currentUrl(): string;
+};
+
+export type ScrapeInspirationOptions = {
+  maxCards?: number;
 };
 
 function errorMessage(error: unknown): string {
@@ -121,6 +135,35 @@ function errorMeta(error: unknown): Record<string, unknown> {
     return { name: error.name, message: error.message, stack: error.stack };
   }
   return { error: String(error) };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function scrollInspirationFeed(page: PageLike): Promise<void> {
+  if (typeof page.evaluate === "function") {
+    await page.evaluate(() => {
+      const candidates = [
+        document.querySelector("#contents"),
+        document.querySelector("ytci-feed"),
+        document.querySelector("#main"),
+        document.scrollingElement,
+      ].filter(Boolean) as Element[];
+      for (const el of candidates) {
+        const height =
+          "clientHeight" in el
+            ? Number((el as HTMLElement).clientHeight) || 800
+            : 800;
+        el.scrollBy(0, Math.max(700, height));
+      }
+      window.scrollBy(0, 900);
+    });
+    return;
+  }
+  if (page.mouse?.wheel) {
+    await page.mouse.wheel(0, 1400);
+  }
 }
 
 export function extractStudioChannelId(url: string): string | null {
@@ -425,6 +468,55 @@ export function createPlaywrightInspirationHelpers(
       return list ? list.count() : 0;
     },
 
+    async expandFeed(maxCards: number): Promise<number> {
+      const cap = Math.max(1, maxCards);
+      let previous = 0;
+      let stableRounds = 0;
+
+      for (
+        let round = 0;
+        round < INSPIRATION_FEED_EXPAND_MAX_ROUNDS;
+        round += 1
+      ) {
+        const list = await resolveCardList();
+        const count = list ? await list.count() : 0;
+        if (count >= cap) {
+          return cap;
+        }
+        if (list && count > 0) {
+          try {
+            const last = list.nth(count - 1);
+            if (last.scrollIntoViewIfNeeded) {
+              await last.scrollIntoViewIfNeeded();
+            }
+          } catch {
+            // Keep scrolling even if the last card cannot be focused.
+          }
+        }
+        await scrollInspirationFeed(page);
+        await sleep(INSPIRATION_FEED_EXPAND_IDLE_MS);
+
+        const nextList = await resolveCardList();
+        const next = nextList ? await nextList.count() : 0;
+        if (next >= cap) {
+          return cap;
+        }
+        if (next <= previous) {
+          stableRounds += 1;
+          if (stableRounds >= INSPIRATION_FEED_EXPAND_STABLE_ROUNDS) {
+            return next;
+          }
+        } else {
+          stableRounds = 0;
+        }
+        previous = next;
+      }
+
+      const finalList = await resolveCardList();
+      const finalCount = finalList ? await finalList.count() : 0;
+      return Math.min(finalCount, cap);
+    },
+
     async captureCard(index: number): Promise<CapturedInspirationCard> {
       // A leftover pitch dialog blocks clicks on the next feed card.
       await dismissDetail(page);
@@ -434,6 +526,13 @@ export function createPlaywrightInspirationHelpers(
         throw new Error("Inspiration idea cards disappeared");
       }
       const card = list.nth(index);
+      if (card.scrollIntoViewIfNeeded) {
+        try {
+          await card.scrollIntoViewIfNeeded();
+        } catch {
+          // Capture may still succeed without scroll.
+        }
+      }
       const studioId =
         (await card.getAttribute("data-idea-id")) ??
         (await card.getAttribute("data-id"));
@@ -504,19 +603,27 @@ export function createPlaywrightInspirationHelpers(
 export async function scrapeInspirationIdeas(
   helpers: InspirationPageHelpers,
   log?: Logger,
+  options?: ScrapeInspirationOptions,
 ): Promise<InspirationCaptureResult> {
   const startedAt = performance.now();
+  const maxCards = Math.max(
+    1,
+    options?.maxCards ?? DEFAULT_INSPIRATION_SCRAPE_MAX,
+  );
   await helpers.gotoAndEnsureSignedIn();
   await helpers.openInspirationFeed();
 
-  const total = await helpers.countCards();
+  const total = await helpers.expandFeed(maxCards);
   if (total === 0) {
     throw new StudioInspirationUiError(
       `No Inspiration idea cards found (url=${helpers.currentUrl()})`,
     );
   }
 
-  log?.info("Inspiration idea cards found", { total });
+  log?.info("Inspiration idea cards found", {
+    total,
+    maxCards,
+  });
   const ideas: CapturedInspirationIdea[] = [];
   let incomplete = false;
 
@@ -558,6 +665,7 @@ export async function scrapeInspirationIdeas(
     status,
     ideaCount: ideas.length,
     cardCount: total,
+    maxCards,
     durationMs: Math.round(performance.now() - startedAt),
   });
   return { status, ideas };

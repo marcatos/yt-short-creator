@@ -4,6 +4,8 @@ export type InspirationConfig = {
   quotaRatio: number;
   staleDays: number;
   generateFillMax: number;
+  /** Max Inspiration cards to scroll-load + capture per sync. */
+  scrapeMax: number;
 };
 
 export function parseInspirationConfig(
@@ -15,6 +17,7 @@ export function parseInspirationConfig(
     quotaRatio: parseEnvNumber(env.INSPIRATION_QUOTA_RATIO, 0.4),
     staleDays: parseEnvInt(env.INSPIRATION_STALE_DAYS, 7),
     generateFillMax: parseEnvInt(env.INSPIRATION_GENERATE_FILL_MAX, 3),
+    scrapeMax: Math.max(1, parseEnvInt(env.INSPIRATION_SCRAPE_MAX, 80)),
   };
 }
 

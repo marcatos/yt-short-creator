@@ -96,7 +96,7 @@ Returns ideas + per-idea field completeness; may be `partial` if some cards fail
 - Playwright **persistent context** under `data/youtube-studio-profile/` (env `YOUTUBE_STUDIO_PROFILE_DIR` optional).
 - **Shared mutex** with related-video Studio adapter (serialize all Studio automation).
 - Navigate: Studio → Content → Inspiration tab.
-- For each idea card (~9): open detail → extract full fields → close/back.
+- For each idea card (scroll-load up to `INSPIRATION_SCRAPE_MAX`, default 80): open detail → extract full fields → close/back.
 - Prefer DOM extraction; if network responses for Inspiration are observed, may also parse them as enrichment (not required for v1 success).
 - Headed one-time login only via `scripts/studio-login.ts` (already planned for related-video). Workers never open interactive login.
 - Missing / logged-out profile: typed fail-fast error for the sync job only.
@@ -217,3 +217,4 @@ Wire `apply-inspiration-to-batch` at the end of clip/replay/generate proposal pa
 | `INSPIRATION_QUOTA_RATIO` | `0.4` | Aligned fraction of batch |
 | `INSPIRATION_STALE_DAYS` | `7` | Soft-only after this age |
 | `INSPIRATION_GENERATE_FILL_MAX` | `3` | Extra generate fills |
+| `INSPIRATION_SCRAPE_MAX` | `80` | Max cards to scroll-load + capture per sync |
