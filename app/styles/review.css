@@ -52,6 +52,12 @@
 .review-form {
   display: grid;
   gap: 1rem;
+  width: min(100%, var(--form-col-max));
+  justify-self: start;
+}
+
+.review-form > .provenance-panel {
+  width: 100%;
 }
 
 .review-heading {
@@ -66,8 +72,9 @@
 
 .settings-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, var(--form-col-max)) minmax(18rem, 1fr);
+  gap: 1.25rem;
+  align-items: start;
 }
 
 .settings-card {
@@ -135,6 +142,149 @@
   white-space: pre-wrap;
 }
 
+.replay-create-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: var(--form-col-max);
+}
+
+.replay-session-list {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.replay-session-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.replay-session-header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.replay-session-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.replay-publish-form {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.replay-path.mono,
+.mono {
+  margin: 0.5rem 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--silver);
+}
+
+.replay-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--hairline);
+  background: #0e0e12;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.replay-panel h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.replay-panel p,
+.replay-panel ul,
+.replay-panel ol {
+  margin: 0;
+}
+
+.replay-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+.replay-session-tools {
+  display: grid;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem));
+  justify-content: start;
+}
+
+.replay-tool-form {
+  display: grid;
+  gap: 0.4rem;
+}
+
+@media (min-width: 1400px) {
+  .review-grid {
+    grid-template-columns: auto minmax(0, var(--form-col-max));
+    justify-content: start;
+    gap: 2.5rem;
+  }
+
+  .preview-column {
+    position: sticky;
+    top: calc(var(--toolbar-height) + 1rem);
+    max-height: calc(100dvh - var(--toolbar-height) - 2rem);
+  }
+
+  .vertical-preview,
+  .provenance-panel {
+    width: min(100%, 30rem);
+  }
+
+  .settings-grid {
+    gap: 1.5rem;
+  }
+
+  .hardware-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hardware-group legend {
+    grid-column: 1 / -1;
+  }
+
+  .replay-create-form {
+    max-width: 48rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .replay-create-form > button {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+}
+
+@media (min-width: 1800px) {
+  .review-grid {
+    gap: 3rem;
+  }
+
+  .vertical-preview {
+    width: min(32rem, calc((100dvh - 14rem) * 9 / 16));
+  }
+
+  .provenance-panel {
+    width: min(100%, 32rem);
+  }
+}
+
 @media (max-width: 760px) {
   .review-grid,
   .settings-grid {
@@ -145,7 +295,8 @@
     width: min(80vw, 22rem);
   }
 
-  .field-pair {
+  .field-pair,
+  .hardware-group {
     grid-template-columns: 1fr;
   }
 }

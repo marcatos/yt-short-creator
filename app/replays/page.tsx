@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 
+import { PageHeader } from "@/app/components/PageHeader";
 import { getContainer } from "@/src/lib/container";
 
 export const dynamic = "force-dynamic";
@@ -129,43 +130,26 @@ export default async function ReplaysPage() {
   sessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   return (
-    <main style={{ maxWidth: "72rem", margin: "0 auto", padding: "3rem 2rem" }}>
-      <header style={{ marginBottom: "2rem" }}>
-        <p
-          style={{
-            color: "var(--ice-dim)",
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-          }}
-        >
-          Race sources
-        </p>
-        <h1 style={{ marginBottom: "0.5rem" }}>Replay sessions</h1>
-        <p style={{ color: "var(--ice-dim)", maxWidth: "46rem" }}>
-          Attach an OBS <code>.mkv</code>/<code>.mp4</code> for AV analysis
-          (transcript + YouTube title/description + Shorts). For a{" "}
-          <code>.rpy</code>, use{" "}
-          <strong>Director capture</strong> for ReplayDirector-style highlight
-          shots (seek events, switch cameras, stitch a reel), or{" "}
-          <strong>Auto-record</strong> for a continuous take. Requires{" "}
-          <em>Options → Enable video and screen capture</em> in iRacing. AV
-          analysis builds a lightweight proxy and never re-reads the full 2K
-          file once cached.
-        </p>
-      </header>
+    <main className="page-shell">
+      <PageHeader
+        eyebrow="Race sources"
+        title="Replay sessions"
+        description="Attach OBS media for AV analysis, or .rpy for Director / Auto capture. Requires iRacing Options → Enable video and screen capture."
+        actions={
+          <Link className="button button-ghost" href="/candidates">
+            Open candidates
+          </Link>
+        }
+      />
 
-      <section
-        style={{
-          border: "1px solid #333",
-          padding: "1.25rem",
-          marginBottom: "2.5rem",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>New session</h2>
-        <form
-          action={createSessionAction}
-          style={{ display: "grid", gap: "0.75rem", maxWidth: "40rem" }}
-        >
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>New session</h2>
+          <p>
+            Provide a local media path and/or .rpy. IBT is optional enrichment.
+          </p>
+        </div>
+        <form action={createSessionAction} className="replay-create-form">
           <label>
             OBS / local media path (MKV/MP4)
             <input
@@ -189,85 +173,70 @@ export default async function ReplaysPage() {
             IBT path (optional enrichment)
             <input name="ibtPath" placeholder="C:\...\telemetry.ibt" />
           </label>
-          <button
-            type="submit"
-            style={{
-              border: 0,
-              borderRadius: "4px",
-              padding: "0.7rem 1rem",
-              background: "var(--rosso)",
-              color: "var(--ice)",
-              cursor: "pointer",
-              fontWeight: 700,
-              width: "fit-content",
-            }}
-          >
+          <button className="button button-primary" type="submit">
             Create session
           </button>
         </form>
       </section>
 
       {sessions.length === 0 ? (
-        <p style={{ color: "var(--ice-dim)" }}>No replay sessions yet.</p>
+        <section className="empty-panel">
+          <span className="stripe-mark" aria-hidden="true" />
+          <h2>No replay sessions yet</h2>
+          <p>Create a session from OBS media or an iRacing .rpy path.</p>
+        </section>
       ) : (
-        <div style={{ display: "grid", gap: "1.5rem" }}>
+        <div className="replay-session-list">
           {sessions.map((session) => (
-            <article
-              key={session.id}
-              style={{ border: "1px solid #333", padding: "1.25rem" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                }}
-              >
+            <article className="settings-section replay-session" key={session.id}>
+              <div className="replay-session-header">
                 <div>
-                  <h2 style={{ margin: "0 0 0.35rem" }}>{session.title}</h2>
-                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                  <h2>{session.title}</h2>
+                  <p className="muted">
                     {session.trackName ?? "Track unknown"} · {session.status}
                     {session.durationSec
                       ? ` · ${Math.floor(session.durationSec / 60)}:${String(session.durationSec % 60).padStart(2, "0")}`
                       : ""}
                     {session.rpyPath ? "" : " · OBS media-only"}
                   </p>
-                  <p
-                    style={{
-                      margin: "0.5rem 0 0",
-                      fontFamily: "monospace",
-                      fontSize: "0.85rem",
-                      color: "var(--ice-dim)",
-                    }}
-                  >
+                  <p className="replay-path mono">
                     {session.rpyPath ?? "(no .rpy)"}
                   </p>
-                  <p style={{ margin: "0.25rem 0 0", color: "var(--ice-dim)" }}>
+                  <p className="muted">
                     Media: {session.mediaPath ?? "none"} · IBT:{" "}
                     {session.ibtPath ?? "none"} · Events: {session.events.length}
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <div className="replay-session-actions">
                   <form action={directorCaptureAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
-                    <button type="submit">Director capture</button>
+                    <button className="button button-secondary" type="submit">
+                      Director capture
+                    </button>
                   </form>
                   <form action={captureReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
-                    <button type="submit" disabled={!session.rpyPath}>
-                      Auto-record replay
+                    <button
+                      className="button button-secondary"
+                      type="submit"
+                      disabled={!session.rpyPath}
+                    >
+                      Auto-record
                     </button>
                   </form>
                   <form action={analyzeReplayAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
-                    <button type="submit" disabled={!session.mediaPath}>
+                    <button
+                      className="button button-secondary"
+                      type="submit"
+                      disabled={!session.mediaPath}
+                    >
                       Analyze AV
                     </button>
                   </form>
                   <form
                     action={publishFullReplayAction}
-                    style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}
+                    className="replay-publish-form"
                   >
                     <input type="hidden" name="sessionId" value={session.id} />
                     <select
@@ -281,15 +250,17 @@ export default async function ReplaysPage() {
                       <option value="private">private</option>
                     </select>
                     <button
+                      className="button button-primary"
                       type="submit"
                       disabled={
                         (!session.racePackage && !session.raceAnalysis) ||
                         !session.mediaPath
                       }
                     >
-                      Encode + upload full
+                      Encode + upload
                     </button>
                     <button
+                      className="button button-ghost"
                       type="submit"
                       name="voiceOver"
                       value="true"
@@ -299,14 +270,14 @@ export default async function ReplaysPage() {
                       }
                       title="Single master + IT/EN audio, localizations, captions"
                     >
-                      Encode + publish multi-lang VO
+                      Multi-lang VO
                     </button>
                   </form>
                 </div>
               </div>
 
               {session.fullVideoYoutubeId ? (
-                <p style={{ marginTop: "0.75rem" }}>
+                <p>
                   Full video on YouTube:{" "}
                   <a
                     href={`https://youtu.be/${session.fullVideoYoutubeId}`}
@@ -320,31 +291,22 @@ export default async function ReplaysPage() {
                     : ""}
                 </p>
               ) : session.fullVideoEncodePath ? (
-                <p style={{ marginTop: "0.75rem", color: "var(--ice-dim)" }}>
+                <p className="muted">
                   Delivery encode ready: {session.fullVideoEncodePath}
                 </p>
               ) : null}
 
               {session.raceAnalysis ? (
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "1rem",
-                    background: "#141414",
-                    border: "1px solid #2a2a2a",
-                    display: "grid",
-                    gap: "0.75rem",
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>Race analysis</h3>
-                  <p style={{ margin: 0 }}>
+                <div className="replay-panel">
+                  <h3>Race analysis</h3>
+                  <p>
                     <strong>Why watch:</strong> {session.raceAnalysis.whyWatch}
                   </p>
-                  <p style={{ margin: 0 }}>
+                  <p>
                     <strong>Storyline:</strong>{" "}
                     {session.raceAnalysis.mainStoryline}
                   </p>
-                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                  <p className="muted">
                     {[
                       session.raceAnalysis.context.track,
                       session.raceAnalysis.context.car,
@@ -356,7 +318,7 @@ export default async function ReplaysPage() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
-                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                  <p className="muted">
                     Short candidates: {session.raceAnalysis.shortCandidates.length}{" "}
                     (top score{" "}
                     {Math.max(
@@ -371,18 +333,9 @@ export default async function ReplaysPage() {
               ) : null}
 
               {session.deliveryAssets ? (
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "1rem",
-                    background: "#141414",
-                    border: "1px solid #2a2a2a",
-                    display: "grid",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>Delivery assets</h3>
-                  <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--ice-dim)" }}>
+                <div className="replay-panel">
+                  <h3>Delivery assets</h3>
+                  <ul className="muted">
                     <li>
                       Master:{" "}
                       {session.deliveryAssets.masterVideoPath ?? "(none)"}
@@ -398,7 +351,7 @@ export default async function ReplaysPage() {
                     .length > 0 ? (
                     <div>
                       <strong>Studio checklist (manual)</strong>
-                      <ol style={{ margin: "0.35rem 0 0", paddingLeft: "1.25rem" }}>
+                      <ol>
                         {(
                           session.publishManualChecklist ??
                           session.deliveryAssets.metadata.manualStudioChecklist
@@ -412,63 +365,31 @@ export default async function ReplaysPage() {
               ) : null}
 
               {session.racePackage ? (
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "1rem",
-                    background: "#141414",
-                    border: "1px solid #2a2a2a",
-                    display: "grid",
-                    gap: "0.75rem",
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>Legacy package bridge</h3>
-                  <p style={{ margin: 0 }}>
+                <div className="replay-panel">
+                  <h3>Legacy package bridge</h3>
+                  <p>
                     <strong>Title:</strong> {session.racePackage.fullVideo.title}
                   </p>
-                  <pre
-                    style={{
-                      margin: 0,
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "inherit",
-                      color: "var(--ice-dim)",
-                    }}
-                  >
+                  <pre className="replay-pre muted">
                     {session.racePackage.fullVideo.description}
                   </pre>
-                  <p style={{ margin: 0, color: "var(--ice-dim)" }}>
+                  <p className="muted">
                     Tags: {session.racePackage.fullVideo.tags.join(", ")}
                   </p>
                   <details>
-                    <summary style={{ cursor: "pointer" }}>
+                    <summary>
                       Race narrative ({session.racePackage.timeline.length}{" "}
                       beats)
                     </summary>
-                    <pre
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "inherit",
-                        color: "var(--ice-dim)",
-                      }}
-                    >
+                    <pre className="replay-pre muted">
                       {session.racePackage.transcript}
                     </pre>
                   </details>
                 </div>
               ) : null}
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
-                }}
-              >
-                <form
-                  action={attachMediaAction}
-                  style={{ display: "grid", gap: "0.4rem" }}
-                >
+              <div className="replay-session-tools">
+                <form action={attachMediaAction} className="replay-tool-form">
                   <input type="hidden" name="sessionId" value={session.id} />
                   <label>
                     Attach media
@@ -478,23 +399,21 @@ export default async function ReplaysPage() {
                       placeholder="C:\...\file.mkv"
                     />
                   </label>
-                  <button type="submit">Attach media</button>
+                  <button className="button button-secondary" type="submit">
+                    Attach media
+                  </button>
                 </form>
-                <form
-                  action={attachIbtAction}
-                  style={{ display: "grid", gap: "0.4rem" }}
-                >
+                <form action={attachIbtAction} className="replay-tool-form">
                   <input type="hidden" name="sessionId" value={session.id} />
                   <label>
                     Attach IBT
                     <input name="ibtPath" required placeholder="C:\...\file.ibt" />
                   </label>
-                  <button type="submit">Attach IBT</button>
+                  <button className="button button-secondary" type="submit">
+                    Attach IBT
+                  </button>
                 </form>
-                <form
-                  action={manualMomentAction}
-                  style={{ display: "grid", gap: "0.4rem" }}
-                >
+                <form action={manualMomentAction} className="replay-tool-form">
                   <input type="hidden" name="sessionId" value={session.id} />
                   <label>
                     Manual start (sec)
@@ -508,7 +427,11 @@ export default async function ReplaysPage() {
                     Title (optional)
                     <input name="title" />
                   </label>
-                  <button type="submit" disabled={!session.mediaPath}>
+                  <button
+                    className="button button-secondary"
+                    type="submit"
+                    disabled={!session.mediaPath}
+                  >
                     Add manual Short
                   </button>
                 </form>
@@ -517,12 +440,6 @@ export default async function ReplaysPage() {
           ))}
         </div>
       )}
-
-      <p style={{ marginTop: "2rem" }}>
-        <Link href="/candidates">Open candidates</Link>
-        {" · "}
-        <Link href="/">Home</Link>
-      </p>
     </main>
   );
 }

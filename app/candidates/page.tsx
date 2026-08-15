@@ -1,4 +1,5 @@
 import { CandidateQueue } from "@/app/components/CandidateQueue";
+import { PageHeader } from "@/app/components/PageHeader";
 import { CANDIDATE_STATUSES } from "@/src/domain/status";
 import { getContainer } from "@/src/lib/container";
 import type { CandidateInspirationLink } from "@/src/ports/inspiration-store";
@@ -62,14 +63,13 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
 
   return (
     <main className="page-shell">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">Approval queue</p>
-          <h1>Candidate triage</h1>
-        </div>
-        <strong>{candidates.length} loaded</strong>
-      </header>
-      <form className="filter-bar">
+      <PageHeader
+        eyebrow="Approval queue"
+        title="Candidate triage"
+        description="Triage proposed Shorts by status, origin, and score."
+        actions={<strong>{candidates.length} loaded</strong>}
+      />
+      <form className="filter-bar is-sticky">
         <label>
           Status
           <select name="status" defaultValue={status ?? ""}>

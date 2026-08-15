@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 
+import { PageHeader } from "@/app/components/PageHeader";
 import { formatCompactCount, formatListDateTime } from "@/app/lib/format";
 import { getContainer } from "@/src/lib/container";
 
@@ -57,31 +58,40 @@ export default async function LibraryPage() {
 
   return (
     <main className="page-shell">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">Source catalog</p>
-          <h1>{channel?.title ?? "Video library"}</h1>
-        </div>
-        {channel ? (
-          <div className="list-toolbar library-toolbar">
-            <GenerateIdeasButton channelId={channel.id} />
-            <form action={syncChannelAction}>
-              <input type="hidden" name="channelId" value={channel.id} />
-              <button className="button button-primary" type="submit">
-                Sync now
-              </button>
-            </form>
-          </div>
-        ) : null}
-      </header>
+      <PageHeader
+        eyebrow="Source catalog"
+        title={channel?.title ?? "Video library"}
+        description="Sync long-form uploads, analyze clips, and generate Short ideas."
+        actions={
+          channel ? (
+            <div className="list-toolbar library-toolbar">
+              <GenerateIdeasButton channelId={channel.id} />
+              <form action={syncChannelAction}>
+                <input type="hidden" name="channelId" value={channel.id} />
+                <button className="button button-primary" type="submit">
+                  Sync now
+                </button>
+              </form>
+            </div>
+          ) : null
+        }
+      />
 
       {!channel ? (
-        <p>
-          <Link href="/connect">Connect a YouTube channel</Link> to sync its
-          uploads.
-        </p>
+        <section className="empty-panel">
+          <span className="stripe-mark" aria-hidden="true" />
+          <h2>No channel connected</h2>
+          <p>
+            <Link href="/connect">Connect a YouTube channel</Link> to sync its
+            uploads.
+          </p>
+        </section>
       ) : videos.length === 0 ? (
-        <p className="muted">No uploaded videos were found.</p>
+        <section className="empty-panel">
+          <span className="stripe-mark" aria-hidden="true" />
+          <h2>Library empty</h2>
+          <p className="muted">No uploaded videos were found. Sync to pull the catalog.</p>
+        </section>
       ) : (
         <div className="library-list">
           {videos.map((video) => {
@@ -151,23 +161,25 @@ export default async function LibraryPage() {
               const brief = briefById.get(candidate.provenance.generationBriefId);
               if (!brief) return null;
               return (
-                <article className="settings-card" key={candidate.id}>
-                  <h3>{candidate.title}</h3>
-                  <p>
-                    <strong>Hook:</strong> {brief.hook}
-                  </p>
-                  <p>{brief.script}</p>
-                  {candidate.provenance.timeline.length === 0 ? (
-                    <p className="muted">
-                      Script-only preview — add footage to media/broll to
-                      assemble visuals.
+                <article className="compact-row library-idea-row" key={candidate.id}>
+                  <div className="compact-copy">
+                    <h3 className="compact-title">{candidate.title}</h3>
+                    <p>
+                      <strong>Hook:</strong> {brief.hook}
                     </p>
-                  ) : (
-                    <p className="muted">
-                      Preview uses {candidate.provenance.timeline.length} B-roll
-                      assets.
-                    </p>
-                  )}
+                    <p className="muted">{brief.script}</p>
+                    {candidate.provenance.timeline.length === 0 ? (
+                      <p className="muted">
+                        Script-only preview — add footage to media/broll to
+                        assemble visuals.
+                      </p>
+                    ) : (
+                      <p className="muted">
+                        Preview uses {candidate.provenance.timeline.length}{" "}
+                        B-roll assets.
+                      </p>
+                    )}
+                  </div>
                 </article>
               );
             })}

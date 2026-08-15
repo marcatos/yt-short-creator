@@ -9,10 +9,32 @@
   border-left: 3px solid var(--rosso);
 }
 
+.filter-bar.is-sticky {
+  position: sticky;
+  top: calc(var(--toolbar-height) + 0.35rem);
+  z-index: 10;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--rosso);
+}
+
+.filter-bar label {
+  min-width: 11rem;
+  flex: 1 1 12rem;
+  max-width: 18rem;
+}
+
 .queue-list,
 .jobs-list {
   display: grid;
   gap: 0.75rem;
+}
+
+.queue-list > .list-toolbar,
+.queue-list > .empty-panel,
+.jobs-list > .list-toolbar,
+.jobs-list > .empty-panel,
+.jobs-list > .job-error {
+  grid-column: 1 / -1;
 }
 
 .candidate-row {
@@ -397,6 +419,40 @@
   color: var(--ice-dim);
 }
 
+@media (min-width: 1600px) {
+  .queue-list,
+  .library-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compact-row {
+    grid-template-columns: 4.8rem minmax(0, 1fr) auto;
+  }
+
+  .compact-thumb {
+    width: 4.8rem;
+  }
+
+  .library-row {
+    grid-template-columns: 10rem minmax(0, 1fr) auto;
+  }
+
+  .library-thumb {
+    width: 10rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  .filter-bar {
+    gap: 1.25rem;
+    padding: 1.15rem 1.25rem;
+  }
+
+  .compact-title {
+    font-size: 1.02rem !important;
+  }
+}
+
 @media (max-width: 760px) {
   .candidate-row {
     grid-template-columns: 4rem minmax(0, 1fr);
@@ -446,13 +502,32 @@
   color: #f2bd69;
 }
 
-.inspiration-grid {
+.inspiration-grid,
+.inspiration-list {
   display: grid;
   gap: 0.75rem;
   margin-bottom: 2rem;
 }
 
-.inspiration-card p {
+.inspiration-row .compact-title {
+  margin-top: 0.35rem;
+}
+
+.inspiration-row details {
+  margin-top: 0.65rem;
+}
+
+.inspiration-row summary {
+  cursor: pointer;
+  color: var(--ice-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inspiration-card p,
+.inspiration-row p {
   white-space: normal;
   color: var(--silver);
 }
@@ -486,6 +561,24 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
+}
+
+.history-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+}
+
+.history-table-wrap .history-table th:first-child,
+.history-table-wrap .history-table td:first-child {
+  padding-left: 0.75rem;
+}
+
+.history-table thead th {
+  position: sticky;
+  top: calc(var(--toolbar-height) + 0.35rem);
+  background: var(--carbon-mid);
+  z-index: 1;
 }
 
 .history-table th,

@@ -1,4 +1,5 @@
 import { JobProgress } from "@/app/components/JobProgress";
+import { PageHeader } from "@/app/components/PageHeader";
 import { presentJobList } from "@/src/application/present-job-list";
 import { getContainer } from "@/src/lib/container";
 
@@ -19,13 +20,12 @@ export default async function JobsPage() {
 
   return (
     <main className="page-shell">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">Worker telemetry</p>
-          <h1>Render + publish jobs</h1>
-        </div>
-        <span className="live-indicator">Live polling</span>
-      </header>
+      <PageHeader
+        eyebrow="Worker telemetry"
+        title="Render + publish jobs"
+        description="Live queue for render, publish, capture, and analysis workers."
+        actions={<span className="live-indicator">Live polling</span>}
+      />
       <JobProgress initialJobs={presentJobList(jobs, titleByCandidateId)} />
     </main>
   );

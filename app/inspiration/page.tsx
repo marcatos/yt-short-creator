@@ -1,4 +1,5 @@
 import { InspirationSyncButton } from "@/app/components/InspirationSyncButton";
+import { PageHeader } from "@/app/components/PageHeader";
 import { formatListDateTime } from "@/app/lib/format";
 import { parseInspirationConfig } from "@/src/domain/inspiration-config";
 import { getContainer } from "@/src/lib/container";
@@ -59,18 +60,19 @@ export default async function InspirationPage() {
 
   return (
     <main className="page-shell">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">YouTube Studio</p>
-          <h1>Inspiration</h1>
-        </div>
-        <div className="list-toolbar library-toolbar">
-          {stale ? <span className="chip chip-stale">Stale</span> : null}
-          <InspirationSyncButton />
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="YouTube Studio"
+        title="Inspiration"
+        description="Mirror Studio Inspiration ideas into the Shorts desk."
+        actions={
+          <div className="list-toolbar library-toolbar">
+            {stale ? <span className="chip chip-stale">Stale</span> : null}
+            <InspirationSyncButton />
+          </div>
+        }
+      />
 
-      <section className="inspiration-grid" aria-label="Active ideas">
+      <section className="inspiration-list" aria-label="Active ideas">
         {ideas.length === 0 ? (
           <section className="empty-panel">
             <span className="stripe-mark" aria-hidden="true" />
@@ -78,9 +80,7 @@ export default async function InspirationPage() {
             <p>Sync YouTube Studio Inspiration to populate this board.</p>
           </section>
         ) : (
-          ideas.map((idea) => (
-            <IdeaCard idea={idea} key={idea.id} />
-          ))
+          ideas.map((idea) => <IdeaRow idea={idea} key={idea.id} />)
         )}
       </section>
 
@@ -89,56 +89,60 @@ export default async function InspirationPage() {
         {syncRuns.length === 0 ? (
           <p className="muted">No sync runs yet.</p>
         ) : (
-          <SyncHistoryTable runs={syncRuns} />
+          <div className="history-table-wrap">
+            <SyncHistoryTable runs={syncRuns} />
+          </div>
         )}
       </section>
     </main>
   );
 }
 
-function IdeaCard({ idea }: { idea: InspirationIdeaRecord }) {
+function IdeaRow({ idea }: { idea: InspirationIdeaRecord }) {
   const related = formatRelatedInterest(idea.relatedInterest);
   const hasDetails = Boolean(idea.outline || related || idea.thumbnailNotes);
 
   return (
-    <article className="settings-card inspiration-card">
-      <div className="chip-row">
-        {idea.audienceInterest ? (
-          <span className="chip">{idea.audienceInterest}</span>
+    <article className="compact-row inspiration-row">
+      <div className="compact-copy">
+        <div className="chip-row">
+          {idea.audienceInterest ? (
+            <span className="chip">{idea.audienceInterest}</span>
+          ) : null}
+          {idea.channelAlignment ? (
+            <span className="chip">{idea.channelAlignment}</span>
+          ) : null}
+        </div>
+        <h2 className="compact-title">{idea.title}</h2>
+        <p className="muted">{idea.summary}</p>
+        {idea.suggestedTitles.length > 0 ? (
+          <ul className="inspiration-suggested">
+            {idea.suggestedTitles.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
         ) : null}
-        {idea.channelAlignment ? (
-          <span className="chip">{idea.channelAlignment}</span>
+        {hasDetails ? (
+          <details>
+            <summary>Details</summary>
+            {idea.outline ? (
+              <p>
+                <strong>Outline.</strong> {idea.outline}
+              </p>
+            ) : null}
+            {related ? (
+              <p>
+                <strong>Related.</strong> {related}
+              </p>
+            ) : null}
+            {idea.thumbnailNotes ? (
+              <p>
+                <strong>Thumbnail.</strong> {idea.thumbnailNotes}
+              </p>
+            ) : null}
+          </details>
         ) : null}
       </div>
-      <h2>{idea.title}</h2>
-      <p>{idea.summary}</p>
-      {idea.suggestedTitles.length > 0 ? (
-        <ul className="inspiration-suggested">
-          {idea.suggestedTitles.map((title) => (
-            <li key={title}>{title}</li>
-          ))}
-        </ul>
-      ) : null}
-      {hasDetails ? (
-        <details>
-          <summary>Details</summary>
-          {idea.outline ? (
-            <p>
-              <strong>Outline.</strong> {idea.outline}
-            </p>
-          ) : null}
-          {related ? (
-            <p>
-              <strong>Related.</strong> {related}
-            </p>
-          ) : null}
-          {idea.thumbnailNotes ? (
-            <p>
-              <strong>Thumbnail.</strong> {idea.thumbnailNotes}
-            </p>
-          ) : null}
-        </details>
-      ) : null}
     </article>
   );
 }
