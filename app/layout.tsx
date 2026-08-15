@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+
+import { AppShell } from "@/app/components/AppShell";
+import { LAYOUT_DENSITY_BOOTSTRAP } from "@/app/lib/layout-density";
 
 import "./globals.css";
 
@@ -15,27 +17,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: LAYOUT_DENSITY_BOOTSTRAP }}
+        />
+      </head>
       <body>
-        <header className="site-header">
-          <Link className="brand-lockup" href="/">
-            <span className="brand-slash" aria-hidden="true" />
-            <span>
-              <strong>S.MARCATO 42</strong>
-              <small>SHORT CONTROL</small>
-            </span>
-          </Link>
-          <nav aria-label="Primary navigation">
-            <Link href="/library">Library</Link>
-            <Link href="/replays">Replays</Link>
-            <Link href="/candidates">Candidates</Link>
-            <Link href="/inspiration">Inspiration</Link>
-            <Link href="/jobs">Jobs</Link>
-            <Link href="/setup">Setup</Link>
-            <Link href="/settings">Settings</Link>
-          </nav>
-        </header>
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
