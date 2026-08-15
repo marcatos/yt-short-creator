@@ -78,7 +78,7 @@ export const INSPIRATION_NAV_TIMEOUT_MS = 30_000;
 export const INSPIRATION_CARD_TIMEOUT_MS = 8_000;
 /** Default cap for scroll-loaded Inspiration cards per sync. */
 export const DEFAULT_INSPIRATION_SCRAPE_MAX = 80;
-export const INSPIRATION_FEED_EXPAND_IDLE_MS = 1_200;
+export const INSPIRATION_FEED_EXPAND_IDLE_MS = 1_800;
 export const INSPIRATION_FEED_EXPAND_MAX_ROUNDS = 40;
 export const INSPIRATION_FEED_EXPAND_STABLE_ROUNDS = 3;
 
@@ -141,13 +141,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Click Studio's Inspiration feed "Show More" / "Mostra altro" control.
+ * Does not click per-card "Altri simili" / "More like this".
+ */
+export async function clickInspirationShowMore(
+  page: PageLike,
+): Promise<boolean> {
+  if (typeof page.evaluate !== "function") {
+    return false;
+  }
+  return page.evaluate(() => {
+    const label = /^(show more|mostra altro)$/i;
+    const els = Array.from(
+      document.querySelectorAll(
+        "ytcp-button, button, [role='button'], tp-yt-paper-button",
+      ),
+    );
+    for (const el of els) {
+      const text = ((el.textContent || "").trim().replace(/\s+/g, " "));
+      const aria = (el.getAttribute("aria-label") || "").trim();
+      if (label.test(text) || label.test(aria)) {
+        (el as HTMLElement).click();
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
 async function scrollInspirationFeed(page: PageLike): Promise<void> {
   if (typeof page.evaluate === "function") {
     await page.evaluate(() => {
+      const main = document.querySelector("#main") as HTMLElement | null;
+      if (main) {
+        main.scrollTop = main.scrollHeight;
+      }
       const candidates = [
         document.querySelector("#contents"),
         document.querySelector("ytci-feed"),
-        document.querySelector("#main"),
         document.scrollingElement,
       ].filter(Boolean) as Element[];
       for (const el of candidates) {
@@ -490,24 +522,47 @@ export function createPlaywrightInspirationHelpers(
               await last.scrollIntoViewIfNeeded();
             }
           } catch {
-            // Keep scrolling even if the last card cannot be focused.
+            // Keep expanding even if the last card cannot be focused.
           }
         }
+
         await scrollInspirationFeed(page);
+        const clicked = await clickInspirationShowMore(page);
         await sleep(INSPIRATION_FEED_EXPAND_IDLE_MS);
 
-        const nextList = await resolveCardList();
-        const next = nextList ? await nextList.count() : 0;
+        let nextList = await resolveCardList();
+        let next = nextList ? await nextList.count() : 0;
         if (next >= cap) {
           return cap;
         }
-        if (next <= previous) {
+
+        // Studio often needs a second tick after Show More before cards mount.
+        if (clicked && next <= count) {
+          await sleep(INSPIRATION_FEED_EXPAND_IDLE_MS);
+          nextList = await resolveCardList();
+          next = nextList ? await nextList.count() : 0;
+          if (next >= cap) {
+            return cap;
+          }
+        }
+
+        if (next > previous) {
+          previous = next;
+          stableRounds = 0;
+          continue;
+        }
+
+        if (!clicked) {
           stableRounds += 1;
           if (stableRounds >= INSPIRATION_FEED_EXPAND_STABLE_ROUNDS) {
             return next;
           }
         } else {
-          stableRounds = 0;
+          // Show More still present but feed stalled — stop after a few tries.
+          stableRounds += 1;
+          if (stableRounds >= INSPIRATION_FEED_EXPAND_STABLE_ROUNDS) {
+            return next;
+          }
         }
         previous = next;
       }

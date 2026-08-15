@@ -10,6 +10,7 @@ import {
 } from "@/src/adapters/youtube/studio-inspiration";
 import {
   INSPIRATION_SELECTORS,
+  clickInspirationShowMore,
   createPlaywrightInspirationHelpers,
   scrapeInspirationIdeas,
   type InspirationPageHelpers,
@@ -223,6 +224,31 @@ describe("parseIdeaFromTexts", () => {
       summary: "same summary",
     });
     expect(a).toBe(b);
+  });
+});
+
+describe("clickInspirationShowMore", () => {
+  it("returns false when page.evaluate is unavailable", async () => {
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com",
+      async goto() {},
+      locator: () => emptyLocator(),
+      getByRole: () => emptyLocator(),
+      keyboard: { press: async () => {} },
+    };
+    await expect(clickInspirationShowMore(page)).resolves.toBe(false);
+  });
+
+  it("returns the evaluate click result", async () => {
+    const page: PageLike = {
+      url: () => "https://studio.youtube.com",
+      async goto() {},
+      locator: () => emptyLocator(),
+      getByRole: () => emptyLocator(),
+      keyboard: { press: async () => {} },
+      evaluate: async () => true,
+    };
+    await expect(clickInspirationShowMore(page)).resolves.toBe(true);
   });
 });
 
