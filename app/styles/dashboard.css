@@ -602,13 +602,6 @@
   padding-left: 0.75rem;
 }
 
-.history-table thead th {
-  position: sticky;
-  top: calc(var(--toolbar-height) + 0.35rem);
-  background: var(--carbon-mid);
-  z-index: 1;
-}
-
 .history-table th,
 .history-table td {
   text-align: left;
