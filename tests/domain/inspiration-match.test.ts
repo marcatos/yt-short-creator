@@ -4,8 +4,12 @@ import {
   alignmentScore,
   applyQuotaReorder,
   boostScore,
+  DEFAULT_MATCH_PAIR_WEIGHTS,
   matchIdeas,
+  rankVideoIdeaPairs,
+  scoreVideoIdeaPair,
   selectIdeasForGenerateFill,
+  studioSignalScore,
 } from "@/src/domain/inspiration";
 
 describe("inspiration match", () => {
@@ -79,6 +83,68 @@ describe("inspiration match", () => {
     const result = matchIdeas("Oschersleben last lap battle", ideas, 0.25);
     expect(result.ideaIds).toEqual(["i1"]);
     expect(result.alignmentScore).toBeGreaterThan(0.25);
+  });
+
+  it("scores studio signal higher when idea fields are rich", () => {
+    expect(
+      studioSignalScore({
+        id: "a",
+        title: "t",
+        summary: "s",
+        suggestedTitles: [],
+        outline: "",
+      }),
+    ).toBeLessThan(
+      studioSignalScore({
+        id: "b",
+        title: "t",
+        summary: "s",
+        suggestedTitles: ["x"],
+        outline: "o",
+        audienceInterest: "fans",
+        channelAlignment: "craft",
+        relatedInterest: { items: ["safety car"] },
+      }),
+    );
+  });
+
+  it("ranks pairs and keeps at most one idea per video", () => {
+    const videos = [
+      { id: "v1", title: "wet race oschersleben", viewCount: 1000, likeCount: 50, commentCount: 10 },
+      { id: "v2", title: "dry qualifying monza", viewCount: 100, likeCount: 5, commentCount: 1 },
+    ];
+    const ideas = [
+      {
+        id: "i1",
+        title: "Wet qualifying drama",
+        summary: "Rain at oschersleben",
+        suggestedTitles: ["Wet race"],
+        outline: "spray",
+        audienceInterest: "fans",
+        channelAlignment: "craft",
+      },
+      {
+        id: "i2",
+        title: "Monza start chaos",
+        summary: "First lap monza",
+        suggestedTitles: [],
+        outline: "",
+      },
+    ];
+    const ranked = rankVideoIdeaPairs(videos, ideas, {
+      k: 2,
+      now: new Date("2026-08-15T12:00:00.000Z"),
+      latestSuccessfulSyncAt: new Date("2026-08-14T12:00:00.000Z"),
+      staleDays: 7,
+      ideaCapturedAtById: {
+        i1: new Date("2026-08-14T12:00:00.000Z"),
+        i2: new Date("2026-08-14T12:00:00.000Z"),
+      },
+      weights: DEFAULT_MATCH_PAIR_WEIGHTS,
+    });
+    expect(ranked).toHaveLength(2);
+    expect(new Set(ranked.map((p) => p.sourceVideoId)).size).toBe(2);
+    expect(ranked[0].pairScore).toBeGreaterThanOrEqual(ranked[1].pairScore);
   });
 
   it("selectIdeasForGenerateFill skips already matched", () => {
