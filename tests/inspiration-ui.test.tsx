@@ -83,9 +83,11 @@ describe("inspiration UI", () => {
     expect(markup).toContain("Sim racing fans");
     expect(markup).toContain("On-brand race craft");
     expect(markup).toContain("Rain shuffle");
-    expect(markup).toContain("Open on spray, cut to the call.");
-    expect(markup).toContain("Safety car");
-    expect(markup).toContain("Red flag lights in frame");
+    expect(markup).toContain("Show brief");
+    expect(markup).toContain("Copy title");
+    expect(markup).toContain("Search");
+    expect(markup).toContain("Review queue");
+    expect(markup).toContain("Active ideas");
     expect(markup).toContain("Sync now");
     expect(markup).toContain("Stale");
     expect(markup).toContain("manual");
@@ -158,7 +160,7 @@ describe("inspiration UI", () => {
     expect(markup).toContain("Wet qualifying drama");
   });
 
-  it("renders ideas as full-width inspiration rows without queue thumb columns", async () => {
+  it("renders a searchable inspiration board with rich idea cards", async () => {
     container.repositories.inspiration.listActiveIdeas.mockResolvedValue([
       {
         id: "idea-1",
@@ -169,8 +171,8 @@ describe("inspiration UI", () => {
         audienceInterest: "Sim racing fans",
         channelAlignment: "On-brand race craft",
         relatedInterest: null,
-        outline: null,
-        suggestedTitles: [],
+        outline: "Open on spray.",
+        suggestedTitles: ["Rain shuffle"],
         thumbnailNotes: null,
         rawSnippet: null,
         capturedAt: new Date("2026-08-01T10:00:00.000Z"),
@@ -183,8 +185,10 @@ describe("inspiration UI", () => {
     );
 
     const markup = render(await InspirationPage());
-    expect(markup).toContain('class="compact-row inspiration-row"');
-    expect(markup).toContain("inspiration-list");
+    expect(markup).toContain("inspiration-board");
+    expect(markup).toContain("inspiration-card-rich");
+    expect(markup).toContain("Copy titles");
+    expect(markup).toContain("Fresh");
     expect(markup).not.toContain("compact-thumb");
   });
 });

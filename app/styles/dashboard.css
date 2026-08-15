@@ -502,87 +502,205 @@
   color: #f2bd69;
 }
 
-.inspiration-grid,
-.inspiration-list {
+.status-ok,
+.status-partial {
+  border-color: #3f8f75;
+  color: #8ce0c1;
+}
+
+.inspiration-pulse {
+  margin-bottom: 1.5rem;
+}
+
+.inspiration-board {
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
-.inspiration-row {
-  display: block;
-  width: 100%;
+.inspiration-toolbar {
+  align-items: end;
+}
+
+.inspiration-search {
+  flex: 1 1 16rem;
+  min-width: 12rem;
+  max-width: none;
+}
+
+.inspiration-grid,
+.inspiration-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 0;
+}
+
+@media (min-width: 1400px) {
+  .inspiration-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.inspiration-card-rich {
+  display: grid;
+  gap: 0.85rem;
   min-width: 0;
-  padding: 1rem 1.15rem;
+  padding: 1.05rem 1.15rem;
   border: 1px solid var(--hairline);
+  border-left: 3px solid var(--rosso);
   background: var(--carbon-mid);
 }
 
-.inspiration-row .chip {
-  max-width: min(100%, 18rem);
+.inspiration-card-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.inspiration-index {
+  color: var(--silver);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding-top: 0.35rem;
+}
+
+.inspiration-card-title {
+  margin: 0.35rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.inspiration-card-main .chip-row {
+  margin-bottom: 0.15rem;
+}
+
+.inspiration-card-main .chip {
+  max-width: min(100%, 16rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .inspiration-summary {
-  margin: 0.35rem 0 0;
+  margin: 0.4rem 0 0;
   line-height: 1.45;
-}
-
-.inspiration-row .compact-title {
-  margin: 0.35rem 0 0;
+  color: var(--silver);
   white-space: normal;
 }
 
-.inspiration-row .muted,
-.inspiration-row p {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
+.inspiration-meta {
+  margin: 0.45rem 0 0;
+  color: var(--silver);
+  font-size: 0.72rem;
 }
 
-.inspiration-row details {
-  margin-top: 0.65rem;
+.inspiration-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: stretch;
 }
 
-.inspiration-row summary {
+.inspiration-card-actions .button {
+  min-height: 2.2rem;
+  padding: 0.4rem 0.75rem;
+  white-space: nowrap;
+}
+
+.inspiration-title-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inspiration-title-chip {
+  max-width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #45454e;
+  border-radius: 2px;
+  background: #0e0e12;
+  color: var(--ice);
   cursor: pointer;
-  color: var(--ice-dim);
   font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  text-align: left;
+}
+
+.inspiration-title-chip:hover {
+  border-color: var(--rosso);
+}
+
+.inspiration-deep-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ice-dim);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.inspiration-card p,
-.inspiration-row p {
-  color: var(--silver);
-}
-
-.inspiration-suggested {
-  margin: 0.7rem 0 0;
-  padding-left: 1.1rem;
+.inspiration-deep-toggle:hover {
   color: var(--ice);
 }
 
-.inspiration-card details {
-  margin-top: 0.85rem;
+.inspiration-deep-body {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--hairline);
 }
 
-.inspiration-card summary {
-  cursor: pointer;
-  color: var(--ice-dim);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.inspiration-deep-body h3 {
+  margin: 0 0 0.25rem;
+  color: var(--rosso);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.inspiration-deep-body p {
+  margin: 0;
+  color: var(--silver);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.inspiration-history {
+  margin-top: 2rem;
+}
+
+.inspiration-history-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 .inspiration-history-heading {
-  margin: 0 0 0.85rem;
+  margin: 0;
   font-size: 1.05rem;
   text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .inspiration-card-top {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .inspiration-card-actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 .history-table {

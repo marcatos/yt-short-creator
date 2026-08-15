@@ -1,3 +1,4 @@
+import { InspirationBoard } from "@/app/components/InspirationBoard";
 import { InspirationSyncButton } from "@/app/components/InspirationSyncButton";
 import { PageHeader } from "@/app/components/PageHeader";
 import { formatListDateTime } from "@/app/lib/format";
@@ -52,40 +53,70 @@ export default async function InspirationPage() {
     store.listSyncRuns(20),
     store.getLatestSuccessfulSyncAt(),
   ]);
-  const stale = isStale(
-    latestSuccessfulSyncAt,
-    new Date(),
-    config.staleDays,
-  );
+  const now = new Date();
+  const stale = isStale(latestSuccessfulSyncAt, now, config.staleDays);
+  const failedRuns = syncRuns.filter((run) => run.status === "failed").length;
+  const okRuns = syncRuns.filter(
+    (run) => run.status === "ok" || run.status === "partial",
+  ).length;
+  const boardIdeas = ideas.map((idea) => toBoardIdea(idea));
 
   return (
     <main className="page-shell">
       <PageHeader
         eyebrow="YouTube Studio"
         title="Inspiration"
-        description="Mirror Studio Inspiration ideas into the Shorts desk."
+        description="Mirror Studio Inspiration, filter ideas, copy titles, then bias Shorts generation and review."
         actions={
           <div className="list-toolbar library-toolbar">
-            {stale ? <span className="chip chip-stale">Stale</span> : null}
+            {stale ? <span className="chip chip-stale">Stale</span> : (
+              <span className="chip status-ok">Fresh</span>
+            )}
             <InspirationSyncButton />
           </div>
         }
       />
 
-      <section className="inspiration-list" aria-label="Active ideas">
-        {ideas.length === 0 ? (
-          <section className="empty-panel">
-            <span className="stripe-mark" aria-hidden="true" />
-            <h2>No active ideas</h2>
-            <p>Sync YouTube Studio Inspiration to populate this board.</p>
-          </section>
-        ) : (
-          ideas.map((idea) => <IdeaRow idea={idea} key={idea.id} />)
-        )}
+      <section className="pulse-strip inspiration-pulse" aria-label="Inspiration pulse">
+        <div className="pulse-card">
+          <strong>{ideas.length}</strong>
+          <span>Active ideas</span>
+        </div>
+        <div className="pulse-card">
+          <strong>{stale ? "Stale" : "Fresh"}</strong>
+          <span>
+            {latestSuccessfulSyncAt
+              ? `Sync ${formatListDateTime(latestSuccessfulSyncAt)}`
+              : "Never synced"}
+          </span>
+        </div>
+        <div className="pulse-card">
+          <strong>{okRuns}</strong>
+          <span>OK / partial runs</span>
+        </div>
+        <div className="pulse-card">
+          <strong>{failedRuns}</strong>
+          <span>Failed runs</span>
+        </div>
       </section>
 
-      <section aria-label="Sync history">
-        <h2 className="inspiration-history-heading">Sync history</h2>
+      {ideas.length === 0 ? (
+        <section className="empty-panel">
+          <span className="stripe-mark" aria-hidden="true" />
+          <h2>No active ideas</h2>
+          <p>Sync YouTube Studio Inspiration to populate this board.</p>
+        </section>
+      ) : (
+        <InspirationBoard ideas={boardIdeas} />
+      )}
+
+      <section className="inspiration-history" aria-label="Sync history">
+        <div className="inspiration-history-header">
+          <h2 className="inspiration-history-heading">Sync history</h2>
+          <p className="muted">
+            Last {syncRuns.length} runs · stale after {config.staleDays} days
+          </p>
+        </div>
         {syncRuns.length === 0 ? (
           <p className="muted">No sync runs yet.</p>
         ) : (
@@ -98,69 +129,19 @@ export default async function InspirationPage() {
   );
 }
 
-function IdeaRow({ idea }: { idea: InspirationIdeaRecord }) {
-  const related = formatRelatedInterest(idea.relatedInterest);
-  const hasDetails = Boolean(idea.outline || related || idea.thumbnailNotes);
-  const audienceChip = chipText(idea.audienceInterest);
-  const alignmentChip = chipText(idea.channelAlignment);
-
-  return (
-    <article className="compact-row inspiration-row">
-      <div className="compact-copy">
-        {audienceChip || alignmentChip ? (
-          <div className="chip-row">
-            {audienceChip ? <span className="chip">{audienceChip}</span> : null}
-            {alignmentChip ? <span className="chip">{alignmentChip}</span> : null}
-          </div>
-        ) : null}
-        <h2 className="compact-title">{idea.title}</h2>
-        <p className="muted inspiration-summary">{summaryText(idea.summary)}</p>
-        {idea.suggestedTitles.length > 0 ? (
-          <ul className="inspiration-suggested">
-            {idea.suggestedTitles.map((title) => (
-              <li key={title}>{title}</li>
-            ))}
-          </ul>
-        ) : null}
-        {hasDetails ? (
-          <details>
-            <summary>Details</summary>
-            {idea.outline ? (
-              <p>
-                <strong>Outline.</strong> {idea.outline}
-              </p>
-            ) : null}
-            {related ? (
-              <p>
-                <strong>Related.</strong> {related}
-              </p>
-            ) : null}
-            {idea.thumbnailNotes ? (
-              <p>
-                <strong>Thumbnail.</strong> {idea.thumbnailNotes}
-              </p>
-            ) : null}
-          </details>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-const CHIP_MAX = 48;
-const SUMMARY_MAX = 220;
-
-function chipText(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (!trimmed || trimmed.length > CHIP_MAX) return null;
-  return trimmed;
-}
-
-function summaryText(value: string): string {
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= SUMMARY_MAX) return trimmed;
-  return `${trimmed.slice(0, SUMMARY_MAX - 1)}…`;
+function toBoardIdea(idea: InspirationIdeaRecord) {
+  return {
+    id: idea.id,
+    title: idea.title,
+    summary: idea.summary.trim().replace(/\s+/g, " "),
+    audienceInterest: idea.audienceInterest,
+    channelAlignment: idea.channelAlignment,
+    relatedInterest: formatRelatedInterest(idea.relatedInterest),
+    outline: idea.outline,
+    suggestedTitles: idea.suggestedTitles,
+    thumbnailNotes: idea.thumbnailNotes,
+    capturedAt: idea.capturedAt.toISOString(),
+  };
 }
 
 function SyncHistoryTable({ runs }: { runs: InspirationSyncRun[] }) {
