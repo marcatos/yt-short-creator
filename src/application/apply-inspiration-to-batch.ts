@@ -224,6 +224,8 @@ export async function applyInspirationToBatchIfConfigured(
     clock: ClockPort;
     logger: Logger;
     matchTextFor?: (candidate: ShortCandidate) => string;
+    ideaIds?: string[];
+    bypassStaleGate?: boolean;
   },
   candidates: ShortCandidate[],
   persistCandidates?: (candidates: ShortCandidate[]) => Promise<void>,
@@ -245,6 +247,8 @@ export async function applyInspirationToBatchIfConfigured(
     candidates,
     persistCandidates,
     matchTextFor: deps.matchTextFor,
+    ideaIds: deps.ideaIds,
+    bypassStaleGate: deps.bypassStaleGate,
   });
 }
 

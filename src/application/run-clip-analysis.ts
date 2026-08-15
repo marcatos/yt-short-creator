@@ -77,6 +77,7 @@ type RunClipAnalysisDependencies = {
 
 export type RunClipAnalysis = (input: {
   sourceVideoId: string;
+  ideaIds?: string[];
 }) => Promise<ShortCandidate[]>;
 
 export function createRunClipAnalysis(
@@ -84,7 +85,7 @@ export function createRunClipAnalysis(
 ): RunClipAnalysis {
   const log = deps.logger.child({ operation: "runClipAnalysis" });
 
-  return async ({ sourceVideoId }): Promise<ShortCandidate[]> => {
+  return async ({ sourceVideoId, ideaIds }): Promise<ShortCandidate[]> => {
     const startedAt = performance.now();
     log.info("Clip analysis started", { sourceVideoId });
 
@@ -106,7 +107,10 @@ export function createRunClipAnalysis(
 
       let inspirationBlock = "";
       try {
-        inspirationBlock = await loadInspirationPromptBlock(deps.inspirationStore);
+        inspirationBlock = await loadInspirationPromptBlock(
+          deps.inspirationStore,
+          ideaIds,
+        );
       } catch (error) {
         log.warn("Failed to load inspiration prompt; continuing", {
           error:
@@ -116,18 +120,23 @@ export function createRunClipAnalysis(
         });
       }
 
+      const userParts = [
+        `Source title: ${source.title}`,
+        `Duration: ${source.durationSec} seconds`,
+        `Local media reference: ${localMediaPath}`,
+        "Select up to 10 moments. Prefer a strong opening hook and complete thought.",
+        inspirationBlock,
+      ];
+      if (ideaIds?.length) {
+        userParts.push(
+          "Prioritize moments that best serve the Inspiration idea(s) above. Do not invent footage facts.",
+        );
+      }
+
       const response = await deps.llm.complete({
         system:
           "Identify compelling self-contained vertical-video moments. Return 8-60 second windows only, using millisecond timestamps and truthful metadata.",
-        user: [
-          `Source title: ${source.title}`,
-          `Duration: ${source.durationSec} seconds`,
-          `Local media reference: ${localMediaPath}`,
-          "Select up to 10 moments. Prefer a strong opening hook and complete thought.",
-          inspirationBlock,
-        ]
-          .filter(Boolean)
-          .join("\n"),
+        user: userParts.filter(Boolean).join("\n"),
         jsonSchema: responseJsonSchema,
       });
       const parsed = analysisSchema.parse(JSON.parse(response));
@@ -173,6 +182,8 @@ export function createRunClipAnalysis(
           config: deps.inspirationConfig,
           clock: deps.clock,
           logger: log,
+          ideaIds,
+          bypassStaleGate: Boolean(ideaIds?.length),
         },
         candidates,
         async (ordered) => {

@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { createRunClipAnalysis } from "@/src/application/run-clip-analysis";
 import type { ShortCandidate, SourceVideo } from "@/src/domain/entities";
+import type { InspirationConfig } from "@/src/domain/inspiration-config";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
-import type { InspirationStorePort } from "@/src/ports/inspiration-store";
+import type {
+  CandidateInspirationLink,
+  InspirationIdeaRecord,
+  InspirationStorePort,
+  InspirationSyncRun,
+} from "@/src/ports/inspiration-store";
 import type { Logger } from "@/src/ports/logger";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
 
@@ -79,6 +85,72 @@ function emptyInspirationStore(): InspirationStorePort {
   };
 }
 
+const inspirationConfig: InspirationConfig = {
+  matchMin: 0.25,
+  scoreBoost: 0.12,
+  quotaRatio: 0.4,
+  staleDays: 7,
+  generateFillMax: 3,
+};
+
+class MemoryInspirationStore implements InspirationStorePort {
+  ideas: InspirationIdeaRecord[] = [];
+  latestOkSyncAt: Date | null = null;
+  links: CandidateInspirationLink[] = [];
+
+  async saveSyncRun(): Promise<void> {}
+  async listSyncRuns(): Promise<InspirationSyncRun[]> {
+    return [];
+  }
+  async getLatestOkSyncAt(): Promise<Date | null> {
+    return this.latestOkSyncAt;
+  }
+  async getLatestSuccessfulSyncAt(): Promise<Date | null> {
+    return this.latestOkSyncAt;
+  }
+  async getLatestFinishedSyncAt(): Promise<Date | null> {
+    return this.latestOkSyncAt;
+  }
+  async replaceActiveIdeas(): Promise<void> {}
+  async listActiveIdeas(): Promise<InspirationIdeaRecord[]> {
+    return this.ideas.filter((idea) => idea.active);
+  }
+  async deleteLinksForCandidates(ids: string[]): Promise<void> {
+    const wanted = new Set(ids);
+    this.links = this.links.filter((link) => !wanted.has(link.candidateId));
+  }
+  async saveCandidateLinks(links: CandidateInspirationLink[]): Promise<void> {
+    this.links.push(...links);
+  }
+  async listLinksForCandidates(
+    ids: string[],
+  ): Promise<CandidateInspirationLink[]> {
+    const wanted = new Set(ids);
+    return this.links.filter((link) => wanted.has(link.candidateId));
+  }
+}
+
+function ideaRecord(
+  overrides: Partial<InspirationIdeaRecord> & Pick<InspirationIdeaRecord, "id">,
+): InspirationIdeaRecord {
+  return {
+    syncRunId: "run-1",
+    externalKey: `ext-${overrides.id}`,
+    title: "Oschersleben battle for P2",
+    summary: "Door-to-door last laps at Oschersleben",
+    audienceInterest: "sim racing",
+    channelAlignment: "high",
+    relatedInterest: null,
+    outline: null,
+    suggestedTitles: ["Last lap fight at Oschersleben"],
+    thumbnailNotes: null,
+    rawSnippet: null,
+    capturedAt: now,
+    active: true,
+    ...overrides,
+  };
+}
+
 describe("runClipAnalysis", () => {
   it("downloads the source and saves proposed clip candidates with timestamp provenance", async () => {
     const sourceVideos = new MemorySourceVideoRepository({
@@ -148,5 +220,76 @@ describe("runClipAnalysis", () => {
         },
       }),
     ]);
+  });
+
+  it("constrains inspiration prompt and apply to selected ideaIds", async () => {
+    const store = new MemoryInspirationStore();
+    store.latestOkSyncAt = new Date("2026-08-01T18:00:00.000Z");
+    store.ideas = [
+      ideaRecord({ id: "idea-1", title: "Oschersleben battle for P2" }),
+      ideaRecord({ id: "idea-2", title: "Monza qualifying pace" }),
+    ];
+    const sourceVideos = new MemorySourceVideoRepository({
+      id: "source-1",
+      channelId: "channel-1",
+      youtubeVideoId: "youtube-1",
+      title: "Fastest lap breakdown",
+      durationSec: 180,
+      localMediaPath: "media/youtube-1.mp4",
+      analyticsSnapshot: null,
+      publishedAt: now,
+      syncedAt: now,
+    });
+    const candidates = new MemoryCandidateRepository();
+    let llmUserPrompt = "";
+    const runClipAnalysis = createRunClipAnalysis({
+      llm: {
+        complete: async ({ user }) => {
+          llmUserPrompt = user;
+          return JSON.stringify({
+            windows: [
+              {
+                startMs: 12_000,
+                endMs: 42_000,
+                title: "Oschersleben last lap battle",
+                description: "Door-to-door fight at Oschersleben",
+                tags: ["racing"],
+                score: 0.7,
+                hookReason: "Immediate battle tension",
+              },
+            ],
+          });
+        },
+      },
+      videoDownload: {
+        download: async () => "media/youtube-1.mp4",
+      },
+      sourceVideos,
+      candidates,
+      id: { generate: () => "candidate-1" },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: store,
+      inspirationConfig,
+    });
+
+    const result = await runClipAnalysis({
+      sourceVideoId: "source-1",
+      ideaIds: ["idea-1"],
+    });
+
+    expect(llmUserPrompt).toContain("Oschersleben battle for P2");
+    expect(llmUserPrompt).not.toContain("Monza qualifying pace");
+    expect(llmUserPrompt).toContain(
+      "Prioritize moments that best serve the Inspiration idea(s) above. Do not invent footage facts.",
+    );
+    expect(result[0]?.score).toBeGreaterThan(0.7);
+    expect(store.links).toEqual([
+      expect.objectContaining({
+        candidateId: "candidate-1",
+        ideaId: "idea-1",
+      }),
+    ]);
+    expect(store.links.some((link) => link.ideaId === "idea-2")).toBe(false);
   });
 });
