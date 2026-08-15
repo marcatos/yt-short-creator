@@ -35,6 +35,7 @@ It is a single-operator tool. There is no multi-user SaaS surface. Publish alway
 | `/` | Home shell |
 | `/connect` | YouTube OAuth channel connect |
 | `/library` | Channel catalog, clip analysis, generate ideas |
+| `/match` | Pair library videos × Inspiration ideas → ranked preview → analyze + generate fill |
 | `/inspiration` | YouTube Studio Inspiration mirror — active ideas, sync history, Sync now |
 | `/replays` | iRacing / OBS replay sessions, Director capture, full-race publish |
 | `/candidates` | Candidate list (filter by status / origin) |
