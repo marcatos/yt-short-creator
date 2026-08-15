@@ -509,8 +509,29 @@
   margin-bottom: 2rem;
 }
 
+.inspiration-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+}
+
+.inspiration-row .compact-copy {
+  min-width: 0;
+}
+
 .inspiration-row .compact-title {
-  margin-top: 0.35rem;
+  margin: 0.35rem 0 0;
+  white-space: normal;
+}
+
+.inspiration-row .muted,
+.inspiration-row p {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .inspiration-row details {
@@ -528,7 +549,6 @@
 
 .inspiration-card p,
 .inspiration-row p {
-  white-space: normal;
   color: var(--silver);
 }
 

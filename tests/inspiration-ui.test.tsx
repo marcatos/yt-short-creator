@@ -157,4 +157,34 @@ describe("inspiration UI", () => {
     expect(markup).toContain('href="/inspiration"');
     expect(markup).toContain("Wet qualifying drama");
   });
+
+  it("renders ideas as full-width inspiration rows without queue thumb columns", async () => {
+    container.repositories.inspiration.listActiveIdeas.mockResolvedValue([
+      {
+        id: "idea-1",
+        syncRunId: "run-1",
+        externalKey: "key-1",
+        title: "Wet qualifying drama",
+        summary: "Rain changes the grid.",
+        audienceInterest: "Sim racing fans",
+        channelAlignment: "On-brand race craft",
+        relatedInterest: null,
+        outline: null,
+        suggestedTitles: [],
+        thumbnailNotes: null,
+        rawSnippet: null,
+        capturedAt: new Date("2026-08-01T10:00:00.000Z"),
+        active: true,
+      },
+    ]);
+    container.repositories.inspiration.listSyncRuns.mockResolvedValue([]);
+    container.repositories.inspiration.getLatestSuccessfulSyncAt.mockResolvedValue(
+      new Date(),
+    );
+
+    const markup = render(await InspirationPage());
+    expect(markup).toContain('class="compact-row inspiration-row"');
+    expect(markup).toContain("inspiration-list");
+    expect(markup).not.toContain("compact-thumb");
+  });
 });
