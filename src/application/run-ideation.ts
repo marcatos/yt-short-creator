@@ -23,6 +23,7 @@ import {
   loadInspirationPromptBlock,
   recordToInspirationIdea,
 } from "./inspiration-prompt-block";
+import type { RunIdeationFill } from "./run-match-propose-shorts";
 
 const ideaSchema = z.object({
   hook: z.string().trim().min(1),
@@ -244,6 +245,7 @@ async function generateInspirationFill(
     matchedIdeaIds: string[];
     brollFiles: string[];
     brollOffset: number;
+    ideaIds?: string[];
   },
 ): Promise<ShortCandidate[]> {
   const store = deps.inspirationStore;
@@ -268,6 +270,10 @@ async function generateInspirationFill(
         },
       );
       return [];
+    }
+    if (input.ideaIds?.length) {
+      const allow = new Set(input.ideaIds);
+      records = records.filter((record) => allow.has(record.id));
     }
     const unmatched = selectIdeasForGenerateFill(
       records.map(recordToInspirationIdea),
@@ -310,6 +316,8 @@ async function generateInspirationFill(
         clock: deps.clock,
         logger: log,
         matchTextFor: matchTextWithHooks(materialized.hookByCandidateId),
+        ideaIds: unmatched.map((idea) => idea.id),
+        bypassStaleGate: true,
       },
       materialized.candidates,
       async (ordered) => {
@@ -333,6 +341,25 @@ async function generateInspirationFill(
     });
     return [];
   }
+}
+
+/** Match orchestrator fill port — idea-subset generate when clip pairs undershoot. */
+export function createInspirationGenerateFill(
+  deps: IdeationDependencies,
+): RunIdeationFill {
+  const log = deps.logger.child({ operation: "inspirationGenerateFill" });
+  return async (input) => {
+    await deps.mediaStore.ensureDirs();
+    const brollFiles = await deps.mediaStore.listBroll();
+    return generateInspirationFill(deps, log, {
+      channelId: input.channelId,
+      shortfall: input.shortfall,
+      matchedIdeaIds: input.matchedIdeaIds,
+      brollFiles,
+      brollOffset: 0,
+      ideaIds: input.ideaIds,
+    });
+  };
 }
 
 export function createRunIdeation(deps: IdeationDependencies): RunIdeation {
