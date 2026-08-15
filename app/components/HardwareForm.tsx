@@ -54,11 +54,18 @@ export function HardwareForm({ initial }: { initial: HardwareConfig }) {
 
   return (
     <div className="settings-grid">
-      <section className="settings-card">
-        <p className="eyebrow">Postazione</p>
-        {HARDWARE_GROUPS.map((group) => (
-          <fieldset key={group.id} className="hardware-group">
-            <legend>{group.heading.en}</legend>
+      {HARDWARE_GROUPS.map((group) => (
+        <section className="settings-section" key={group.id}>
+          <div className="settings-section-header">
+            <h2>{group.heading.en}</h2>
+            {group.heading.it !== group.heading.en ? (
+              <p>{group.heading.it}</p>
+            ) : (
+              <p>Fields included in the YouTube description hardware block.</p>
+            )}
+          </div>
+          <fieldset className="hardware-group">
+            <legend className="visually-hidden">{group.heading.en}</legend>
             {group.fields.map((field) => {
               const labelEn = hardwareFieldLabel(field, "en");
               const labelIt = hardwareFieldLabel(field, "it");
@@ -76,7 +83,24 @@ export function HardwareForm({ initial }: { initial: HardwareConfig }) {
               );
             })}
           </fieldset>
-        ))}
+        </section>
+      ))}
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Description preview</h2>
+          <p>
+            This block is appended to every full-video description. Leave a
+            field blank to omit it. The LLM never invents these specs.
+          </p>
+        </div>
+        <h3 className="hardware-preview-heading">Italian</h3>
+        <pre className="hardware-preview">{previewIt || "—"}</pre>
+        <h3 className="hardware-preview-heading">English</h3>
+        <pre className="hardware-preview">{previewEn || "—"}</pre>
+      </section>
+
+      <div className="settings-save-bar">
         <button
           className="button button-primary"
           disabled={pending}
@@ -87,19 +111,7 @@ export function HardwareForm({ initial }: { initial: HardwareConfig }) {
         <p className="form-status" aria-live="polite">
           {pending ? "Saving…" : message}
         </p>
-      </section>
-
-      <section className="settings-card">
-        <p className="eyebrow">Description preview</p>
-        <h2>Italian</h2>
-        <pre className="hardware-preview">{previewIt || "—"}</pre>
-        <h2>English</h2>
-        <pre className="hardware-preview">{previewEn || "—"}</pre>
-        <p className="muted">
-          This block is appended to every full-video description. Leave a field
-          blank to omit it. The LLM never invents these specs.
-        </p>
-      </section>
+      </div>
     </div>
   );
 }

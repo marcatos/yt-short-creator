@@ -63,8 +63,11 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
 
   return (
     <div className="settings-grid">
-      <section className="settings-card">
-        <p className="eyebrow">Workspace</p>
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Brand & workspace</h2>
+          <p>Brand pack root, logging, and default YouTube privacy.</p>
+        </div>
         <label>
           Brand pack path
           <input
@@ -103,6 +106,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             </select>
           </label>
         </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Encoder</h2>
+          <p>
+            Prefer iGPU when gaming or other apps need the discrete GPU. Falls
+            back automatically if the chosen encoder is unavailable.
+          </p>
+        </div>
         <label>
           Video encoder
           <select
@@ -122,10 +135,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             <option value="libx264">Force CPU (libx264)</option>
           </select>
         </label>
-        <p className="muted">
-          Prefer iGPU when gaming or other apps need the discrete GPU. Falls
-          back automatically if the chosen encoder is unavailable.
-        </p>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Voice-over & captions</h2>
+          <p>
+            English defaults to coral. Italian defaults to ash with a younger,
+            brisker delivery — coral often sounds older/slower in Italian.
+          </p>
+        </div>
         <div className="field-pair">
           <label>
             English voice
@@ -162,10 +181,6 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             </select>
           </label>
         </div>
-        <p className="muted">
-          English defaults to coral. Italian defaults to ash with a younger,
-          brisker delivery — coral often sounds older/slower in Italian.
-        </p>
         <div className="field-pair">
           <label>
             Voice ducking (dB)
@@ -202,17 +217,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           />
           Burn captions into full videos
         </label>
-        <button className="button button-primary" disabled={pending} onClick={save}>
-          Save settings
-        </button>
-        <p className="form-status" aria-live="polite">
-          {pending ? "Saving…" : message}
-        </p>
       </section>
 
-      <section className="settings-card">
-        <p className="eyebrow">Secret status</p>
-        <h2>Credentials stay masked</h2>
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Secrets</h2>
+          <p>
+            Secret values are supplied through environment configuration and are
+            never returned in full.
+          </p>
+        </div>
         <dl className="secret-list">
           <div>
             <dt>YouTube client secret</dt>
@@ -227,11 +241,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             <dd>{initial.secrets.ttsApiKey}</dd>
           </div>
         </dl>
-        <p className="muted">
-          Secret values are supplied through environment configuration and are
-          never returned in full.
-        </p>
       </section>
+
+      <div className="settings-save-bar">
+        <button className="button button-primary" disabled={pending} onClick={save}>
+          Save settings
+        </button>
+        <p className="form-status" aria-live="polite">
+          {pending ? "Saving…" : message}
+        </p>
+      </div>
     </div>
   );
 }
