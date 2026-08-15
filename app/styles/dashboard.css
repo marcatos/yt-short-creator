@@ -740,3 +740,123 @@
 .history-table td:first-child {
   padding-left: 0;
 }
+
+.match-board {
+  display: grid;
+  gap: 1rem;
+}
+
+.match-stale-note {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--rosso) 12%, var(--carbon-mid));
+}
+
+.match-pickers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.match-picker {
+  border: 1px solid var(--hairline);
+  background: var(--carbon-mid);
+  min-height: 12rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.match-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.match-picker-header h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ice);
+}
+
+.match-picker-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.match-option-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.match-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+.match-option:hover {
+  background: color-mix(in srgb, var(--ice) 6%, transparent);
+}
+
+.match-option-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.match-option-copy strong {
+  color: var(--silver);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.match-controls {
+  align-items: end;
+}
+
+.match-controls input[type="number"] {
+  width: 4.5rem;
+}
+
+.match-queued {
+  margin: 0;
+  color: var(--silver);
+}
+
+.match-error {
+  margin: 0;
+  color: var(--rosso);
+  font-size: 0.88rem;
+}
+
+.match-queued a {
+  color: var(--ice);
+}
+
+.match-empty-hint {
+  margin: 0;
+}
+
+.match-pair-table td:nth-child(n + 4),
+.match-pair-table th:nth-child(n + 4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .match-pickers {
+    grid-template-columns: 1fr;
+  }
+}
