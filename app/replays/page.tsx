@@ -270,7 +270,7 @@ export default async function ReplaysPage() {
                       }
                       title="Single master + IT/EN audio, localizations, captions"
                     >
-                      Multi-lang VO
+                      Encode + publish multi-lang VO
                     </button>
                   </form>
                 </div>
