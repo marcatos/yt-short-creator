@@ -1,0 +1,27 @@
+---
+description: Plane is the canonical tracker for yt-short-creator
+alwaysApply: true
+---
+
+# Plane tracker — YT short creator
+
+Workspace `personal`. This folder is Plane project **YTSC** (`yt-short-creator`).
+LAN `http://10.100.30.87`. UI `https://plane.marcatos.ddns.net`.
+
+## Canonical owners
+
+- Live facts → Plane issue named **STATUS** (Community v1.4.1 has no Pages API)
+- Decisions → Plane issue named **DECISIONS** (append at top of that issue)
+- Work → Plane issues (labels feat/fix/chore/known-issue/backlog)
+- Session notes → comment on the issue (do not add git handoffs)
+- Changelog → conventional commits
+- Code → git
+
+List open issues for `YTSC` at session start. Create an issue before coding.
+If MCP create fails (`title` vs `name`), run:
+
+```powershell
+python C:\Users\simot\Documents\Projects\opnsense-server\scripts\plane_issue.py create --project YTSC --title "..."
+```
+
+Do not use Linear or GitHub Issues. Do not put secrets on Plane. Do not treat git STATUS/TODO/ROADMAP/DECISIONS as live.
