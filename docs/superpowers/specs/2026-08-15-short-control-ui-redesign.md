@@ -11,14 +11,16 @@ Make the local Short Control desk as functional and pleasant as Cleanuparr’s o
 
 ## 2. Borrow vs reject
 
-| Borrow from Cleanuparr | Reject |
-|------------------------|--------|
-| Sidebar + toolbar shell | Glassmorphism |
-| PageHeader pattern | Purple sidebar / theme orbs |
-| Dense ops rows / tables | Glow effects |
-| Sticky filter chrome | External UI kits (PrimeNG, Tailwind, etc.) |
-| Sectioned settings | SignalR charts / full design-system port |
-| Home stats pulse | |
+
+| Borrow from Cleanuparr  | Reject                                     |
+| ----------------------- | ------------------------------------------ |
+| Sidebar + toolbar shell | Glassmorphism                              |
+| PageHeader pattern      | Purple sidebar / theme orbs                |
+| Dense ops rows / tables | Glow effects                               |
+| Sticky filter chrome    | External UI kits (PrimeNG, Tailwind, etc.) |
+| Sectioned settings      | SignalR charts / full design-system port   |
+| Home stats pulse        |                                            |
+
 
 ## 3. Brand constraints (locked)
 
@@ -67,3 +69,4 @@ Shared pattern: PageHeader → sticky filter toolbar → dense rows → unified 
 - Pipeline/API behavior changes
 - Audiowide webfont unless already licensed in brand pack
 - Porting Cleanuparr Angular/SCSS component kit
+
