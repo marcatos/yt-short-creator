@@ -314,7 +314,9 @@ export function createPublishVoiceOverShortHandler(
           ...checkpointMetadata,
           youtubeVideoId,
         } satisfies VoiceOverUploadCheckpoint;
-        await ctx.saveCheckpoint("upload", uploadCheckpoint);
+        // Persist sidecar + candidate before the job checkpoint so a crash
+        // after upload still leaves recoverable package state (and intentional
+        // re-uploads that clear package+sidecar are not blocked by old jobs).
         candidate = await persistVoiceOverUploadResult(
           deps,
           sidecar,
@@ -322,6 +324,7 @@ export function createPublishVoiceOverShortHandler(
           payload.language,
           uploadCheckpoint,
         );
+        await ctx.saveCheckpoint("upload", uploadCheckpoint);
         ctx.setProgress(85, `Uploaded video as ${youtubeVideoId}`);
       });
 

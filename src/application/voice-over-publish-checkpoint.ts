@@ -106,6 +106,11 @@ export function resolveVoiceOverUploadCheckpoint(
     merge(packageCheckpoint, sidecar),
     fromJobCheckpoint(jobCheckpoint, voiceOver),
   );
+  // Operator cleared package YT id + sidecar (intentional re-render/re-upload).
+  // Do not resurrect uploads from older publish_short jobs with the same scriptHash.
+  if (!packageCheckpoint && !sidecar) {
+    return fromJobCheckpoint(jobCheckpoint, voiceOver);
+  }
   return priorJobCheckpoints.reduce(
     (result, checkpoint) =>
       merge(result, fromJobCheckpoint(checkpoint, voiceOver)),
