@@ -72,7 +72,7 @@ describe("FFmpeg VO and ASS render", () => {
     const filter = args[args.indexOf("-filter_complex") + 1];
     expect(args).toContain("C:/media/vo-it.mp3");
     expect(filter).toContain("[0:a]volume='if(lt(t,8.000),0.251189,");
-    expect(filter).toContain("[2:a]volume=1[va]");
+    expect(filter).toContain("[1:a]volume=1[va]");
     expect(filter).toContain(
       "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
     );

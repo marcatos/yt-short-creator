@@ -133,17 +133,12 @@ function scaleAndCrop(label: string, focusX = 0.5): string {
   );
 }
 
-function brandedVideoFilter(
-  input: RenderInput,
-  baseLabel: string,
-  logoLabel: string,
-): string[] {
-  const outputLabel =
+function brandedVideoFilter(input: RenderInput, baseLabel: string): string[] {
+  // Accent stripe only — stacked channel logo is intentionally not overlaid on Shorts.
+  const accentLabel =
     input.burnInCaptions && input.assPath ? "branded" : "outv";
   const filters = [
-    `[${baseLabel}]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[accent]`,
-    `[${logoLabel}]scale=240:-2[logo]`,
-    `[accent][logo]overlay=W-w-48:48:format=auto[${outputLabel}]`,
+    `[${baseLabel}]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[${accentLabel}]`,
   ];
   if (input.burnInCaptions && input.assPath) {
     filters.push(
@@ -184,10 +179,10 @@ function clipArgs(
   const durationMs = window.endMs - window.startMs;
   const filterParts = [
     `${scaleAndCrop("0:v", input.crop?.focusX)}[base]`,
-    ...brandedVideoFilter(input, "base", "1:v"),
+    ...brandedVideoFilter(input, "base"),
   ];
   if (input.voiceAssetPath) {
-    filterParts.push(...voiceMixFilter(input, "0:a", 2, voiceDurationMs));
+    filterParts.push(...voiceMixFilter(input, "0:a", 1, voiceDurationMs));
   }
 
   return [
@@ -197,10 +192,6 @@ function clipArgs(
     seconds(durationMs),
     "-i",
     input.sourceMediaPath,
-    "-loop",
-    "1",
-    "-i",
-    input.logoPath,
     ...(input.voiceAssetPath ? ["-i", input.voiceAssetPath] : []),
     "-filter_complex",
     filterParts.join(";"),
@@ -265,9 +256,7 @@ function multiSegmentClipArgs(
     audioConcat.push(`[a${index}]`);
   });
 
-  const logoIndex = segments.length;
-  args.push("-loop", "1", "-i", input.logoPath);
-  const voiceIndex = logoIndex + 1;
+  const voiceIndex = segments.length;
   if (input.voiceAssetPath) {
     args.push("-i", input.voiceAssetPath);
   }
@@ -279,7 +268,7 @@ function multiSegmentClipArgs(
     `${audioConcat.join("")}concat=n=${segments.length}:v=0:a=1[acat]`,
   );
   filterParts.push(
-    ...brandedVideoFilter(input, "vcat", `${logoIndex}:v`),
+    ...brandedVideoFilter(input, "vcat"),
     ...voiceMixFilter(input, "acat", voiceIndex, voiceDurationMs),
   );
 
@@ -325,12 +314,11 @@ function generateArgs(input: RenderInput): string[] {
     concatInputs.push(`[v${index}]`);
   });
 
-  const logoIndex = timeline.length;
-  const voiceIndex = timeline.length + 1;
-  args.push("-loop", "1", "-i", input.logoPath, "-i", input.voiceAssetPath);
+  const voiceIndex = timeline.length;
+  args.push("-i", input.voiceAssetPath);
   segments.push(
     `${concatInputs.join("")}concat=n=${timeline.length}:v=1:a=0[base]`,
-    ...brandedVideoFilter(input, "base", `${logoIndex}:v`),
+    ...brandedVideoFilter(input, "base"),
   );
 
   return [

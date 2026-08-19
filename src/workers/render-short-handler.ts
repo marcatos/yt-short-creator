@@ -63,7 +63,6 @@ async function renderInputForCandidate(
     outputPath: voiceOver
       ? voRenderPath!(candidate.id, voiceOver.language)
       : deps.mediaStore.renderPath(candidate.id),
-    logoPath: brand.logoStackedPath,
     accentColor: brand.accentHex,
     voiceAssetPath: voiceOver?.audioPath,
     voiceDurationMs,

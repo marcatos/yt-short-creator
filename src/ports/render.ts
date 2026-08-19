@@ -23,7 +23,8 @@ export type RenderInput = {
   assPath?: string;
   voiceDuckDb?: number;
   timeline?: GenerateTimelineEntry[];
-  logoPath: string;
+  /** @deprecated Unused — Shorts no longer overlay the stacked channel logo. */
+  logoPath?: string;
   accentColor: string;
   burnInCaptions?: boolean;
 };

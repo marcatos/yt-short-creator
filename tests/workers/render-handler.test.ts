@@ -288,7 +288,6 @@ describe("render_short handler", () => {
       candidateId: candidate.id,
       sourceMediaPath: source.localMediaPath,
       outputPath: "media/renders/candidate-1/vo-en.mp4",
-      logoPath: "brand/logo.png",
       accentColor: "#E10600",
       startMs: 1_000,
       endMs: 2_000,
