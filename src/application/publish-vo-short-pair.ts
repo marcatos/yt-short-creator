@@ -14,7 +14,7 @@ export type PublishVoShortPair = (input: {
 }) => Promise<string[]>;
 
 const LANGUAGES: VoiceOverLanguage[] = ["it", "en"];
-const ACTIVE_STATUSES = new Set(["queued", "running", "paused", "succeeded"]);
+const ACTIVE_STATUSES = new Set(["queued", "running", "paused"]);
 
 function requirePackage(
   packages: VoiceOverPackage[],
