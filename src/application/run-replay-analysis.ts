@@ -312,6 +312,8 @@ type Dependencies = {
 
 export type RunReplayAnalysis = (input: {
   sessionId: string;
+  /** Operator-verified race facts injected into the LLM prompt (not invented by vision). */
+  operatorNotes?: string | null;
 }) => Promise<ShortCandidate[]>;
 
 type VisionMoment = {
@@ -616,9 +618,15 @@ export function createRunReplayAnalysis(
 ): RunReplayAnalysis {
   const log = deps.logger.child({ operation: "runReplayAnalysis" });
 
-  return async ({ sessionId }) => {
+  return async ({ sessionId, operatorNotes }) => {
     const startedAt = performance.now();
-    log.info("Replay analysis started", { sessionId });
+    const notes =
+      typeof operatorNotes === "string" ? operatorNotes.trim() : "";
+    log.info("Replay analysis started", {
+      sessionId,
+      hasOperatorNotes: notes.length > 0,
+      operatorNotesChars: notes.length,
+    });
 
     try {
       const session = await deps.replaySessions.getById(sessionId);
@@ -777,6 +785,7 @@ export function createRunReplayAnalysis(
           "Stile narrativo (narrativeIt, storylines, hook/story/payoff): prima persona del pilota. Fatti concreti.",
           "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria/HUD.",
           "I fatti HUD overlay (session strip, focus card, battle/relative, standings, battle-for-P callout, field ticker) sono VERIFIED quando presenti: non contraddarli.",
+          "Le NOTE OPERATORE (se presenti) sono VERIFIED come l'HUD: usale per storyline/whyWatch/narrative; non contraddirle; non inventare oltre.",
           "Il Focus card identifica il soggetto camera (car # / nome), anche se il branding del canale è #42.",
           "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
           "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
@@ -796,6 +805,9 @@ export function createRunReplayAnalysis(
             : null,
           focusSubject.driverName
             ? `Focus driver (HUD): ${focusSubject.driverName}`
+            : null,
+          notes
+            ? `\n=== Note operatore (verified) ===\n${notes}`
             : null,
           "",
           "=== Transcript audio (può essere vuoto / solo engine) ===",

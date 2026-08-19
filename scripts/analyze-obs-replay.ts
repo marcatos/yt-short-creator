@@ -2,7 +2,8 @@
  * One-shot OBS race analysis: create media-only session + run AV pipeline.
  *
  * Usage:
- *   npx tsx scripts/analyze-obs-replay.ts --media "C:\path\file.mkv" [--title "..."] [--track "..."]
+ *   npx tsx scripts/analyze-obs-replay.ts --media "C:\path\file.mkv" [--title "..."] [--track "..."] [--notes "..."]
+ *   npx tsx scripts/analyze-obs-replay.ts --session-id <uuid> [--notes-file path.txt]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +39,19 @@ async function main(): Promise<void> {
   const mediaPath = argValue("--media");
   const title = argValue("--title");
   const trackName = argValue("--track");
+  const notesInline = argValue("--notes");
+  const notesFile = argValue("--notes-file");
+
+  let operatorNotes: string | null = null;
+  if (notesFile) {
+    const absoluteNotes = path.resolve(notesFile);
+    if (!fs.existsSync(absoluteNotes)) {
+      throw new Error(`Notes file not found: ${absoluteNotes}`);
+    }
+    operatorNotes = fs.readFileSync(absoluteNotes, "utf8").trim();
+  } else if (notesInline) {
+    operatorNotes = notesInline.trim();
+  }
 
   const env = loadEnv();
   const container = createContainer(env);
@@ -55,6 +69,7 @@ async function main(): Promise<void> {
     container.logger.info("Re-analyzing existing session", {
       sessionId,
       mediaPath: existing.mediaPath,
+      hasOperatorNotes: Boolean(operatorNotes),
     });
   } else {
     if (!mediaPath) {
@@ -76,10 +91,14 @@ async function main(): Promise<void> {
     container.logger.info("Starting AV analysis for OBS media", {
       sessionId,
       mediaPath: absoluteMedia,
+      hasOperatorNotes: Boolean(operatorNotes),
     });
   }
 
-  const candidates = await container.runReplayAnalysis({ sessionId });
+  const candidates = await container.runReplayAnalysis({
+    sessionId,
+    operatorNotes,
+  });
   const refreshed =
     (await container.repositories.replaySessions.getById(sessionId)) ?? null;
 
