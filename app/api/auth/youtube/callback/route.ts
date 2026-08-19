@@ -18,6 +18,14 @@ function validState(received: string | null, expected: string | undefined) {
   );
 }
 
+function connectErrorRedirect(request: NextRequest, reason: string): NextResponse {
+  const response = NextResponse.redirect(
+    new URL(`/connect?oauth=${encodeURIComponent(reason)}`, request.url),
+  );
+  response.cookies.delete(OAUTH_STATE_COOKIE);
+  return response;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { connectChannel, syncChannel, logger } = getContainer();
   const code = request.nextUrl.searchParams.get("code");
@@ -31,13 +39,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       oauthError,
       hasCode: Boolean(code),
       stateValid,
+      hasCookie: Boolean(storedState),
+      host: request.headers.get("host"),
     });
-    const response = NextResponse.json(
-      { error: oauthError ?? "Invalid YouTube OAuth callback" },
-      { status: 400 },
+    return connectErrorRedirect(
+      request,
+      oauthError ?? (!stateValid ? "state_mismatch" : "invalid_callback"),
     );
-    response.cookies.delete(OAUTH_STATE_COOKIE);
-    return response;
   }
 
   try {
@@ -55,11 +63,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ? { message: error.message, stack: error.stack }
           : String(error),
     });
-    const response = NextResponse.json(
-      { error: "Unable to connect and sync the YouTube channel" },
-      { status: 500 },
-    );
-    response.cookies.delete(OAUTH_STATE_COOKIE);
-    return response;
+    return connectErrorRedirect(request, "connect_failed");
   }
 }

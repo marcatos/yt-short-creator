@@ -5,9 +5,25 @@ import { getContainer } from "@/src/lib/container";
 
 export const dynamic = "force-dynamic";
 
-export default async function ConnectPage() {
+const OAUTH_MESSAGES: Record<string, string> = {
+  state_mismatch:
+    "OAuth state cookie missing (open Connect via http://localhost:3000, not 127.0.0.1).",
+  invalid_callback: "YouTube OAuth callback was invalid. Try reconnecting.",
+  connect_failed: "Connected to Google but channel sync failed. Try again.",
+  start_failed: "Unable to start YouTube authorization. Check OAuth env config.",
+};
+
+export default async function ConnectPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ oauth?: string }>;
+}) {
   const channels = await getContainer().repositories.channels.list();
   const channel = channels[0] ?? null;
+  const params = await searchParams;
+  const oauthMessage = params.oauth
+    ? (OAUTH_MESSAGES[params.oauth] ?? `OAuth error: ${params.oauth}`)
+    : null;
 
   return (
     <main className="page-shell">
@@ -25,6 +41,11 @@ export default async function ConnectPage() {
               ? `Connected as ${channel.title}.`
               : "No channel connected yet."}
           </p>
+          {oauthMessage ? (
+            <p className="muted" role="alert">
+              {oauthMessage}
+            </p>
+          ) : null}
         </div>
         <div className="home-cta-row">
           <a className="button button-primary" href="/api/auth/youtube">
