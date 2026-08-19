@@ -13,12 +13,16 @@ export async function GET(): Promise<NextResponse> {
   try {
     const authorizationUrl = await auth.getAuthorizationUrl(state);
     const response = NextResponse.redirect(authorizationUrl);
+    // Production daemon is often served over plain http://127.0.0.1 — a Secure
+    // cookie would never be stored, so the callback rejects state and leaves a blank JSON page.
+    const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "";
+    const secureCookie = redirectUri.startsWith("https://");
     response.cookies.set(OAUTH_STATE_COOKIE, state, {
       httpOnly: true,
       maxAge: 600,
       path: "/",
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: secureCookie,
     });
     logger.info("YouTube OAuth authorization started");
     return response;
