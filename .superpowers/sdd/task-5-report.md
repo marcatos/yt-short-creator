@@ -1,43 +1,72 @@
-# Task 5 Report — FFmpeg VO duck and ASS burn-in
+# Task 5 Report: Sync application + worker job
 
-## Status
+**Status:** DONE_WITH_CONCERNS
+**Commit:** `b108d56` — feat(inspiration): sync job and manual enqueue API
 
-DONE_WITH_CONCERNS
+## What was implemented
 
-## Delivered
+`createSyncInspiration(deps).run({ source })` orchestrates: persist run row → `studio.sync()` → map captured ideas to store records with **fresh `id.generate()` UUIDs** → `replaceActiveIdeas` → finish run `ok` / `partial` / `failed`.
 
-- Extended `RenderInput` with ASS caption and voice-duck controls.
-- FFmpeg clip and multi-segment renders now lower game audio using `10^(dB/20)`, mix VO with `amix`, and map the mixed output.
-- Clip, replay, and generated renders burn ASS captions when enabled, including FFmpeg-safe Windows drive path escaping.
-- `render_short` selects an optional `it`/`en` VO package, defaults to the first available package, and applies `shortsBurnInCaptions` and `voiceDuckDb` settings.
-- Existing non-VO audio mapping remains unchanged when no VO package is available.
-- Render logs expose VO/caption mode and language context while preserving existing timing and failure logs.
+- Failed Studio capture (or any throw) finishes the run as `failed` with `errorMessage`, does **not** replace the active set, then rethrows so the worker job fails.
+- Worker `sync_inspiration` is a single `run` step (payload `{ source: "manual" | "scheduled" }`).
+- `POST /api/inspiration/sync` enqueues `{ source: "manual" }` and returns `{ jobId }` with HTTP 202.
+- Container wires `createYouTubeStudioInspirationAdapter` + store + `UuidIdPort` into the use case and handler deps.
 
-## TDD and verification
+## TDD Evidence
 
-- Red: the adapter test failed because FFmpeg omitted the VO input; the generated-short test failed because its filter omitted ASS.
-- Red: the handler test failed because VO/caption/settings fields were not forwarded.
-- Focused green: 4 files, 6 tests passed.
-- Full suite: `npm test` — **41 files, 141 tests passed**.
-- Real FFmpeg smoke coverage passed for the existing non-VO 1080x1920 render.
-- `npx tsc --noEmit` remains blocked by unrelated pre-existing FFmpeg proxy, YouTube SDK, settings-fixture, implicit-`any`, and legacy media-store fixture errors; no error references Task 5 files.
+**RED** — test file existed; use case module did not:
 
-## Commit
+```
+npx vitest run tests/application/sync-inspiration.test.ts
+FAIL  tests/application/sync-inspiration.test.ts
+Error: Cannot find module '@/src/application/sync-inspiration'
+```
 
-- `b443b8c` — `feat(render): duck game audio under VO and burn-in ASS`
+Expected: feature missing, not a bad assertion.
+
+**GREEN** — after implementing the use case (then handler / queue / container / API):
+
+```
+npx vitest run tests/application/sync-inspiration.test.ts
+✓ tests/application/sync-inspiration.test.ts (4 tests)
+
+npm test   (Node 25.5.0)
+✓ 317/317 passed (78 files)
+npx tsc --noEmit → OK
+```
+
+## Tests
+
+| Case | Assertion |
+|------|-----------|
+| Fake Studio returns 2 ideas | Active list length 2; previous snapshot `active=false` |
+| Second sync, same `externalKey` | New idea ids (no PK collision) |
+| `partial` capture | Run status `partial`; ideas still replaced |
+| Studio throws | Previous ideas stay active; run `failed`; error rethrown |
+
+## Files
+
+| File | Role |
+|------|------|
+| `src/application/sync-inspiration.ts` | Use case |
+| `tests/application/sync-inspiration.test.ts` | Fake Studio + in-memory store |
+| `src/domain/queue-control.ts` | `sync_inspiration: ["run"]` |
+| `src/workers/handlers.ts` | Job handler |
+| `src/workers/stub-handlers.ts` | Required `HandlerDeps` stub |
+| `src/lib/container.ts` | Port + use case + handler wiring |
+| `app/api/inspiration/sync/route.ts` | Manual enqueue |
+
+Unrelated WIP (layout density, rerender scripts) was left unstaged.
+
+## Self-review
+
+- Mapping copies nullable scrape fields through as-is (`null` OK).
+- Idea primary keys are never `externalKey`; production uses `UuidIdPort`.
+- Logs: start (`runId`, `source`), capture step + duration, completed/failed + total duration. No cookies / profile paths.
+- Daemon was RUNNING; restarted after commit. `http://127.0.0.1:3000` OK; `/api/inspiration/sync` in the production build.
 
 ## Concerns
 
-- Resolved in the follow-up below: VO packages now persist language-specific output paths.
-- Resolved in the follow-up below: the edited worker test now uses normalized line endings.
-
-## Important finding follow-up — bilingual output collision
-
-- Added `MediaStorePort.voRenderPath(candidateId, language)` with distinct `renders/<candidateId>/vo-it.mp4` and `vo-en.mp4` filesystem paths; the canonical non-VO `renderPath` is unchanged.
-- VO render outputs are persisted on the matching `VoiceOverPackage.renderOutputPath`; `ShortCandidate.renderOutputPath` remains reserved for non-VO publishing.
-- VO completion and failure no longer move the candidate through the global ready/failed gate, and VO jobs do not enqueue the candidate-global publish job. This keeps the second language render eligible without implementing Task 6 publishing.
-- No schema migration was required because `voice_overs` is already persisted as JSON.
-- TDD red evidence: media-store test failed with `voRenderPath is not a function`; the dual handler test failed because the first VO render changed candidate status to `ready`.
-- Focused verification: `tests/adapters/ffmpeg-vo-burnin.test.ts`, `tests/adapters/fs-media-store.test.ts`, and `tests/workers/render-handler.test.ts` — **3 files, 5 tests passed**.
-- Full verification: `npm test` — **41 files, 141 tests passed**; `git diff --check` passed after normalizing the edited worker test line endings.
-- `npx tsc --noEmit` remains blocked only by pre-existing FFmpeg proxy, YouTube SDK, settings-fixture, implicit-`any`, and legacy media-store fixture errors; the new bilingual render-path errors are resolved.
+- In-progress runs are saved with `status: "failed"` and `finishedAt: null` because the store type has no `running` status. This keeps `getLatestOkSyncAt()` from treating a crash as success. A hung sync could briefly look like a failure on the future dashboard.
+- `HandlerDeps.syncInspiration` is required; several existing `createHandlers({...})` test sites omit it (tests are excluded from `tsc`). Runtime is fine until `sync_inspiration` is invoked. `stub-handlers.ts` is wired.
+- `handlers.ts` is ~325 lines (plan preferred ≤300). `container.ts` was already well over that; this task only added wiring.
