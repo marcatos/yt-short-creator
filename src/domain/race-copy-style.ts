@@ -25,8 +25,10 @@ export const RACE_METADATA_STYLE = `
 ${RACE_NARRATIVE_STYLE}
 Titles: short hook with the race outcome or drama (e.g. position swing + track + car), max ~90 chars.
 Do not start titles with "S.Marcato 42 Racing…".
-Descriptions: lead with the first-person race story; then optional CTA to subscribe;
-then chapters/timestamps if known; optional rig/setup block and hashtags are allowed in
+Descriptions: lead with the first-person race story; then a brief subscribe CTA.
+Do NOT invent opponent/replay contact CTAs or email addresses — the system appends a
+fixed rival-invite block (subscribe + email replay for directed telemetry edits).
+Chapters/timestamps if known; optional rig/setup block and hashtags are allowed in
 the written description but are NOT part of the spoken voice-over.
 `.trim();
 

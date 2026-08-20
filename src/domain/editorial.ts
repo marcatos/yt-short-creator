@@ -90,6 +90,30 @@ export function formatRaceInfoBlock(
   return lines.length ? ["Race info", ...lines].join("\n") : "";
 }
 
+/** Public contact for opponent replays — shown in YouTube descriptions. */
+export const OPPONENT_REPLAY_CONTACT_EMAIL = "marcato.simone@gmail.com";
+
+/**
+ * Static invite for drivers who raced against the channel owner.
+ * Not LLM-generated — keep wording stable for SEO and conversion.
+ */
+export function renderOpponentInviteBlock(language: HardwareLanguage): string {
+  if (language === "it") {
+    return [
+      "🏎️ Correvi contro di me in questa gara?",
+      "Iscriviti al canale per vedere gare, highlight e telemetria integrata.",
+      "Hai un replay iRacing di questa sessione che non ho caricato? Mandamelo a",
+      `${OPPONENT_REPLAY_CONTACT_EMAIL} — montaggio di regia con telemetria inclusa.`,
+    ].join("\n");
+  }
+  return [
+    "🏎️ Racing against me in this race?",
+    "Subscribe for races, highlights, and integrated telemetry.",
+    "Got an iRacing replay of this session I did not upload? Email it to",
+    `${OPPONENT_REPLAY_CONTACT_EMAIL} — directed edit with telemetry included.`,
+  ].join("\n");
+}
+
 export function assembleDescription(input: {
   language: HardwareLanguage;
   hook: string;
@@ -104,6 +128,7 @@ export function assembleDescription(input: {
     input.story.trim(),
     formatRaceInfoBlock(input.analysis, input.language),
     input.cta.trim(),
+    renderOpponentInviteBlock(input.language),
     renderHardwareBlock(input.hardware, input.language),
     input.hashtags
       .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`))

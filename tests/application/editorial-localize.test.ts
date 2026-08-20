@@ -88,6 +88,44 @@ describe("editorial description assembly", () => {
     expect(description).toContain("#iRacing");
   });
 
+  it("appends a static opponent invite with contact email after the CTA", () => {
+    const it = assembleDescription({
+      language: "it",
+      hook: "Hook",
+      story: "Story",
+      cta: "Iscriviti per le prossime gare.",
+      analysis,
+      hardware: DEFAULT_HARDWARE,
+      hashtags: ["iRacing"],
+    });
+    const en = assembleDescription({
+      language: "en",
+      hook: "Hook",
+      story: "Story",
+      cta: "Subscribe for the next races.",
+      analysis,
+      hardware: DEFAULT_HARDWARE,
+      hashtags: ["iRacing"],
+    });
+
+    expect(it).toContain("marcato.simone@gmail.com");
+    expect(it).toContain("Correvi contro di me");
+    expect(it).toContain("replay iRacing");
+    expect(it.indexOf("Iscriviti per le prossime gare.")).toBeLessThan(
+      it.indexOf("Correvi contro di me"),
+    );
+    expect(it.indexOf("Correvi contro di me")).toBeLessThan(
+      it.indexOf("LA MIA POSTAZIONE SIM RACING"),
+    );
+
+    expect(en).toContain("marcato.simone@gmail.com");
+    expect(en).toContain("Racing against me");
+    expect(en).toContain("iRacing replay");
+    expect(en.indexOf("Subscribe for the next races.")).toBeLessThan(
+      en.indexOf("Racing against me"),
+    );
+  });
+
   it("formats English race info", () => {
     expect(formatRaceInfoBlock(analysis, "en")).toContain("Start: P18/20");
   });
@@ -132,8 +170,11 @@ describe("editorialLocalize", () => {
     expect(pack.en.title).toContain("Comeback");
     expect(pack.it.title).not.toBe(pack.en.title);
     expect(pack.it.description).toContain("LA MIA POSTAZIONE SIM RACING");
+    expect(pack.it.description).toContain("marcato.simone@gmail.com");
     expect(pack.en.description).toContain("Wheelbase:");
+    expect(pack.en.description).toContain("Racing against me");
     expect(pack.it.voiceOverScript).not.toContain("LA MIA POSTAZIONE SIM RACING");
+    expect(pack.it.voiceOverScript).not.toContain("marcato.simone@gmail.com");
     expect(pack.thumbnailConcept.universalText).toBe("P18 → P8");
   });
 });
