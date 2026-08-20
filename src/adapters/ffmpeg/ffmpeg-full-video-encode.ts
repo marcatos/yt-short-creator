@@ -333,11 +333,7 @@ export function createFfmpegFullVideoEncode(
         durationSec,
       });
 
-      const args = [
-        "-y",
-        "-hide_banner",
-        "-hwaccel",
-        "auto",
+      const commonTail = [
         "-i",
         sourceMediaPath,
         ...(vf ? ["-vf", vf] : []),
@@ -355,7 +351,27 @@ export function createFfmpegFullVideoEncode(
         outputPath,
       ];
 
-      await runFfmpeg(ffmpegPath, args, log);
+      try {
+        await runFfmpeg(
+          ffmpegPath,
+          ["-y", "-hide_banner", "-hwaccel", "auto", ...commonTail],
+          log,
+        );
+      } catch (error) {
+        // DXVA/D3D device creation can crash (-hwaccel auto) on some Windows
+        // sessions while the discrete GPU is busy with Short renders.
+        log.warn("Full-video encode with hwaccel failed; retrying software decode", {
+          error:
+            error instanceof Error
+              ? { message: error.message.slice(0, 400) }
+              : String(error),
+        });
+        await runFfmpeg(
+          ffmpegPath,
+          ["-y", "-hide_banner", ...commonTail],
+          log,
+        );
+      }
 
       const manifest: Manifest = {
         sourcePath: sourceMediaPath,
