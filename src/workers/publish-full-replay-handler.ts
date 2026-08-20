@@ -26,6 +26,12 @@ function asPrivacy(value: unknown): YoutubePrivacy {
   return "unlisted";
 }
 
+function asScheduledAt(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function createPublishFullReplayHandler(
   deps: Dependencies,
 ): JobHandler {
@@ -35,12 +41,14 @@ export function createPublishFullReplayHandler(
     const sessionId = requireStringPayload(ctx.payload, "sessionId");
     const privacy = asPrivacy(ctx.payload.privacy);
     const voiceOver = ctx.payload.voiceOver === true;
+    const scheduledAt = asScheduledAt(ctx.payload.scheduledAt);
     const startedAt = performance.now();
     log.info("publish_full_replay started", {
       jobId: ctx.jobId,
       sessionId,
       privacy,
       voiceOver,
+      scheduledAt: scheduledAt?.toISOString() ?? null,
     });
 
     try {
@@ -88,6 +96,7 @@ export function createPublishFullReplayHandler(
           sessionId,
           privacy,
           encodePath: deliveryPath,
+          scheduledAt,
         });
         log.info("publish_full_replay completed", {
           jobId: ctx.jobId,
@@ -156,8 +165,8 @@ export function createPublishFullReplayHandler(
               title: title.slice(0, 100),
               description,
               tags: (packageMeta?.tags ?? ["iRacing", "simracing"]).slice(0, 15),
-              scheduledAt: null,
-              privacy,
+              scheduledAt,
+              privacy: scheduledAt ? "private" : privacy,
               contentKind: "full",
               defaultLanguage: "it",
             }),
@@ -167,7 +176,7 @@ export function createPublishFullReplayHandler(
           ...session,
           fullVideoEncodePath: filePath,
           fullVideoYoutubeId: result.youtubeVideoId,
-          fullVideoPrivacy: privacy,
+          fullVideoPrivacy: scheduledAt ? "private" : privacy,
           fullVideoPublishedAt: deps.clock.now(),
           updatedAt: deps.clock.now(),
         });
@@ -175,7 +184,8 @@ export function createPublishFullReplayHandler(
         log.info("Full replay uploaded", {
           sessionId,
           youtubeVideoId: result.youtubeVideoId,
-          privacy,
+          privacy: scheduledAt ? "private" : privacy,
+          scheduledAt: scheduledAt?.toISOString() ?? null,
         });
       });
 

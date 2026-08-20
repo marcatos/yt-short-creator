@@ -2,7 +2,7 @@
  * Enqueue single-master multilingual full-race publish (unlisted by default).
  *
  * Usage:
- *   npx tsx scripts/enqueue-full-vo-publish.ts --session-id <uuid> [--privacy unlisted]
+ *   npx tsx scripts/enqueue-full-vo-publish.ts --session-id <uuid> [--privacy unlisted] [--scheduled-at ISO]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -40,11 +40,21 @@ function asPrivacy(value: string | undefined): YoutubePrivacy {
   return "unlisted";
 }
 
+function asScheduledAt(value: string | undefined): Date | null {
+  if (!value?.trim()) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid --scheduled-at: ${value}`);
+  }
+  return parsed;
+}
+
 async function main(): Promise<void> {
   loadEnvLocal();
   const sessionId = argValue("--session-id");
   if (!sessionId) throw new Error("Missing --session-id");
   const privacy = asPrivacy(argValue("--privacy"));
+  const scheduledAt = asScheduledAt(argValue("--scheduled-at"));
   const env = loadEnv();
   const container = createContainer(env);
   const session = await container.repositories.replaySessions.getById(sessionId);
@@ -58,6 +68,7 @@ async function main(): Promise<void> {
         mainStoryline: session.raceAnalysis?.mainStoryline ?? null,
         shortCount: session.raceAnalysis?.shortCandidates.length ?? 0,
         youtubeIdBefore: session.fullVideoYoutubeId,
+        scheduledAt: scheduledAt?.toISOString() ?? null,
       },
       null,
       2,
@@ -67,8 +78,20 @@ async function main(): Promise<void> {
     sessionId,
     privacy,
     voiceOver: true,
+    scheduledAt,
   });
-  console.log(JSON.stringify({ enqueued: result, privacy, voiceOver: true }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        enqueued: result,
+        privacy,
+        voiceOver: true,
+        scheduledAt: scheduledAt?.toISOString() ?? null,
+      },
+      null,
+      2,
+    ),
+  );
   container.connection.close();
 }
 

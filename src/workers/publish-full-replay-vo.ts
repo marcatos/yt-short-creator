@@ -63,9 +63,14 @@ function packageFor(
 export async function runFullVoiceOverPublish(
   ctx: JobHandlerContext,
   deps: FullVoiceOverPublishDeps,
-  input: { sessionId: string; privacy: YoutubePrivacy; encodePath: string },
+  input: {
+    sessionId: string;
+    privacy: YoutubePrivacy;
+    encodePath: string;
+    scheduledAt?: Date | null;
+  },
 ): Promise<void> {
-  const { sessionId, privacy } = input;
+  const { sessionId, privacy, scheduledAt = null } = input;
   const log = deps.logger.child({
     component: "PublishFullReplaySingleMaster",
   });
@@ -145,8 +150,8 @@ export async function runFullVoiceOverPublish(
             0,
             15,
           ),
-          scheduledAt: null,
-          privacy,
+          scheduledAt,
+          privacy: scheduledAt ? "private" : privacy,
           contentKind: "full",
           defaultLanguage: "it",
           defaultAudioLanguage: "it",
@@ -155,7 +160,7 @@ export async function runFullVoiceOverPublish(
     await deps.replaySessions.save({
       ...session,
       fullVideoYoutubeId: result.youtubeVideoId,
-      fullVideoPrivacy: privacy,
+      fullVideoPrivacy: scheduledAt ? "private" : privacy,
       fullVideoPublishedAt: deps.clock.now(),
       fullVoiceOvers: (session.fullVoiceOvers ?? []).map((voiceOver) =>
         voiceOver.language === "it"
@@ -170,6 +175,7 @@ export async function runFullVoiceOverPublish(
     log.info("Single-master full race uploaded", {
       sessionId,
       youtubeVideoId: result.youtubeVideoId,
+      scheduledAt: scheduledAt?.toISOString() ?? null,
     });
   });
 

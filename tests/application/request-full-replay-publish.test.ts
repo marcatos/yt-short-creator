@@ -109,7 +109,12 @@ describe("requestFullReplayPublish", () => {
     expect(queued).toEqual([
       {
         type: "publish_full_replay",
-        payload: { sessionId: "session-1", privacy: "unlisted", voiceOver: true },
+        payload: {
+          sessionId: "session-1",
+          privacy: "unlisted",
+          voiceOver: true,
+          scheduledAt: null,
+        },
       },
     ]);
   });
@@ -163,7 +168,12 @@ describe("requestFullReplayPublish", () => {
     expect(queued).toEqual([
       {
         type: "publish_full_replay",
-        payload: { sessionId: "session-1", privacy: "unlisted", voiceOver: false },
+        payload: {
+          sessionId: "session-1",
+          privacy: "unlisted",
+          voiceOver: false,
+          scheduledAt: null,
+        },
       },
     ]);
   });
@@ -227,7 +237,35 @@ describe("requestFullReplayPublish", () => {
     expect(result.jobId).toBe("job-1");
     expect(queued[0]).toMatchObject({
       type: "publish_full_replay",
-      payload: { sessionId: "session-1", privacy: "unlisted" },
+      payload: {
+        sessionId: "session-1",
+        privacy: "unlisted",
+        scheduledAt: null,
+      },
+    });
+  });
+
+  it("passes scheduledAt ISO into the job payload", async () => {
+    const queued: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    const request = makeRequest({
+      session: replaySession(),
+      queued,
+    });
+    const scheduledAt = new Date("2026-08-21T06:30:00.000Z");
+    await request({
+      sessionId: "session-1",
+      privacy: "public",
+      voiceOver: true,
+      scheduledAt,
+    });
+    expect(queued[0]).toEqual({
+      type: "publish_full_replay",
+      payload: {
+        sessionId: "session-1",
+        privacy: "public",
+        voiceOver: true,
+        scheduledAt: "2026-08-21T06:30:00.000Z",
+      },
     });
   });
 });

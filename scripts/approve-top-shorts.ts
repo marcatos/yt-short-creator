@@ -3,7 +3,7 @@
  * Generates IT/EN VO first (bilingual Short pipeline), then approves (render → publish).
  *
  * Usage:
- *   npx tsx scripts/approve-top-shorts.ts --session-id <uuid> [--limit 5]
+ *   npx tsx scripts/approve-top-shorts.ts --session-id <uuid> [--limit 5] [--scheduled-at ISO]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +34,15 @@ function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
   if (index < 0) return undefined;
   return process.argv[index + 1];
+}
+
+function asScheduledAt(value: string | undefined): Date | null {
+  if (!value?.trim()) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid --scheduled-at: ${value}`);
+  }
+  return parsed;
 }
 
 function matchCandidate(
@@ -82,10 +91,12 @@ async function main(): Promise<void> {
     throw new Error("--session-id is required");
   }
   const limit = Math.max(1, Number(argValue("--limit") ?? "5") || 5);
+  const scheduledAt = asScheduledAt(argValue("--scheduled-at"));
 
   const container = createContainer(env);
   const settings = await container.settings.get();
-  if (settings.defaultPrivacy !== "unlisted") {
+  // Scheduled uploads go private until publishAt; otherwise keep unlisted default.
+  if (!scheduledAt && settings.defaultPrivacy !== "unlisted") {
     await container.updateSettings({
       ...settings,
       defaultPrivacy: "unlisted",
@@ -146,6 +157,7 @@ async function main(): Promise<void> {
       {
         sessionId,
         defaultPrivacy: privacy,
+        scheduledAt: scheduledAt?.toISOString() ?? null,
         selected: selected.map((c, i) => ({
           id: c.id,
           title: c.title,
@@ -163,6 +175,15 @@ async function main(): Promise<void> {
   );
 
   for (const candidate of selected) {
+    if (scheduledAt) {
+      await container.updateCandidateMetadata({
+        candidateId: candidate.id,
+        title: candidate.title,
+        description: candidate.description,
+        tags: candidate.tags,
+        scheduledAt,
+      });
+    }
     console.log(`Generating VO for ${candidate.id}…`);
     await container.generateShortVoiceOvers({ candidateId: candidate.id });
     console.log(`Approving ${candidate.id}…`);
@@ -173,6 +194,7 @@ async function main(): Promise<void> {
       JSON.stringify({
         candidateId: approved.id,
         status: approved.status,
+        scheduledAt: approved.scheduledAt?.toISOString() ?? null,
         voiceOverCount: approved.voiceOvers?.length ?? 0,
       }),
     );
@@ -181,7 +203,10 @@ async function main(): Promise<void> {
   console.log(
     JSON.stringify({
       enqueued: selected.length,
-      note: "Workers will render IT/EN then publish (defaultPrivacy).",
+      scheduledAt: scheduledAt?.toISOString() ?? null,
+      note: scheduledAt
+        ? "Workers will render IT/EN then upload private with publishAt."
+        : "Workers will render IT/EN then publish (defaultPrivacy).",
     }),
   );
   container.connection.close();

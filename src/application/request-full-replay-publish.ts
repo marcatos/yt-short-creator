@@ -14,6 +14,8 @@ export type RequestFullReplayPublish = (input: {
   privacy?: YoutubePrivacy;
   /** Produce the IT+EN narrated pair instead of the single silent upload. */
   voiceOver?: boolean;
+  /** When set, YouTube keeps the video private until this instant (public thereafter). */
+  scheduledAt?: Date | null;
 }) => Promise<{ jobId: string }>;
 
 export function createRequestFullReplayPublish(
@@ -21,7 +23,12 @@ export function createRequestFullReplayPublish(
 ): RequestFullReplayPublish {
   const log = deps.logger.child({ operation: "requestFullReplayPublish" });
 
-  return async ({ sessionId, privacy = "unlisted", voiceOver = false }) => {
+  return async ({
+    sessionId,
+    privacy = "unlisted",
+    voiceOver = false,
+    scheduledAt = null,
+  }) => {
     const startedAt = performance.now();
     const session = await deps.replaySessions.getById(sessionId);
     if (!session) {
@@ -56,13 +63,19 @@ export function createRequestFullReplayPublish(
 
     const jobId = await deps.queue.enqueue({
       type: "publish_full_replay",
-      payload: { sessionId, privacy, voiceOver },
+      payload: {
+        sessionId,
+        privacy,
+        voiceOver,
+        scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+      },
     });
     log.info("Full replay publish enqueued", {
       sessionId,
       jobId,
       privacy,
       voiceOver,
+      scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
       durationMs: Math.round(performance.now() - startedAt),
     });
     return { jobId };
