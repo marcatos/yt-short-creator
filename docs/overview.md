@@ -37,7 +37,7 @@ It is a single-operator tool. There is no multi-user SaaS surface. Publish alway
 | `/library` | Channel catalog, clip analysis, generate ideas |
 | `/match` | Pair library videos × Inspiration ideas → ranked preview → analyze + generate fill |
 | `/inspiration` | YouTube Studio Inspiration mirror — active ideas, sync history, Sync now |
-| `/replays` | iRacing / OBS replay sessions, Director capture, full-race publish |
+| `/replays` | iRacing / OBS replay sessions, optional commentary audio + spoken markers, Director capture, full-race publish |
 | `/candidates` | Candidate list (filter by status / origin) |
 | `/candidates/[id]` | Review, revise, reject, approve; optional VO |
 | `/jobs` | Live job queue — pause, resume, cancel, reorder |
@@ -79,7 +79,7 @@ Design details and env knobs: [2026-08-14 youtube-inspiration](superpowers/specs
 - **Inspiration sync** — Playwright scrape of Studio Inspiration tab (manual + scheduled); biases clip/generate/replay proposals via prompt, score boost, and alignment quota (see **Using Inspiration** above)
 - **Clip path** — sync library → analyze long-form windows → score and propose candidates
 - **Generate path** — ideation briefs → assemble / preview → same approval path
-- **Replay path** — `.rpy` / media / telemetry → analyze → Director or auto capture → Short or full-race publish
+- **Replay path** — `.rpy` / media / telemetry / optional sidecar commentary audio (spoken markers) → analyze → Director or auto capture → Short or full-race publish
 - **Bilingual VO + captions** — IT/EN TTS, optional burn-in / duck; soft SRT and Studio checklist for full deliveries
 - **Jobs control** — pause / resume / cancel / reorder; circuit-breaker style defer when YouTube daily limits hit
 - **Brand render** — FFmpeg encode with brand pack (tokens, stacked logo, story template)
