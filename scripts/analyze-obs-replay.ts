@@ -4,6 +4,7 @@
  * Usage:
  *   npx tsx scripts/analyze-obs-replay.ts --media "C:\path\file.mkv" [--title "..."] [--track "..."] [--notes "..."]
  *   npx tsx scripts/analyze-obs-replay.ts --session-id <uuid> [--notes-file path.txt]
+ *   Optional: --commentary "C:\path\comment.wav" [--commentary-offset-ms 0]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +42,12 @@ async function main(): Promise<void> {
   const trackName = argValue("--track");
   const notesInline = argValue("--notes");
   const notesFile = argValue("--notes-file");
+  const commentaryPathArg = argValue("--commentary");
+  const commentaryOffsetRaw = argValue("--commentary-offset-ms");
+  const commentaryOffsetMs =
+    commentaryOffsetRaw != null && Number.isFinite(Number(commentaryOffsetRaw))
+      ? Math.trunc(Number(commentaryOffsetRaw))
+      : 0;
 
   let operatorNotes: string | null = null;
   if (notesFile) {
@@ -92,6 +99,20 @@ async function main(): Promise<void> {
       sessionId,
       mediaPath: absoluteMedia,
       hasOperatorNotes: Boolean(operatorNotes),
+    });
+  }
+
+  if (commentaryPathArg) {
+    const absoluteCommentary = path.resolve(commentaryPathArg);
+    await container.attachReplayCommentary({
+      sessionId,
+      commentaryPath: absoluteCommentary,
+      offsetMs: commentaryOffsetMs,
+    });
+    container.logger.info("Commentary audio attached", {
+      sessionId,
+      commentaryPath: absoluteCommentary,
+      commentaryOffsetMs,
     });
   }
 

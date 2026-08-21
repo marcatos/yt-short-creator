@@ -100,8 +100,10 @@ import {
   type CreateReplaySession,
 } from "@/src/application/create-replay-session";
 import {
+  createAttachReplayCommentary,
   createAttachReplayIbt,
   createAttachReplayMedia,
+  type AttachReplayCommentary,
   type AttachReplayIbt,
   type AttachReplayMedia,
 } from "@/src/application/attach-replay-media";
@@ -182,6 +184,7 @@ export type AppContainer = {
   createReplaySession: CreateReplaySession;
   attachReplayMedia: AttachReplayMedia;
   attachReplayIbt: AttachReplayIbt;
+  attachReplayCommentary: AttachReplayCommentary;
   addManualReplayMoment: AddManualReplayMoment;
   requestReplayCapture: RequestReplayCapture;
   requestFullReplayPublish: RequestFullReplayPublish;
@@ -421,6 +424,11 @@ export function createContainer(env: AppEnv): AppContainer {
       logger,
     }),
     attachReplayIbt: createAttachReplayIbt({
+      replaySessions: repositories.replaySessions,
+      clock,
+      logger,
+    }),
+    attachReplayCommentary: createAttachReplayCommentary({
       replaySessions: repositories.replaySessions,
       clock,
       logger,

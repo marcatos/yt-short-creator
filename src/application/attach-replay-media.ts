@@ -23,6 +23,12 @@ export type AttachReplayIbt = (input: {
   ibtPath: string;
 }) => Promise<ReplaySession>;
 
+export type AttachReplayCommentary = (input: {
+  sessionId: string;
+  commentaryPath: string;
+  offsetMs?: number;
+}) => Promise<ReplaySession>;
+
 async function requireSession(
   repo: ReplaySessionRepository,
   sessionId: string,
@@ -90,6 +96,44 @@ export function createAttachReplayIbt(deps: {
     log.info("Replay IBT attached", {
       sessionId,
       ibtPath: trimmed,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    return updated;
+  };
+}
+
+export function createAttachReplayCommentary(deps: {
+  replaySessions: ReplaySessionRepository;
+  clock: ClockPort;
+  logger: Logger;
+}): AttachReplayCommentary {
+  const log = deps.logger.child({ operation: "attachReplayCommentary" });
+
+  return async ({ sessionId, commentaryPath, offsetMs }) => {
+    const startedAt = performance.now();
+    const trimmed = commentaryPath.trim();
+    if (!trimmed) {
+      throw new Error("commentaryPath is required");
+    }
+    await fs.access(trimmed);
+
+    const offset =
+      typeof offsetMs === "number" && Number.isFinite(offsetMs)
+        ? Math.trunc(offsetMs)
+        : 0;
+
+    const session = await requireSession(deps.replaySessions, sessionId);
+    const updated: ReplaySession = {
+      ...session,
+      commentaryPath: trimmed,
+      commentaryOffsetMs: offset,
+      updatedAt: deps.clock.now(),
+    };
+    await deps.replaySessions.save(updated);
+    log.info("Replay commentary attached", {
+      sessionId,
+      commentaryPath: trimmed,
+      commentaryOffsetMs: offset,
       durationMs: Math.round(performance.now() - startedAt),
     });
     return updated;

@@ -56,6 +56,20 @@ async function attachIbtAction(formData: FormData): Promise<void> {
   revalidatePath("/replays");
 }
 
+async function attachCommentaryAction(formData: FormData): Promise<void> {
+  "use server";
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const commentaryPath = String(formData.get("commentaryPath") ?? "").trim();
+  const offsetRaw = String(formData.get("commentaryOffsetMs") ?? "").trim();
+  const offsetMs = offsetRaw === "" ? 0 : Number(offsetRaw);
+  await getContainer().attachReplayCommentary({
+    sessionId,
+    commentaryPath,
+    offsetMs: Number.isFinite(offsetMs) ? offsetMs : 0,
+  });
+  revalidatePath("/replays");
+}
+
 async function analyzeReplayAction(formData: FormData): Promise<void> {
   "use server";
   const sessionId = String(formData.get("sessionId") ?? "");
@@ -204,7 +218,11 @@ export default async function ReplaysPage() {
                   </p>
                   <p className="muted">
                     Media: {session.mediaPath ?? "none"} · IBT:{" "}
-                    {session.ibtPath ?? "none"} · Events: {session.events.length}
+                    {session.ibtPath ?? "none"} · Commentary:{" "}
+                    {session.commentaryPath
+                      ? `${session.commentaryPath} (offset ${session.commentaryOffsetMs}ms)`
+                      : "none"}{" "}
+                    · Events: {session.events.length}
                   </p>
                 </div>
                 <div className="replay-session-actions">
@@ -411,6 +429,30 @@ export default async function ReplaysPage() {
                   </label>
                   <button className="button button-secondary" type="submit">
                     Attach IBT
+                  </button>
+                </form>
+                <form action={attachCommentaryAction} className="replay-tool-form">
+                  <input type="hidden" name="sessionId" value={session.id} />
+                  <label>
+                    Attach commentary audio
+                    <input
+                      name="commentaryPath"
+                      required
+                      placeholder="C:\...\comment.wav"
+                      defaultValue={session.commentaryPath ?? ""}
+                    />
+                  </label>
+                  <label>
+                    Offset (ms)
+                    <input
+                      name="commentaryOffsetMs"
+                      type="number"
+                      step={1}
+                      defaultValue={session.commentaryOffsetMs}
+                    />
+                  </label>
+                  <button className="button button-secondary" type="submit">
+                    Attach commentary
                   </button>
                 </form>
                 <form action={manualMomentAction} className="replay-tool-form">
