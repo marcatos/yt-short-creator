@@ -24,6 +24,8 @@ describe("requestReplayCapture", () => {
       rpyPath: "C:/replays/race.rpy",
       ibtPath: null,
       mediaPath: null,
+      commentaryPath: null,
+      commentaryOffsetMs: 0,
       trackName: "Spa",
       focusCarIdx: 0,
       title: "Spa race",

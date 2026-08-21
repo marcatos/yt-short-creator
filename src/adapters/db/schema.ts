@@ -81,6 +81,8 @@ export const replaySessions = sqliteTable("replay_sessions", {
   rpyPath: text("rpy_path"),
   ibtPath: text("ibt_path"),
   mediaPath: text("media_path"),
+  commentaryPath: text("commentary_path"),
+  commentaryOffsetMs: integer("commentary_offset_ms").notNull().default(0),
   trackName: text("track_name"),
   focusCarIdx: integer("focus_car_idx"),
   title: text("title").notNull(),

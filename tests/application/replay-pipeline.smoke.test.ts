@@ -32,6 +32,8 @@ describe("replay pipeline smoke", () => {
       rpyPath: "C:/replays/race.rpy",
       ibtPath: null,
       mediaPath: "media/replay.mp4",
+      commentaryPath: null,
+      commentaryOffsetMs: 0,
       trackName: "Monza",
       focusCarIdx: 0,
       title: "Monza race",

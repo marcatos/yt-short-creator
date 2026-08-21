@@ -84,6 +84,8 @@ function baseSession(overrides: Partial<ReplaySession> = {}): ReplaySession {
     rpyPath: "C:/replays/race.rpy",
     ibtPath: null,
     mediaPath: "C:/videos/race.mp4",
+    commentaryPath: null,
+    commentaryOffsetMs: 0,
     trackName: "Imola",
     focusCarIdx: 0,
     title: "Imola race",

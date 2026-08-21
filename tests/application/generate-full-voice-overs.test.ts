@@ -40,6 +40,8 @@ function session(overrides: Partial<ReplaySession> = {}): ReplaySession {
     rpyPath: null,
     ibtPath: null,
     mediaPath: "C:/Videos/race.mkv",
+    commentaryPath: null,
+    commentaryOffsetMs: 0,
     trackName: "Oschersleben",
     focusCarIdx: 42,
     title: "Endurance race",

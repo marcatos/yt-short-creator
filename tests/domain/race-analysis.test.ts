@@ -72,6 +72,9 @@ function oscherslebenFixture(): RaceAnalysis {
     narrativeIt:
       "Sbaglio entrambi i giri di qualifica e parto P18 su 20. In 15 minuti rimonto fino alla P8.",
     audioTranscript: "",
+    audioSource: "muxed" as const,
+    audioTranscriptSegments: [],
+    commentaryMarkers: [],
     hudTimeline: [],
   };
 }

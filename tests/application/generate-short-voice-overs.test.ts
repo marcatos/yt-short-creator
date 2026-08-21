@@ -516,6 +516,9 @@ describe("candidateContext HUD enrichment", () => {
       ],
       narrativeIt: "Battaglia.",
       audioTranscript: "",
+      audioSource: "muxed" as const,
+      audioTranscriptSegments: [],
+      commentaryMarkers: [],
       hudTimeline: [
         {
           timeMs: 12_000,

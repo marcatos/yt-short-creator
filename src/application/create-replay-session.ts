@@ -49,6 +49,8 @@ export function createCreateReplaySession(
       rpyPath,
       ibtPath: input.ibtPath?.trim() || null,
       mediaPath,
+      commentaryPath: null,
+      commentaryOffsetMs: 0,
       trackName: input.trackName?.trim() || null,
       focusCarIdx:
         typeof input.focusCarIdx === "number" && Number.isFinite(input.focusCarIdx)

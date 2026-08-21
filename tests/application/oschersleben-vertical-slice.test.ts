@@ -125,6 +125,9 @@ export function oscherslebenRaceAnalysis(): RaceAnalysis {
     narrativeIt:
       "Sbaglio entrambi i giri di qualifica e parto P18 su 20. In 15 minuti rimonto fino alla P8, passando in chicane quando difendono l'interno e gestendo meglio le gomme nel finale.",
     audioTranscript: "",
+    audioSource: "muxed" as const,
+    audioTranscriptSegments: [],
+    commentaryMarkers: [],
     hudTimeline: [],
   };
 }

@@ -113,6 +113,8 @@ describe("bilingual voice-over candidate UI", () => {
         durationSec: 600,
         rpyPath: null,
         mediaPath: "C:/Videos/race.mkv",
+        commentaryPath: null,
+        commentaryOffsetMs: 0,
         ibtPath: null,
         events: [],
         racePackage: {

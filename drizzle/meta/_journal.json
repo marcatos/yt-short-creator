@@ -71,6 +71,13 @@
       "when": 1786720000000,
       "tag": "0009_inspiration",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786880000000,
+      "tag": "0010_replay_commentary",
+      "breakpoints": true
     }
   ]
 }

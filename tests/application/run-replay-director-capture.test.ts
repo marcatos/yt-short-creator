@@ -27,6 +27,8 @@ describe("runReplayDirectorCapture", () => {
       rpyPath: "C:/replays/race.rpy",
       ibtPath: "C:/telemetry/race.ibt",
       mediaPath: null,
+      commentaryPath: null,
+      commentaryOffsetMs: 0,
       trackName: null,
       focusCarIdx: 0,
       title: "Monza",

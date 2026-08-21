@@ -72,6 +72,9 @@ function analysis(): RaceAnalysis {
     ],
     narrativeIt: "Parto P18.",
     audioTranscript: "",
+    audioSource: "muxed" as const,
+    audioTranscriptSegments: [],
+    commentaryMarkers: [],
     hudTimeline: [],
   };
 }
@@ -101,6 +104,8 @@ function session(overrides: Partial<ReplaySession> = {}): ReplaySession {
     rpyPath: null,
     ibtPath: null,
     mediaPath: "C:/Videos/race.mkv",
+    commentaryPath: null,
+    commentaryOffsetMs: 0,
     trackName: "Oschersleben",
     focusCarIdx: null,
     title: "Race",

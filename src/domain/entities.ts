@@ -94,6 +94,10 @@ export type ReplaySession = {
   rpyPath: string | null;
   ibtPath: string | null;
   mediaPath: string | null;
+  /** Optional sidecar spoken commentary for FASE A (local path). */
+  commentaryPath: string | null;
+  /** Offset added to commentary timestamps to align with video clock. */
+  commentaryOffsetMs: number;
   trackName: string | null;
   focusCarIdx: number | null;
   title: string;

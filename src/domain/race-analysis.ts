@@ -6,6 +6,12 @@ import type {
   RaceTimelineEntry,
 } from "./entities";
 import {
+  COMMENTARY_MARKER_KINDS,
+  type AnalysisAudioSourceKind,
+  type AudioTranscriptSegment,
+  type CommentaryMarker,
+} from "./commentary-markers";
+import {
   raceHudTimelineSchema,
   type RaceHudTimeline,
 } from "./race-hud";
@@ -99,6 +105,12 @@ export type RaceAnalysis = {
   /** First-person chronological narrative (Italian) for editorial input. */
   narrativeIt: string;
   audioTranscript: string;
+  /** Which audio feed Whisper used for this analysis. */
+  audioSource: AnalysisAudioSourceKind;
+  /** Timed Whisper segments (video clock; offset already applied for commentary). */
+  audioTranscriptSegments: AudioTranscriptSegment[];
+  /** Spoken markers extracted from commentary (or empty when muxed-only). */
+  commentaryMarkers: CommentaryMarker[];
   /** Structured HUD overlays extracted from burned-in telemetry panels. */
   hudTimeline: RaceHudTimeline;
 };
@@ -195,6 +207,27 @@ export const raceAnalysisSchema = z.object({
   shortCandidates: z.array(shortSegmentAnalysisSchema).min(1).max(24),
   narrativeIt: z.string().trim().min(1),
   audioTranscript: z.string(),
+  audioSource: z.enum(["commentary", "muxed"]).default("muxed"),
+  audioTranscriptSegments: z
+    .array(
+      z.object({
+        startMs: z.number().int(),
+        endMs: z.number().int(),
+        text: z.string(),
+      }),
+    )
+    .default([]),
+  commentaryMarkers: z
+    .array(
+      z.object({
+        kind: z.enum(COMMENTARY_MARKER_KINDS),
+        timeMs: z.number().int(),
+        rawText: z.string().trim().min(1),
+        source: z.enum(["heuristic", "llm"]),
+        lapNumber: z.number().int().positive().optional(),
+      }),
+    )
+    .default([]),
   hudTimeline: raceHudTimelineSchema.default([]),
 });
 
@@ -202,6 +235,9 @@ export const raceAnalysisSchema = z.object({
 export const raceAnalysisLlmSchema = raceAnalysisSchema.omit({
   version: true,
   hudTimeline: true,
+  audioSource: true,
+  audioTranscriptSegments: true,
+  commentaryMarkers: true,
 });
 
 export type RaceAnalysisLlmOutput = z.infer<typeof raceAnalysisLlmSchema>;
