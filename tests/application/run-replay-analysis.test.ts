@@ -363,6 +363,119 @@ describe("runReplayAnalysis", () => {
     expect(sessions.session.racePackage?.transcript).toContain("vision");
   });
 
+  it("transcribes commentary audio with offset and stores markers", async () => {
+    const sessions = new MemoryReplaySessions(
+      baseSession({
+        commentaryPath: "C:/audio/comment.wav",
+        commentaryOffsetMs: 5_000,
+      }),
+    );
+    const transcribedPaths: string[] = [];
+    const candidates = new MemoryCandidates();
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: {
+        async transcribe(audioPath) {
+          transcribedPaths.push(audioPath);
+          return {
+            text: "Inizia la gara. Giro 2.",
+            language: "it",
+            segments: [
+              { startMs: 10_000, endMs: 12_000, text: "Inizia la gara" },
+              { startMs: 40_000, endMs: 42_000, text: "giro 2" },
+            ],
+          };
+        },
+      },
+      mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor(),
+      llm: {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({ moments: [] });
+          }
+          expect(String(input.user)).toContain("commentary");
+          expect(String(input.user)).toContain("race_start");
+          return JSON.stringify({
+            raceAnalysis: raceAnalysisLlmFixture(),
+            proposedCommentaryMarkers: [],
+          });
+        },
+      },
+      id: {
+        generate: (() => {
+          let n = 0;
+          return () => `id-${++n}`;
+        })(),
+      },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
+    });
+
+    await run({ sessionId: "session-1" });
+    expect(transcribedPaths).toEqual(["C:/audio/comment.wav"]);
+    expect(sessions.session.raceAnalysis?.audioSource).toBe("commentary");
+    expect(sessions.session.raceAnalysis?.commentaryMarkers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "race_start",
+          timeMs: 15_000,
+          source: "heuristic",
+        }),
+        expect.objectContaining({
+          kind: "lap",
+          lapNumber: 2,
+          timeMs: 45_000,
+          source: "heuristic",
+        }),
+      ]),
+    );
+  });
+
+  it("fails hard when commentary transcription fails", async () => {
+    const sessions = new MemoryReplaySessions(
+      baseSession({ commentaryPath: "C:/audio/comment.wav" }),
+    );
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates: new MemoryCandidates(),
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: {
+        async transcribe() {
+          throw new Error("whisper down");
+        },
+      },
+      mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor(),
+      llm: {
+        async complete() {
+          throw new Error("should not reach LLM");
+        },
+      },
+      id: { generate: () => "id-1" },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
+    });
+
+    await expect(run({ sessionId: "session-1" })).rejects.toThrow(
+      "whisper down",
+    );
+  });
+
   it("uses HUD focus card for subject and fills verified results", async () => {
     const sessions = new MemoryReplaySessions(baseSession());
     const candidates = new MemoryCandidates();

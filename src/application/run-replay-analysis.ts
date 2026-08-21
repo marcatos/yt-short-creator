@@ -6,6 +6,20 @@ import type {
 } from "@/src/domain/entities";
 import { DEFAULT_FOCUS_CAR_HINT as FOCUS_CAR_DEFAULT } from "@/src/domain/entities";
 import {
+  applyCommentaryOffset,
+  boostScoreNearLapMarkers,
+  demoteScoreBeforeRaceStart,
+  extractHeuristicMarkers,
+  filterMarkersInDuration,
+  firstRaceStartMs,
+  formatCommentaryMarkersForPrompt,
+  formatTranscriptSegmentsForPrompt,
+  mergeCommentaryMarkers,
+  segmentsWithoutHeuristicMatch,
+  type AudioTranscriptSegment,
+  type CommentaryMarker,
+} from "@/src/domain/commentary-markers";
+import {
   computePositionsGained,
   raceAnalysisLlmSchema,
   raceAnalysisToRacePackage,
@@ -49,6 +63,7 @@ import { z } from "zod";
 
 import { applyInspirationToBatchIfConfigured } from "./apply-inspiration-to-batch";
 import { loadInspirationPromptBlock } from "./inspiration-prompt-block";
+import { resolveAnalysisAudio } from "./resolve-analysis-audio";
 
 const MAX_SHORTS = 16;
 /** LLM may propose extra windows so Inspiration can promote matches into the kept set. */
@@ -62,6 +77,16 @@ const MAX_WINDOW_MS = 60_000;
 
 const analysisSchema = z.object({
   raceAnalysis: raceAnalysisLlmSchema,
+  proposedCommentaryMarkers: z
+    .array(
+      z.object({
+        kind: z.enum(["race_start", "lap", "race_end"]),
+        timeMs: z.number().int(),
+        rawText: z.string().trim().min(1),
+        lapNumber: z.number().int().positive().optional(),
+      }),
+    )
+    .default([]),
 });
 
 const visionChunkSchema = z.object({
@@ -81,7 +106,7 @@ const nullableIntSchema = { type: ["integer", "null"] } as const;
 const responseJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["raceAnalysis"],
+  required: ["raceAnalysis", "proposedCommentaryMarkers"],
   properties: {
     raceAnalysis: {
       type: "object",
@@ -270,6 +295,24 @@ const responseJsonSchema = {
         },
         narrativeIt: { type: "string" },
         audioTranscript: { type: "string" },
+      },
+    },
+    proposedCommentaryMarkers: {
+      type: "array",
+      maxItems: 40,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "timeMs", "rawText"],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["race_start", "lap", "race_end"],
+          },
+          timeMs: { type: "integer" },
+          rawText: { type: "string" },
+          lapNumber: { type: "integer", minimum: 1 },
+        },
       },
     },
   },
@@ -699,23 +742,59 @@ export function createRunReplayAnalysis(
 
       let audioTranscriptText = "";
       let audioSegmentsText = "";
+      let audioTranscriptSegments: AudioTranscriptSegment[] = [];
+      let heuristicMarkers: CommentaryMarker[] = [];
+      let unmatchedCommentarySegments: AudioTranscriptSegment[] = [];
+      const analysisAudio = resolveAnalysisAudio({
+        commentaryPath: session.commentaryPath,
+        commentaryOffsetMs: session.commentaryOffsetMs,
+        muxedAudioPath: proxy.audioPath,
+      });
       const whisperStarted = performance.now();
       try {
-        const transcript = await deps.transcription.transcribe(proxy.audioPath);
+        const transcript = await deps.transcription.transcribe(
+          analysisAudio.path,
+        );
+        audioTranscriptSegments = applyCommentaryOffset(
+          transcript.segments.map((segment) => ({
+            startMs: segment.startMs,
+            endMs: segment.endMs,
+            text: segment.text,
+          })),
+          analysisAudio.offsetMs,
+        );
         audioTranscriptText = transcript.text;
-        audioSegmentsText = transcript.segments
-          .map(
-            (segment) =>
-              `[${formatMs(segment.startMs)}-${formatMs(segment.endMs)}] ${segment.text}`,
-          )
-          .join("\n");
+        audioSegmentsText =
+          formatTranscriptSegmentsForPrompt(audioTranscriptSegments);
+        if (analysisAudio.kind === "commentary") {
+          heuristicMarkers = extractHeuristicMarkers(audioTranscriptSegments);
+          unmatchedCommentarySegments =
+            segmentsWithoutHeuristicMatch(audioTranscriptSegments);
+        }
         log.info("Audio transcription ready", {
           sessionId,
-          segmentCount: transcript.segments.length,
+          audioSource: analysisAudio.kind,
+          commentaryOffsetMs: analysisAudio.offsetMs,
+          segmentCount: audioTranscriptSegments.length,
+          heuristicMarkerCount: heuristicMarkers.length,
           textChars: transcript.text.length,
           durationMs: Math.round(performance.now() - whisperStarted),
         });
       } catch (error) {
+        if (analysisAudio.kind === "commentary") {
+          log.error("Commentary transcription failed", {
+            sessionId,
+            audioPath: analysisAudio.path,
+            error:
+              error instanceof Error
+                ? { message: error.message, stack: error.stack }
+                : String(error),
+            durationMs: Math.round(performance.now() - whisperStarted),
+          });
+          throw error instanceof Error
+            ? error
+            : new Error(String(error));
+        }
         log.warn("Audio transcription failed; continuing with vision timeline", {
           sessionId,
           error:
@@ -725,6 +804,14 @@ export function createRunReplayAnalysis(
           durationMs: Math.round(performance.now() - whisperStarted),
         });
       }
+
+      const durationMsBound =
+        durationSec > 0 ? durationSec * 1_000 : null;
+      heuristicMarkers = filterMarkersInDuration(
+        heuristicMarkers,
+        durationMsBound,
+      );
+      const raceStartMs = firstRaceStartMs(heuristicMarkers);
 
       let hudTimeline: RaceHudTimeline = [];
       const hudStarted = performance.now();
@@ -802,6 +889,8 @@ export function createRunReplayAnalysis(
           "REGOLA FONDAMENTALE: non inventare mai posizioni, sorpassi, risultati non verificabili dalle note vision/telemetria/HUD.",
           "I fatti HUD overlay (session strip, focus card, battle/relative, standings, battle-for-P callout, field ticker) sono VERIFIED quando presenti: non contraddarli.",
           "Le NOTE OPERATORE (se presenti) sono VERIFIED come l'HUD: usale per storyline/whyWatch/narrative; non contraddirle; non inventare oltre.",
+          "I MARKER COMMENTARY (se presenti) sono VERIFIED (race_start / lap / race_end): allineali alla timeline video; non contraddarli.",
+          "proposedCommentaryMarkers: solo frasi ambigue NON già coperte dai marker heuristics; kind in race_start|lap|race_end; timeMs sul clock VIDEO.",
           "Il Focus card identifica il soggetto camera (car # / nome), anche se il branding del canale è #42.",
           "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
           "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
@@ -826,14 +915,27 @@ export function createRunReplayAnalysis(
           raceEndMs != null
             ? `Race end (HUD verified): ${formatMs(raceEndMs)} (${raceEndMs}ms)`
             : null,
+          raceStartMs != null
+            ? `Race start (commentary marker verified): ${formatMs(raceStartMs)} (${raceStartMs}ms)`
+            : null,
           notes
             ? `\n=== Note operatore (verified) ===\n${notes}`
             : null,
           "",
-          "=== Transcript audio (può essere vuoto / solo engine) ===",
+          `=== Transcript audio (${analysisAudio.kind}${
+            analysisAudio.kind === "commentary"
+              ? `, offset ${analysisAudio.offsetMs}ms`
+              : ""
+          }) ===`,
           audioTranscriptText || "(nessun parlato rilevato)",
           audioSegmentsText
-            ? `Segmenti audio:\n${audioSegmentsText}`
+            ? `Segmenti audio (clock video):\n${audioSegmentsText}`
+            : null,
+          "",
+          "=== Commentary markers (verified heuristics) ===",
+          formatCommentaryMarkersForPrompt(heuristicMarkers),
+          unmatchedCommentarySegments.length
+            ? `Segmenti senza match heuristic (candidati LLM):\n${formatTranscriptSegmentsForPrompt(unmatchedCommentarySegments)}`
             : null,
           "",
           "=== HUD overlay (verified when present) ===",
@@ -859,6 +961,19 @@ export function createRunReplayAnalysis(
 
       const parsed = analysisSchema.parse(JSON.parse(response));
       const llmAnalysis = parsed.raceAnalysis;
+      const llmMarkers: CommentaryMarker[] = (
+        analysisAudio.kind === "commentary"
+          ? parsed.proposedCommentaryMarkers
+          : []
+      ).map((marker) => ({
+        ...marker,
+        source: "llm" as const,
+      }));
+      const commentaryMarkers = filterMarkersInDuration(
+        mergeCommentaryMarkers(heuristicMarkers, llmMarkers),
+        durationMsBound,
+      );
+      const resolvedRaceStartMs = firstRaceStartMs(commentaryMarkers);
       const hudResults = inferResultsFromHud(
         hudTimeline,
         focusSubject.carNumber,
@@ -919,6 +1034,9 @@ export function createRunReplayAnalysis(
         ),
         audioTranscript:
           audioTranscriptText || llmAnalysis.audioTranscript || "",
+        audioSource: analysisAudio.kind,
+        audioTranscriptSegments,
+        commentaryMarkers,
         hudTimeline,
       };
 
@@ -981,26 +1099,36 @@ export function createRunReplayAnalysis(
           endMs: number;
           segments?: ReplaySegment[];
         }) => {
-          const score = demoteScoreAfterRaceEnd(
-            boostScoreNearHudCallouts(
-              boostScoreNearHudBattles(
-                boostScoreNearTelemetry(
-                  window.shortScore,
+          const score = demoteScoreBeforeRaceStart(
+            demoteScoreAfterRaceEnd(
+              boostScoreNearLapMarkers(
+                boostScoreNearHudCallouts(
+                  boostScoreNearHudBattles(
+                    boostScoreNearTelemetry(
+                      window.shortScore,
+                      window.startMs,
+                      window.endMs,
+                      telemetryEvents,
+                    ),
+                    window.startMs,
+                    window.endMs,
+                    battleWindows,
+                  ),
                   window.startMs,
                   window.endMs,
-                  telemetryEvents,
+                  calloutWindows,
                 ),
                 window.startMs,
                 window.endMs,
-                battleWindows,
+                commentaryMarkers,
               ),
               window.startMs,
               window.endMs,
-              calloutWindows,
+              raceEndMs,
             ),
             window.startMs,
             window.endMs,
-            raceEndMs,
+            resolvedRaceStartMs,
           );
           const event: ReplayEvent = {
             id: deps.id.generate(),
