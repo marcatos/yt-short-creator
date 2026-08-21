@@ -389,7 +389,7 @@ export function createLlmRaceHudExtractor(
             text: [
               "Extract ONLY the burned-in race HUD overlays from each image.",
               "Panels (fixed layout):",
-              "1) SESSION STRIP — top center: status (REPLAY/RACE), track, lap, session time, flag (GREEN/…).",
+              "1) SESSION STRIP — top center: status (REPLAY/RACE/CHECKERED/COOL DOWN/FINISHED), track, lap, session time, flag (GREEN/YELLOW/CHECKERED/…).",
               "2) FOCUS CARD — top left: camera focus driver (#, name, P/field, last/best lap, gap, ΔBEST, FUEL, S1/S2/S3).",
               "3) BATTLE / RELATIVE — middle left: ahead / focus / behind with gap seconds.",
               "4) STANDINGS — top right: position list with gaps (LEADER or +Xs) and green/red position-change arrows → positionDelta (+gained / −lost / null).",

@@ -17,8 +17,11 @@ import {
   boostScoreNearHudBattles,
   boostScoreNearHudCallouts,
   collectRecurringRivals,
+  demoteScoreAfterRaceEnd,
   detectBattleWindows,
   detectCalloutWindows,
+  detectRaceEndMs,
+  filterRacingEventsBeforeRaceEnd,
   formatHudTimelineForPrompt,
   inferResultsFromHud,
   resolveFocusSubject,
@@ -565,6 +568,7 @@ async function analyzeVisionChunks(
           `You are analyzing an iRacing OBS race capture. Focus car: ${focusCarHint}.`,
           "Each image is labeled by its timestamp below in order.",
           "Describe only what is visible. Prefer moments involving the focus car (battles, overtakes, mistakes, recoveries, starts, finishes).",
+          "Distinguish a race finish (checkered / last lap at speed) from post-race cool-down or pit-in (cars slowing to stop / return to pits) — do not describe the latter as failed overtakes or lost positions.",
           "Use the provided timeMs values exactly; do not invent timestamps outside the list.",
           `Frame timestamps in order: ${stampList}`,
         ].join("\n"),
@@ -747,8 +751,16 @@ export function createRunReplayAnalysis(
 
       const focusSubject = resolveFocusSubject(hudTimeline, FOCUS_CAR_DEFAULT);
       const focusCarHint = focusSubject.hint;
-      const battleWindows = detectBattleWindows(hudTimeline);
-      const calloutWindows = detectCalloutWindows(hudTimeline);
+      const raceEndMs = detectRaceEndMs(hudTimeline);
+      if (raceEndMs != null) {
+        log.info("Race end detected from HUD session strip", {
+          sessionId,
+          raceEndMs,
+          raceEndLabel: formatMs(raceEndMs),
+        });
+      }
+      const battleWindows = detectBattleWindows(hudTimeline, undefined, raceEndMs);
+      const calloutWindows = detectCalloutWindows(hudTimeline, raceEndMs);
       const hudPromptBlock = formatHudTimelineForPrompt(hudTimeline);
 
       const visionMoments = await analyzeVisionChunks(
@@ -778,6 +790,10 @@ export function createRunReplayAnalysis(
       }
 
       const packageStarted = performance.now();
+      const raceEndPrompt =
+        raceEndMs != null
+          ? `FINE GARA verificata dall'HUD a ${formatMs(raceEndMs)} (${raceEndMs}ms): dopo questo timestamp il footage è POST-RACE (checkered / cool-down / pit-in). Non raccontare sorpassi falliti, battaglie o perdite di posizione da auto che rallentano per rientrare ai box. finishPosition = ultima posizione in gara PRIMA di quel timestamp.`
+          : "Se lo strip sessione HUD mostra checkered / cool-down / finished, tratta il footage successivo come POST-RACE (non come battaglia).";
       const response = await deps.llm.complete({
         system: [
           "Sei l'analista editoriale del canale YouTube di Simone Marcato (pilota #42).",
@@ -789,6 +805,7 @@ export function createRunReplayAnalysis(
           "Il Focus card identifica il soggetto camera (car # / nome), anche se il branding del canale è #42.",
           "Se non puoi verificare una posizione, metti null. positionsGained = start−finish quando entrambi noti; NON è un conteggio di sorpassi.",
           "Guadagni di posizione per incidenti altrui NON sono overtakes (kind overtake solo se c'è un passaggio chiaro).",
+          raceEndPrompt,
           "whyWatch deve rispondere: perché uno sconosciuto guarderebbe questo video? NON perché è una gara di Simone.",
           "shortScore: immediatezza, comprensione senza contesto, qualità sorpasso, rischio, vicinanza, tensione, payoff, hook.",
           "requiresLocalizedRender=true SOLO se lo Short ha bisogno di testo burned-in in lingua (caption dinamiche IT/EN diverse).",
@@ -805,6 +822,9 @@ export function createRunReplayAnalysis(
             : null,
           focusSubject.driverName
             ? `Focus driver (HUD): ${focusSubject.driverName}`
+            : null,
+          raceEndMs != null
+            ? `Race end (HUD verified): ${formatMs(raceEndMs)} (${raceEndMs}ms)`
             : null,
           notes
             ? `\n=== Note operatore (verified) ===\n${notes}`
@@ -843,6 +863,7 @@ export function createRunReplayAnalysis(
         hudTimeline,
         focusSubject.carNumber,
         llmAnalysis.results,
+        { raceEndMs },
       );
       const positionsGained =
         hudResults.positionsGained ??
@@ -886,9 +907,12 @@ export function createRunReplayAnalysis(
           llmAnalysis.recurringRivals,
           hudRivals,
         ),
-        events: [...llmAnalysis.events, ...hudEvents]
-          .sort((a, b) => a.startMs - b.startMs)
-          .slice(0, 120),
+        events: filterRacingEventsBeforeRaceEnd(
+          [...llmAnalysis.events, ...hudEvents].sort(
+            (a, b) => a.startMs - b.startMs,
+          ),
+          raceEndMs,
+        ).slice(0, 120),
         timeline: mergeHudIntoTimeline(
           mergeTelemetryIntoTimeline(llmAnalysis.timeline, telemetryEvents),
           [...battleWindows, ...calloutWindows],
@@ -957,21 +981,26 @@ export function createRunReplayAnalysis(
           endMs: number;
           segments?: ReplaySegment[];
         }) => {
-          const score = boostScoreNearHudCallouts(
-            boostScoreNearHudBattles(
-              boostScoreNearTelemetry(
-                window.shortScore,
+          const score = demoteScoreAfterRaceEnd(
+            boostScoreNearHudCallouts(
+              boostScoreNearHudBattles(
+                boostScoreNearTelemetry(
+                  window.shortScore,
+                  window.startMs,
+                  window.endMs,
+                  telemetryEvents,
+                ),
                 window.startMs,
                 window.endMs,
-                telemetryEvents,
+                battleWindows,
               ),
               window.startMs,
               window.endMs,
-              battleWindows,
+              calloutWindows,
             ),
             window.startMs,
             window.endMs,
-            calloutWindows,
+            raceEndMs,
           );
           const event: ReplayEvent = {
             id: deps.id.generate(),
