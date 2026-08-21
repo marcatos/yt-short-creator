@@ -2,7 +2,10 @@ import { CandidateQueue } from "@/app/components/CandidateQueue";
 import { PageHeader } from "@/app/components/PageHeader";
 import { CANDIDATE_STATUSES } from "@/src/domain/status";
 import { getContainer } from "@/src/lib/container";
-import type { CandidateInspirationLink } from "@/src/ports/inspiration-store";
+import type {
+  CandidateInspirationLink,
+  InspirationIdeaRecord,
+} from "@/src/ports/inspiration-store";
 
 export const dynamic = "force-dynamic";
 
@@ -49,12 +52,12 @@ export default async function CandidatesPage({ searchParams }: PageProps) {
     await container.repositories.inspiration.listLinksForCandidates(
       candidates.map((candidate) => candidate.id),
     );
-  const inspirationTitleByIdeaId = new Map(
+  const inspirationTitleByIdeaId = new Map<string, string>(
     inspirationLinks.length === 0
       ? []
-      : (await container.repositories.inspiration.listActiveIdeas()).map(
-          (idea) => [idea.id, idea.title],
-        ),
+      : (
+          await container.repositories.inspiration.listActiveIdeas()
+        ).map((idea: InspirationIdeaRecord) => [idea.id, idea.title]),
   );
   const inspirationTitlesByCandidateId = titlesByCandidateId(
     inspirationLinks,

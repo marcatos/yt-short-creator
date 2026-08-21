@@ -22,6 +22,9 @@ const defaults: AppSettings = {
   fullBurnInCaptions: false,
   voiceDuckDb: -12,
   enableVoiceOverPipeline: true,
+  instagramShareToFeed: true,
+  instagramDefaultHashtags: ["iRacing", "SimRacing"],
+  youtubeChannelUrlOverride: undefined,
 };
 
 const noop = () => {};
@@ -80,6 +83,9 @@ describe("settings use cases", () => {
       fullBurnInCaptions: true,
       voiceDuckDb: -9,
       enableVoiceOverPipeline: false,
+      instagramShareToFeed: false,
+      instagramDefaultHashtags: ["SimRacingITA"],
+      youtubeChannelUrlOverride: "https://www.youtube.com/@test",
     });
 
     await expect(settings.get()).resolves.toEqual({
@@ -93,6 +99,9 @@ describe("settings use cases", () => {
       fullBurnInCaptions: true,
       voiceDuckDb: -9,
       enableVoiceOverPipeline: false,
+      instagramShareToFeed: false,
+      instagramDefaultHashtags: ["SimRacingITA"],
+      youtubeChannelUrlOverride: "https://www.youtube.com/@test",
     });
   });
 

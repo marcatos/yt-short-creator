@@ -26,7 +26,11 @@ It is a single-operator tool. There is no multi-user SaaS surface. Publish alway
 - Multi-user / multi-channel SaaS
 - Auto-publish without approval
 - Full NLE editor parity
-- Cross-post to TikTok / Instagram
+- Cross-post to TikTok
+
+### Instagram Reels funnel
+
+When Instagram is connected (`/connect`), every approved Short also publishes as an **Italian Reel** in parallel with YouTube (independent job). Captions include a YouTube channel CTA; configure hashtags and optional channel URL override in `/settings`. Instagram failures do not block YouTube publish.
 
 ## Surfaces (routes)
 

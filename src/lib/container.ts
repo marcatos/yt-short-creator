@@ -31,6 +31,8 @@ import { createOpenAiCompatibleWhisper } from "@/src/adapters/transcription/open
 import { createFileSettingsRepository } from "@/src/adapters/settings/file-settings";
 import { GoogleYouTubeCatalogAdapter } from "@/src/adapters/youtube/catalog";
 import { GoogleYouTubeAuthAdapter } from "@/src/adapters/youtube/oauth";
+import { MetaInstagramAuthAdapter } from "@/src/adapters/instagram/oauth";
+import { createMetaInstagramReelsAdapter } from "@/src/adapters/instagram/reels-publish";
 import { createGoogleYouTubeUpload } from "@/src/adapters/youtube/upload";
 import { createGoogleYouTubeCaptions } from "@/src/adapters/youtube/youtube-captions";
 import { createYouTubeStudioInspirationAdapter } from "@/src/adapters/youtube/studio-inspiration";
@@ -38,6 +40,15 @@ import {
   createApproveCandidate,
   type ApproveCandidate,
 } from "@/src/application/approve-candidate";
+import {
+  createConnectInstagram,
+  type ConnectInstagram,
+} from "@/src/application/connect-instagram";
+import {
+  createDisconnectInstagram,
+  type DisconnectInstagram,
+} from "@/src/application/disconnect-instagram";
+import { createEnqueueInstagramReel } from "@/src/application/enqueue-instagram-reel";
 import {
   createConnectChannel,
   type ConnectChannel,
@@ -173,8 +184,11 @@ export type AppContainer = {
   connection: DbConnection;
   repositories: DbRepositories;
   auth: GoogleYouTubeAuthAdapter;
+  instagramAuth: MetaInstagramAuthAdapter;
   catalog: GoogleYouTubeCatalogAdapter;
   connectChannel: ConnectChannel;
+  connectInstagram: ConnectInstagram;
+  disconnectInstagram: DisconnectInstagram;
   syncChannel: SyncChannel;
   runClipAnalysis: RunClipAnalysis;
   runReplayAnalysis: RunReplayAnalysis;
@@ -215,6 +229,8 @@ export type AppContainer = {
   fullVoMix: FullVoMixPort;
   upload: YouTubeUploadPort;
   captions: YouTubeCaptionsPort;
+  instagramReels: ReturnType<typeof createMetaInstagramReelsAdapter>;
+  enqueueInstagramReel: ReturnType<typeof createEnqueueInstagramReel>;
   logger: Logger;
   clock: SystemClock;
 };
@@ -240,6 +256,14 @@ export function createContainer(env: AppEnv): AppContainer {
       fullBurnInCaptions: false,
       voiceDuckDb: -12,
       enableVoiceOverPipeline: true,
+      instagramShareToFeed: true,
+      instagramDefaultHashtags: [
+        "iRacing",
+        "SimRacing",
+        "SimRacingITA",
+        "Marcato42",
+      ],
+      youtubeChannelUrlOverride: undefined,
     },
   });
   const clock = new SystemClock();
@@ -302,9 +326,24 @@ export function createContainer(env: AppEnv): AppContainer {
       "youtube-tokens.json",
     ),
   });
+  const instagramAuth = new MetaInstagramAuthAdapter({
+    appId: env.META_APP_ID,
+    appSecret: env.META_APP_SECRET,
+    redirectUri: env.META_REDIRECT_URI,
+    tokenPath: path.join(
+      path.dirname(env.DATABASE_PATH),
+      "instagram-tokens.json",
+    ),
+  });
   const catalog = new GoogleYouTubeCatalogAdapter();
   const upload = createGoogleYouTubeUpload({ logger });
   const captions = createGoogleYouTubeCaptions({ logger });
+  const instagramReels = createMetaInstagramReelsAdapter({ logger });
+  const enqueueInstagramReel = createEnqueueInstagramReel({
+    queue: jobQueue,
+    instagramAuth,
+    logger,
+  });
   const inspirationConfig = parseInspirationConfig(process.env);
   const ideationDeps = {
     llm,
@@ -375,6 +414,7 @@ export function createContainer(env: AppEnv): AppContainer {
     connection,
     repositories,
     auth,
+    instagramAuth,
     catalog,
     logger,
     settings,
@@ -387,6 +427,8 @@ export function createContainer(env: AppEnv): AppContainer {
     fullVoMix,
     upload,
     captions,
+    instagramReels,
+    enqueueInstagramReel,
     clock,
     connectChannel: createConnectChannel({
       auth,
@@ -394,6 +436,18 @@ export function createContainer(env: AppEnv): AppContainer {
       channels: repositories.channels,
       id,
       clock,
+      logger,
+    }),
+    connectInstagram: createConnectInstagram({
+      auth: instagramAuth,
+      accounts: repositories.instagramAccounts,
+      id,
+      clock,
+      logger,
+    }),
+    disconnectInstagram: createDisconnectInstagram({
+      auth: instagramAuth,
+      accounts: repositories.instagramAccounts,
       logger,
     }),
     syncChannel: createSyncChannel({
@@ -649,6 +703,10 @@ export function startWorkers(): void {
       auth: container.auth,
       upload: container.upload,
       captions: container.captions,
+      channels: container.repositories.channels,
+      instagramAuth: container.instagramAuth,
+      instagramReels: container.instagramReels,
+      enqueueInstagramReel: container.enqueueInstagramReel,
       clock: container.clock,
     }),
     logger,
@@ -657,6 +715,8 @@ export function startWorkers(): void {
   const recoverQueue = createRecoverQueue({
     queue: container.jobQueue,
     candidates: container.repositories.candidates,
+    jobs: container.repositories.jobs,
+    instagramAuth: container.instagramAuth,
     logger,
   });
 

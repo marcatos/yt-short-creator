@@ -28,6 +28,15 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [enableVoiceOverPipeline, setEnableVoiceOverPipeline] = useState(
     initial.enableVoiceOverPipeline,
   );
+  const [instagramShareToFeed, setInstagramShareToFeed] = useState(
+    initial.instagramShareToFeed,
+  );
+  const [instagramDefaultHashtags, setInstagramDefaultHashtags] = useState(
+    initial.instagramDefaultHashtags.join(", "),
+  );
+  const [youtubeChannelUrlOverride, setYoutubeChannelUrlOverride] = useState(
+    initial.youtubeChannelUrlOverride ?? "",
+  );
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -49,6 +58,12 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           fullBurnInCaptions,
           voiceDuckDb,
           enableVoiceOverPipeline,
+          instagramShareToFeed,
+          instagramDefaultHashtags: instagramDefaultHashtags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          youtubeChannelUrlOverride: youtubeChannelUrlOverride.trim() || undefined,
         }),
       });
       const body = await response.json();
@@ -216,6 +231,39 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             onChange={(event) => setFullBurnInCaptions(event.target.checked)}
           />
           Burn captions into full videos
+        </label>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <h2>Instagram Reels</h2>
+          <p>
+            Cross-post approved Shorts as Italian Reels with a YouTube channel CTA.
+            Requires Instagram connected on the Connect page.
+          </p>
+        </div>
+        <label>
+          YouTube channel URL override (optional)
+          <input
+            value={youtubeChannelUrlOverride}
+            onChange={(event) => setYoutubeChannelUrlOverride(event.target.value)}
+            placeholder="https://www.youtube.com/@yourchannel"
+          />
+        </label>
+        <label>
+          Default Reel hashtags (comma-separated, max 8)
+          <input
+            value={instagramDefaultHashtags}
+            onChange={(event) => setInstagramDefaultHashtags(event.target.value)}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={instagramShareToFeed}
+            onChange={(event) => setInstagramShareToFeed(event.target.checked)}
+          />
+          Share Reels to Instagram feed (not Reels tab only)
         </label>
       </section>
 

@@ -57,7 +57,27 @@ function normalizeSettings(
         : defaults.voiceDuckDb,
     enableVoiceOverPipeline:
       stored.enableVoiceOverPipeline ?? defaults.enableVoiceOverPipeline,
+    instagramShareToFeed:
+      stored.instagramShareToFeed ?? defaults.instagramShareToFeed,
+    instagramDefaultHashtags: normalizeHashtagList(
+      stored.instagramDefaultHashtags,
+      defaults.instagramDefaultHashtags,
+    ),
+    youtubeChannelUrlOverride:
+      stored.youtubeChannelUrlOverride?.trim() ||
+      defaults.youtubeChannelUrlOverride,
   };
+}
+
+function normalizeHashtagList(
+  stored: string[] | undefined,
+  defaults: string[],
+): string[] {
+  const source = stored && stored.length > 0 ? stored : defaults;
+  return source
+    .map((tag) => tag.trim().replace(/^#/, ""))
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export function createFileSettingsRepository(options: {

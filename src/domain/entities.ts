@@ -232,3 +232,25 @@ export type PublishJob = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type InstagramAccount = {
+  id: string;
+  igUserId: string;
+  username: string;
+  pageId: string;
+  pageName: string;
+  connectedAt: Date;
+};
+
+export type InstagramPublishJob = {
+  id: string;
+  candidateId: string;
+  status: JobStatus;
+  instagramMediaId: string | null;
+  permalink: string | null;
+  caption: string | null;
+  error: string | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};

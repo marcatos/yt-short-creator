@@ -1,7 +1,11 @@
 import type { VoiceOverPackage } from "@/src/domain/voice-over";
+import { resolveItalianReelSource } from "@/src/domain/reel-publish-source";
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { DurableJobQueue } from "@/src/ports/job-queue";
+import type { InstagramAuthPort } from "@/src/ports/instagram-auth";
+import type { JobRepository } from "@/src/ports/job-repository";
 import type { Logger } from "@/src/ports/logger";
+import { isInstagramConnected } from "@/src/workers/instagram-access-token";
 
 function activeJobKey(
   type: string,
@@ -108,6 +112,8 @@ async function enqueueVoiceOverPublishes(
 export function createRecoverQueue(deps: {
   queue: DurableJobQueue;
   candidates: CandidateRepository;
+  jobs?: JobRepository;
+  instagramAuth?: InstagramAuthPort;
   logger: Logger;
 }): () => Promise<RecoverQueueResult> {
   const logger = deps.logger.child({ operation: "recoverQueue" });
@@ -134,6 +140,10 @@ export function createRecoverQueue(deps: {
       const fanOut: FanOut = { queue: deps.queue, activeJobs, logger };
       const candidates = await deps.candidates.list({});
       let repairedCandidates = 0;
+      const instagramConnected =
+        deps.instagramAuth && deps.jobs
+          ? await isInstagramConnected(deps.instagramAuth)
+          : false;
 
       for (const candidate of candidates) {
         if (
@@ -180,6 +190,30 @@ export function createRecoverQueue(deps: {
           candidateId: candidate.id,
           status: candidate.status,
         });
+      }
+
+      if (instagramConnected && deps.jobs) {
+        for (const candidate of candidates) {
+          if (!resolveItalianReelSource(candidate)) continue;
+          const igJob = await deps.jobs.getInstagramPublishJobByCandidateId(
+            candidate.id,
+          );
+          if (igJob?.status === "succeeded") continue;
+          const activeKey = activeJobKey("publish_reel", {
+            candidateId: candidate.id,
+          });
+          if (activeJobs.has(activeKey)) continue;
+          await deps.queue.enqueue({
+            type: "publish_reel",
+            payload: { candidateId: candidate.id },
+          });
+          activeJobs.add(activeKey);
+          repairedCandidates += 1;
+          logger.warn("Repaired orphan Instagram Reel publish job", {
+            candidateId: candidate.id,
+            priorInstagramJobStatus: igJob?.status ?? null,
+          });
+        }
       }
 
       logger.info("Queue recovery completed", {

@@ -23,6 +23,9 @@ const settingsSchema = z.object({
   fullBurnInCaptions: z.boolean(),
   voiceDuckDb: z.number().finite(),
   enableVoiceOverPipeline: z.boolean(),
+  instagramShareToFeed: z.boolean(),
+  instagramDefaultHashtags: z.array(z.string()).max(8),
+  youtubeChannelUrlOverride: z.string().url().optional().or(z.literal("")),
 });
 
 export async function GET() {

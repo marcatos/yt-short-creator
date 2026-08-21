@@ -2,6 +2,10 @@ import { notFound } from "next/navigation";
 
 import { ReviewPanel } from "@/app/components/ReviewPanel";
 import { getContainer } from "@/src/lib/container";
+import type {
+  CandidateInspirationLink,
+  InspirationIdeaRecord,
+} from "@/src/ports/inspiration-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +18,19 @@ export default async function CandidateReviewPage({
   try {
     const container = getContainer();
     const candidate = await container.getCandidate({ candidateId: id });
+    const instagramPublishJob =
+      await container.repositories.jobs.getInstagramPublishJobByCandidateId(id);
     const links =
       await container.repositories.inspiration.listLinksForCandidates([id]);
     let inspirationTitles: string[] | undefined;
     if (links.length > 0) {
-      const ideas = await container.repositories.inspiration.listActiveIdeas();
+      const ideas: InspirationIdeaRecord[] =
+        await container.repositories.inspiration.listActiveIdeas();
       const titleById = new Map(ideas.map((idea) => [idea.id, idea.title]));
-      inspirationTitles = links
-        .map((link) => titleById.get(link.ideaId))
+      const titles = links
+        .map((link: CandidateInspirationLink) => titleById.get(link.ideaId))
         .filter((title): title is string => Boolean(title));
-      if (inspirationTitles.length === 0) {
-        inspirationTitles = ["Matched idea"];
-      }
+      inspirationTitles = titles.length > 0 ? titles : ["Matched idea"];
     }
     return (
       <main className="page-shell">
@@ -49,6 +54,13 @@ export default async function CandidateReviewPage({
               isPublished: Boolean(voiceOver.youtubeVideoId),
             })),
             inspirationTitles,
+            instagramPublish: instagramPublishJob
+              ? {
+                  status: instagramPublishJob.status,
+                  permalink: instagramPublishJob.permalink,
+                  error: instagramPublishJob.error,
+                }
+              : null,
           }}
         />
       </main>

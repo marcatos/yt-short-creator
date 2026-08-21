@@ -42,6 +42,7 @@ export const QUEUE_JOB_STEPS: Record<string, readonly string[]> = {
   assemble_generate_preview: ["assemble"],
   render_short: ["prepare", "render", "enqueue_publish"],
   publish_short: ["prepare", "upload", "captions"],
+  publish_reel: ["prepare", "upload", "poll", "publish"],
   // Single-master multi-language publish (assets-first + best-effort API).
   publish_full_replay: [
     "encode",

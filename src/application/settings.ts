@@ -76,6 +76,9 @@ export function createUpdateSettings(deps: {
         fullBurnInCaptions: input.fullBurnInCaptions,
         voiceDuckDb: input.voiceDuckDb,
         enableVoiceOverPipeline: input.enableVoiceOverPipeline,
+        instagramShareToFeed: input.instagramShareToFeed,
+        instagramDefaultHashtags: input.instagramDefaultHashtags,
+        youtubeChannelUrlOverride: input.youtubeChannelUrlOverride?.trim() || undefined,
       };
       if (!updated.brandRoot) throw new Error("Brand path must not be empty");
       await deps.settings.save(updated);
@@ -89,6 +92,8 @@ export function createUpdateSettings(deps: {
         fullBurnInCaptions: updated.fullBurnInCaptions,
         voiceDuckDb: updated.voiceDuckDb,
         enableVoiceOverPipeline: updated.enableVoiceOverPipeline,
+        instagramShareToFeed: updated.instagramShareToFeed,
+        instagramDefaultHashtagCount: updated.instagramDefaultHashtags.length,
         durationMs: Math.round(performance.now() - startedAt),
       });
       return updated;

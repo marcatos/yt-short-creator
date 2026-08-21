@@ -83,14 +83,14 @@ describe("database migrations", () => {
     current.close();
   });
 
-  it("creates inspiration tables on a fresh migrate", () => {
+  it("creates inspiration and instagram tables on a fresh migrate", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "migration-inspiration-"));
     dirs.push(dir);
     const current = createDb(path.join(dir, "fresh.db"));
     try {
       const names = current.db
         .all<{ name: string }>(
-          "select name from sqlite_master where type = 'table' and name in ('inspiration_sync_runs', 'inspiration_ideas', 'candidate_inspiration_links') order by name",
+          "select name from sqlite_master where type = 'table' and name in ('inspiration_sync_runs', 'inspiration_ideas', 'candidate_inspiration_links', 'instagram_accounts', 'instagram_publish_jobs') order by name",
         )
         .map((row) => row.name);
 
@@ -98,6 +98,8 @@ describe("database migrations", () => {
         "candidate_inspiration_links",
         "inspiration_ideas",
         "inspiration_sync_runs",
+        "instagram_accounts",
+        "instagram_publish_jobs",
       ]);
     } finally {
       current.close();

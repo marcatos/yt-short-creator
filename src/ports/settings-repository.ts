@@ -46,6 +46,9 @@ export type AppSettings = {
   fullBurnInCaptions: boolean;
   voiceDuckDb: number;
   enableVoiceOverPipeline: boolean;
+  instagramShareToFeed: boolean;
+  instagramDefaultHashtags: string[];
+  youtubeChannelUrlOverride?: string;
 };
 
 export interface SettingsRepository {

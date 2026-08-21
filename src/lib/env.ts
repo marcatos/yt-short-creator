@@ -20,6 +20,12 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().min(1),
   MEDIA_ROOT: z.string().min(1),
   IRACING_VIDEOS_DIR: z.string().optional().default(""),
+  META_APP_ID: z.string().default(""),
+  META_APP_SECRET: z.string().default(""),
+  META_REDIRECT_URI: z
+    .string()
+    .url()
+    .default("http://localhost:3000/api/auth/instagram/callback"),
   INSPIRATION_SYNC_INTERVAL_HOURS: z.coerce.number().positive().default(24),
 });
 
@@ -42,6 +48,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     DATABASE_PATH: source.DATABASE_PATH,
     MEDIA_ROOT: source.MEDIA_ROOT,
     IRACING_VIDEOS_DIR: source.IRACING_VIDEOS_DIR,
+    META_APP_ID: source.META_APP_ID,
+    META_APP_SECRET: source.META_APP_SECRET,
+    META_REDIRECT_URI: source.META_REDIRECT_URI,
     INSPIRATION_SYNC_INTERVAL_HOURS: source.INSPIRATION_SYNC_INTERVAL_HOURS,
   });
 }

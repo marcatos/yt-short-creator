@@ -3,6 +3,7 @@ import type { RenderJob, ShortCandidate } from "@/src/domain/entities";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
 import type { VoiceOverLanguage, VoiceOverPackage } from "@/src/domain/voice-over";
 import { createPublishVoShortPair } from "@/src/application/publish-vo-short-pair";
+import { shouldEnqueueReelAfterRender } from "@/src/domain/reel-publish-source";
 import {
   isClipProvenance,
   isGenerateProvenance,
@@ -36,6 +37,7 @@ type Dependencies = {
   queue: InspectableJobQueue;
   settings: SettingsRepository;
   clock: ClockPort;
+  enqueueInstagramReel?: (candidateId: string) => Promise<string | null>;
 };
 
 const JOB_TYPE = "render_short";
@@ -267,6 +269,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
       });
 
       let publishJobId: string | undefined;
+      let reelJobId: string | null = null;
       await runStep(ctx, JOB_TYPE, "enqueue_publish", async () => {
         if (renderedVoiceOver) {
           const readyCandidate =
@@ -283,28 +286,35 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
             const publishJobIds = await publishVoShortPair({ candidateId });
             publishJobId = publishJobIds.join(",");
           }
-          return;
+        } else {
+          const existingPublishJob = deps.queue.listJobs().find(
+            (job) =>
+              job.type === "publish_short" &&
+              job.payload.candidateId === candidateId &&
+              ["queued", "running", "paused", "succeeded"].includes(job.status),
+          );
+          if (existingPublishJob) {
+            publishJobId = existingPublishJob.id;
+            log.info("publish_short enqueue skipped", {
+              jobId: ctx.jobId,
+              candidateId,
+              existingPublishJobId: existingPublishJob.id,
+              existingPublishJobStatus: existingPublishJob.status,
+            });
+          } else {
+            publishJobId = await deps.queue.enqueue({
+              type: "publish_short",
+              payload: { candidateId },
+            });
+          }
         }
-        const existingPublishJob = deps.queue.listJobs().find(
-          (job) =>
-            job.type === "publish_short" &&
-            job.payload.candidateId === candidateId &&
-            ["queued", "running", "paused", "succeeded"].includes(job.status),
-        );
-        if (existingPublishJob) {
-          publishJobId = existingPublishJob.id;
-          log.info("publish_short enqueue skipped", {
-            jobId: ctx.jobId,
-            candidateId,
-            existingPublishJobId: existingPublishJob.id,
-            existingPublishJobStatus: existingPublishJob.status,
-          });
-          return;
+
+        if (
+          deps.enqueueInstagramReel &&
+          shouldEnqueueReelAfterRender(language, candidate.voiceOvers ?? null)
+        ) {
+          reelJobId = await deps.enqueueInstagramReel(candidateId);
         }
-        publishJobId = await deps.queue.enqueue({
-          type: "publish_short",
-          payload: { candidateId },
-        });
       });
 
       log.info("render_short completed", {
@@ -312,6 +322,7 @@ export function createRenderShortHandler(deps: Dependencies): JobHandler {
         candidateId,
         outputPath: result?.outputPath,
         publishJobId,
+        reelJobId,
         voiceOverLanguage: language ?? candidate.voiceOvers?.[0]?.language,
         durationMs: Math.round(performance.now() - startedAt),
       });

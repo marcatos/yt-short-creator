@@ -28,9 +28,9 @@ After a successful sync, keep working normally: **Analyze clips**, **Generate id
 | **Jobs** | Live queue — pause, resume, cancel, reorder; respects YouTube daily upload limits |
 | **Setup** | Hardware / desk copy blocks for descriptions (IT + EN), never LLM-invented |
 | **Settings** | Brand root, privacy defaults, encoder prefs, IT/EN TTS voices, VO / caption flags |
-| **Connect** | YouTube OAuth for the intended channel |
+| **Connect** | YouTube OAuth for the intended channel; Instagram OAuth for automatic Reels cross-post (Italian) |
 
-After Approve: workers enqueue `render_short` → `publish_short`. Optional bilingual IT/EN voice-over and captions ride the same review path.
+After Approve: workers enqueue `render_short` → `publish_short`. When Instagram is connected, a parallel `publish_reel` job posts the Italian render with a YouTube channel CTA. Optional bilingual IT/EN voice-over and captions ride the same review path.
 
 Deeper product map: [docs/overview.md](docs/overview.md).
 
@@ -105,6 +105,7 @@ Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARN`, or `ERROR` |
 | `BRAND_ROOT` | Path to S.Marcato 42 Racing brand assets |
 | `YOUTUBE_*` | OAuth credentials for YouTube Data API v3 |
+| `META_*` | OAuth credentials for Instagram Reels via Meta Graph API |
 | `LLM_*` / `TTS_*` | OpenAI-compatible LLM and TTS endpoints |
 | `WHISPER_MODEL` | Optional transcription model (reuses LLM credentials) |
 | `DATABASE_PATH` | SQLite database file (default `./data/app.db`) |
@@ -127,6 +128,33 @@ One-time headed sign-in: `npm run studio:login` opens **real** Google Chrome (CD
 3. Create OAuth 2.0 credentials (Web application).
 4. Add authorized redirect URI: `http://localhost:3000/api/auth/youtube/callback`
 5. Copy **Client ID** and **Client secret** into `.env.local` as `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`.
+
+## Instagram Reels (optional cross-post)
+
+Automatic Reels publish the **Italian** render in parallel with YouTube when Instagram is connected. Instagram failure does not fail the YouTube candidate.
+
+### Account prerequisites (Meta — outside this app)
+
+1. Instagram **Creator** or **Business** account (not personal).
+2. Instagram linked to a **Facebook Page** you admin (not only a personal Facebook profile).
+3. New Instagram accounts may show *“temporarily restricted”* when linking the Page — wait **2–7 days** of normal use, then retry from a desktop browser.
+
+### Meta Developer app
+
+1. Create an app at [Meta for Developers](https://developers.facebook.com/).
+2. Add **Facebook Login** (or Login for Business).
+3. Request permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`.
+4. Add valid OAuth redirect: `http://localhost:3000/api/auth/instagram/callback` (must match `META_REDIRECT_URI` exactly — use `localhost`, not `127.0.0.1`, if that is what you configured).
+5. Copy **App ID** and **App secret** into `.env.local` as `META_APP_ID` and `META_APP_SECRET`.
+6. In **dev mode**, only app admins/testers can authorize until App Review approves `instagram_content_publish` for production.
+
+### In Short Control
+
+1. **Settings** — default Reels hashtags, share-to-feed toggle, optional YouTube channel URL override for captions.
+2. **Connect** — authorize Instagram after the Page link succeeds on Meta’s side.
+3. Approve a Short — **Jobs** shows `publish_reel` (`prepare → upload → poll → publish`); candidate detail shows Reel status.
+
+Design notes: [docs/superpowers/specs/2026-08-19-instagram-reels-design.md](docs/superpowers/specs/2026-08-19-instagram-reels-design.md).
 
 ## Acceptance
 

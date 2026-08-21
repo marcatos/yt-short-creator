@@ -101,6 +101,16 @@ const noopDeps: HandlerDeps = {
     async listPublishJobsByCandidateIds() {
       return [];
     },
+    async saveInstagramPublishJob() {},
+    async getInstagramPublishJobById() {
+      return null;
+    },
+    async getInstagramPublishJobByCandidateId() {
+      return null;
+    },
+    async listInstagramPublishJobsByCandidateIds() {
+      return [];
+    },
   },
   render: {
     async render(input) {
@@ -182,6 +192,8 @@ const noopDeps: HandlerDeps = {
         fullBurnInCaptions: false,
         voiceDuckDb: -12,
         enableVoiceOverPipeline: true,
+        instagramShareToFeed: true,
+        instagramDefaultHashtags: ["iRacing"],
       };
     },
     async save() {},
@@ -204,6 +216,42 @@ const noopDeps: HandlerDeps = {
   upload: {
     async upload() {
       throw new Error("YouTube upload is unavailable");
+    },
+  },
+  channels: {
+    async save() {},
+    async getById() {
+      return null;
+    },
+    async getByYoutubeChannelId() {
+      return null;
+    },
+    async list() {
+      return [];
+    },
+  },
+  instagramAuth: {
+    async getAuthorizationUrl() {
+      return "";
+    },
+    async exchangeCode() {
+      throw new Error("Instagram auth is unavailable");
+    },
+    async refreshLongLivedToken() {
+      throw new Error("Instagram auth is unavailable");
+    },
+    async getStoredTokens() {
+      return null;
+    },
+    async saveTokens() {},
+    async clearTokens() {},
+    isConfigured() {
+      return false;
+    },
+  },
+  instagramReels: {
+    async publishReel() {
+      throw new Error("Instagram reels publish is unavailable");
     },
   },
   clock: {

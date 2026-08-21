@@ -23,6 +23,9 @@ import type { VideoDownloadPort } from "@/src/ports/video-download";
 import type { YouTubeAuthPort } from "@/src/ports/youtube-auth";
 import type { YouTubeCaptionsPort } from "@/src/ports/youtube-captions";
 import type { YouTubeUploadPort } from "@/src/ports/youtube-upload";
+import type { InstagramAuthPort } from "@/src/ports/instagram-auth";
+import type { InstagramReelsPort } from "@/src/ports/instagram-reels";
+import type { ChannelRepository } from "@/src/ports/channel-repository";
 import type { FullVideoEncodePort } from "@/src/ports/full-video-encode";
 import type { FullVoMixPort } from "@/src/ports/full-vo-mix";
 import type { GenerateFullVoiceOvers } from "@/src/application/generate-full-voice-overs";
@@ -33,6 +36,7 @@ import { requireNumberPayload, requireStringPayload } from "./handler-utils";
 import type { JobHandlerContext, JobHandler, JobHandlers } from "./job-handler-context";
 import { createPublishFullReplayHandler } from "./publish-full-replay-handler";
 import { createPublishShortHandler } from "./publish-short-handler";
+import { createPublishReelHandler } from "./publish-reel-handler";
 import { createRenderShortHandler } from "./render-short-handler";
 import { runStep } from "./run-step";
 
@@ -61,6 +65,10 @@ export type HandlerDeps = {
   auth: YouTubeAuthPort;
   upload: YouTubeUploadPort;
   captions?: YouTubeCaptionsPort;
+  channels: ChannelRepository;
+  instagramAuth: InstagramAuthPort;
+  instagramReels: InstagramReelsPort;
+  enqueueInstagramReel?: (candidateId: string) => Promise<string | null>;
   fullVideoEncode: FullVideoEncodePort;
   fullVoMix?: FullVoMixPort;
   generateFullVoiceOvers?: GenerateFullVoiceOvers;
@@ -361,8 +369,21 @@ export function createHandlers(
         });
       },
     ),
-    render_short: createRenderShortHandler(deps),
+    render_short: createRenderShortHandler({
+      ...deps,
+      enqueueInstagramReel: deps.enqueueInstagramReel,
+    }),
     publish_short: createPublishShortHandler(deps),
+    publish_reel: createPublishReelHandler({
+      logger: deps.logger,
+      candidates: deps.candidates,
+      channels: deps.channels,
+      jobs: deps.jobs,
+      settings: deps.settings,
+      instagramAuth: deps.instagramAuth,
+      instagramReels: deps.instagramReels,
+      clock: deps.clock,
+    }),
     publish_full_replay: createPublishFullReplayHandler({
       logger: deps.logger,
       replaySessions: deps.replaySessions,

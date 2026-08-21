@@ -23,6 +23,11 @@ type CandidateReview = {
     isPublished: boolean;
   }>;
   inspirationTitles?: string[];
+  instagramPublish?: {
+    status: string;
+    permalink: string | null;
+    error: string | null;
+  } | null;
 };
 
 function localDateTime(iso: string | null): string {
@@ -213,6 +218,31 @@ export function ReviewPanel({ candidate }: { candidate: CandidateReview }) {
             <span className={`chip status-${candidate.status}`}>
               {candidate.status}
             </span>
+            {candidate.instagramPublish ? (
+              candidate.instagramPublish.status === "succeeded" ? (
+                candidate.instagramPublish.permalink ? (
+                  <a
+                    className="chip chip-inspiration"
+                    href={candidate.instagramPublish.permalink}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Reel posted
+                  </a>
+                ) : (
+                  <span className="chip">Reel posted</span>
+                )
+              ) : candidate.instagramPublish.status === "failed" ? (
+                <span
+                  className="chip"
+                  title={candidate.instagramPublish.error ?? undefined}
+                >
+                  Reel failed
+                </span>
+              ) : (
+                <span className="chip">Reel {candidate.instagramPublish.status}</span>
+              )
+            ) : null}
           </div>
         </div>
         <label>

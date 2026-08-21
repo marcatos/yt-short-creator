@@ -3,6 +3,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type {
   Channel,
   GenerationBrief,
+  InstagramAccount,
+  InstagramPublishJob,
   PublishJob,
   RenderJob,
   ReplaySession,
@@ -12,16 +14,19 @@ import type {
 import type { CandidateRepository } from "@/src/ports/candidate-repository";
 import type { ChannelRepository } from "@/src/ports/channel-repository";
 import type { GenerationBriefRepository } from "@/src/ports/generation-brief-repository";
-import type { InspirationStorePort } from "@/src/ports/inspiration-store";
+import type { InstagramAccountRepository } from "@/src/ports/instagram-account-repository";
 import type { JobRepository } from "@/src/ports/job-repository";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
 import type { SourceVideoRepository } from "@/src/ports/source-video-repository";
+import type { InspirationStorePort } from "@/src/ports/inspiration-store";
 
 import type { AppDb } from "./client";
 import { DrizzleInspirationStore } from "./inspiration-store";
 import {
   channels,
   generationBriefs,
+  instagramAccounts,
+  instagramPublishJobs,
   publishJobs,
   renderJobs,
   replaySessions,
@@ -35,6 +40,8 @@ type GenerationBriefRow = typeof generationBriefs.$inferSelect;
 type ShortCandidateRow = typeof shortCandidates.$inferSelect;
 type RenderJobRow = typeof renderJobs.$inferSelect;
 type PublishJobRow = typeof publishJobs.$inferSelect;
+type InstagramAccountRow = typeof instagramAccounts.$inferSelect;
+type InstagramPublishJobRow = typeof instagramPublishJobs.$inferSelect;
 type ReplaySessionRow = typeof replaySessions.$inferSelect;
 
 function toChannel(row: ChannelRow): Channel {
@@ -111,6 +118,32 @@ function toPublishJob(row: PublishJobRow): PublishJob {
     youtubeVideoId: row.youtubeVideoId,
     uploadSessionUrl: row.uploadSessionUrl,
     scheduledAt: row.scheduledAt,
+    publishedAt: row.publishedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toInstagramAccount(row: InstagramAccountRow): InstagramAccount {
+  return {
+    id: row.id,
+    igUserId: row.igUserId,
+    username: row.username,
+    pageId: row.pageId,
+    pageName: row.pageName,
+    connectedAt: row.connectedAt,
+  };
+}
+
+function toInstagramPublishJob(row: InstagramPublishJobRow): InstagramPublishJob {
+  return {
+    id: row.id,
+    candidateId: row.candidateId,
+    status: row.status,
+    instagramMediaId: row.instagramMediaId,
+    permalink: row.permalink,
+    caption: row.caption,
+    error: row.error,
     publishedAt: row.publishedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -544,6 +577,109 @@ export class DrizzleJobRepository implements JobRepository {
       .where(inArray(publishJobs.candidateId, uniqueIds));
     return rows.map(toPublishJob);
   }
+
+  async saveInstagramPublishJob(job: InstagramPublishJob): Promise<void> {
+    await this.db
+      .insert(instagramPublishJobs)
+      .values({
+        id: job.id,
+        candidateId: job.candidateId,
+        status: job.status,
+        instagramMediaId: job.instagramMediaId,
+        permalink: job.permalink,
+        caption: job.caption,
+        error: job.error,
+        publishedAt: job.publishedAt,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: instagramPublishJobs.id,
+        set: {
+          candidateId: job.candidateId,
+          status: job.status,
+          instagramMediaId: job.instagramMediaId,
+          permalink: job.permalink,
+          caption: job.caption,
+          error: job.error,
+          publishedAt: job.publishedAt,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+        },
+      });
+  }
+
+  async getInstagramPublishJobById(
+    id: string,
+  ): Promise<InstagramPublishJob | null> {
+    const rows = await this.db
+      .select()
+      .from(instagramPublishJobs)
+      .where(eq(instagramPublishJobs.id, id))
+      .limit(1);
+    return rows[0] ? toInstagramPublishJob(rows[0]) : null;
+  }
+
+  async getInstagramPublishJobByCandidateId(
+    candidateId: string,
+  ): Promise<InstagramPublishJob | null> {
+    const rows = await this.db
+      .select()
+      .from(instagramPublishJobs)
+      .where(eq(instagramPublishJobs.candidateId, candidateId))
+      .limit(1);
+    return rows[0] ? toInstagramPublishJob(rows[0]) : null;
+  }
+
+  async listInstagramPublishJobsByCandidateIds(
+    candidateIds: string[],
+  ): Promise<InstagramPublishJob[]> {
+    if (candidateIds.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(candidateIds)];
+    const rows = await this.db
+      .select()
+      .from(instagramPublishJobs)
+      .where(inArray(instagramPublishJobs.candidateId, uniqueIds));
+    return rows.map(toInstagramPublishJob);
+  }
+}
+
+export class DrizzleInstagramAccountRepository implements InstagramAccountRepository {
+  constructor(private readonly db: AppDb) {}
+
+  async get(): Promise<InstagramAccount | null> {
+    const rows = await this.db.select().from(instagramAccounts).limit(1);
+    return rows[0] ? toInstagramAccount(rows[0]) : null;
+  }
+
+  async save(account: InstagramAccount): Promise<void> {
+    await this.db
+      .insert(instagramAccounts)
+      .values({
+        id: account.id,
+        igUserId: account.igUserId,
+        username: account.username,
+        pageId: account.pageId,
+        pageName: account.pageName,
+        connectedAt: account.connectedAt,
+      })
+      .onConflictDoUpdate({
+        target: instagramAccounts.id,
+        set: {
+          igUserId: account.igUserId,
+          username: account.username,
+          pageId: account.pageId,
+          pageName: account.pageName,
+          connectedAt: account.connectedAt,
+        },
+      });
+  }
+
+  async delete(): Promise<void> {
+    await this.db.delete(instagramAccounts);
+  }
 }
 
 export class DrizzleReplaySessionRepository implements ReplaySessionRepository {
@@ -627,6 +763,7 @@ export type DbRepositories = {
   generationBriefs: DrizzleGenerationBriefRepository;
   candidates: DrizzleCandidateRepository;
   jobs: DrizzleJobRepository;
+  instagramAccounts: DrizzleInstagramAccountRepository;
   replaySessions: DrizzleReplaySessionRepository;
   inspiration: InspirationStorePort;
 };
@@ -638,6 +775,7 @@ export function createRepositories(db: AppDb): DbRepositories {
     generationBriefs: new DrizzleGenerationBriefRepository(db),
     candidates: new DrizzleCandidateRepository(db),
     jobs: new DrizzleJobRepository(db),
+    instagramAccounts: new DrizzleInstagramAccountRepository(db),
     replaySessions: new DrizzleReplaySessionRepository(db),
     inspiration: new DrizzleInspirationStore(db),
   };

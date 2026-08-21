@@ -137,6 +137,31 @@ export const publishJobs = sqliteTable("publish_jobs", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
+export const instagramAccounts = sqliteTable("instagram_accounts", {
+  id: text("id").primaryKey(),
+  igUserId: text("ig_user_id").notNull().unique(),
+  username: text("username").notNull(),
+  pageId: text("page_id").notNull(),
+  pageName: text("page_name").notNull(),
+  connectedAt: integer("connected_at", { mode: "timestamp" }).notNull(),
+});
+
+export const instagramPublishJobs = sqliteTable("instagram_publish_jobs", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id")
+    .notNull()
+    .references(() => shortCandidates.id)
+    .unique(),
+  status: text("status").$type<JobStatus>().notNull(),
+  instagramMediaId: text("instagram_media_id"),
+  permalink: text("permalink"),
+  caption: text("caption"),
+  error: text("error"),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 export const queueJobs = sqliteTable(
   "queue_jobs",
   {
