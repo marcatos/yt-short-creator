@@ -1,0 +1,47 @@
+---
+description: Outline structured knowledge base for yt-short-creator
+alwaysApply: true
+---
+
+# Outline knowledge — YT short creator
+
+Collection aligned with Plane **YTSC** (`yt-short-creator`).
+LAN `http://10.100.30.91:3000` · UI `https://outline.marcatos.ddns.net` · IdP Authentik.
+
+## Document set (use all of these — not only STATUS/DECISIONS)
+
+| Document | Purpose |
+|---|---|
+| **Overview** | Map of this collection and how to read it |
+| **STATUS** | Live facts only — short, current |
+| **DECISIONS** | Append-only ADRs with accepted and rejected options |
+| **Features** | Feature catalog with status and links |
+| **Specs** | Requirements / acceptance criteria index |
+| **Implementation** | How it is built and verified |
+| **Options** | Alternatives explored (accepted, rejected, deferred) |
+
+Optional deeper docs: `Spec: <Feature name>`, `Runbook: <Topic>`.
+
+## Canonical owners
+
+| Artefact | Owner |
+|---|---|
+| Live facts | Outline **STATUS** |
+| Locked choices (+ rejected options) | Outline **DECISIONS** (append at top) |
+| Explored alternatives | Outline **Options** |
+| Feature catalog | Outline **Features** |
+| Requirements | Outline **Specs** / `Spec: …` |
+| How built / verified | Outline **Implementation** |
+| Work + session notes | Plane work items + comments |
+| Changelog | conventional commits |
+| Code | git |
+
+## Agent workflow
+
+1. **Session start:** list open Plane items; read **STATUS**; skim **Features** if changing product behaviour.
+2. **New capability:** row in **Features** → requirements in **Specs** (or `Spec: …`) → Plane work item before coding.
+3. **Design choice:** capture alternatives in **Options**; when locking, append **DECISIONS** with **Accepted / Rejected / Deferred**.
+4. **After ship:** update **Implementation** + **STATUS** facts; set Feature status; comment the Plane issue.
+5. Keep **STATUS** short. Never put secrets on Outline. Do not treat git STATUS/DECISIONS as live.
+
+CLI: `python C:/Users/simot/Documents/Projects/opnsense-server/scripts/outline_doc.py`

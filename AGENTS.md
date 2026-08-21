@@ -15,5 +15,9 @@ After finishing a development that the production daemon would serve, **restart 
 Full policy and commands: [docs/daemon.md](docs/daemon.md).
 
 <!-- plane-tracker -->
-Plane project **YTSC** (`YT short creator`). Canonical STATUS/DECISIONS/issues live on Plane (`http://10.100.30.87`), workspace `personal`. See `.cursor/rules/plane.mdc`.
+Plane project **YTSC** (`YT short creator`). Work items live on Plane (`http://10.100.30.87`), workspace `personal`. STATUS/DECISIONS/product knowledge live on Outline — see `.cursor/rules/outline.mdc`. See `.cursor/rules/plane.mdc`.
 <!-- /plane-tracker -->
+
+<!-- outline-kb -->
+Outline collection for **YTSC** (`YT short creator`). Structured KB: Overview, STATUS, DECISIONS, Features, Specs, Implementation, Options (`http://10.100.30.91:3000`). See `.cursor/rules/outline.mdc`.
+<!-- /outline-kb -->

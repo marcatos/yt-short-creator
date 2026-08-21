@@ -10,14 +10,15 @@ LAN `http://10.100.30.87`. UI `https://plane.marcatos.ddns.net`.
 
 ## Canonical owners
 
-- Live facts → Plane issue named **STATUS** (Community v1.4.1 has no Pages API)
-- Decisions → Plane issue named **DECISIONS** (append at top of that issue)
-- Work → Plane issues (labels feat/fix/chore/known-issue/backlog)
-- Session notes → comment on the issue (do not add git handoffs)
+- Work → Plane work items (labels feat/fix/chore/known-issue/backlog)
+- Session notes → comment on the work item (do not add git handoffs)
+- Live facts / STATUS → Outline document **STATUS** (see `.cursor/rules/outline.mdc`)
+- Decisions → Outline document **DECISIONS** (append at top)
+- Product knowledge → Outline collection for this project
 - Changelog → conventional commits
 - Code → git
 
-List open issues for `YTSC` at session start. Create an issue before coding.
+List open work items for `YTSC` at session start. Create a work item before coding.
 If MCP create fails (`title` vs `name`), run:
 
 ```powershell
