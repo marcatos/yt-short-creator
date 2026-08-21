@@ -5,11 +5,16 @@ import {
   boostScoreNearHudBattles,
   boostScoreNearHudCallouts,
   collectRecurringRivals,
+  demoteScoreAfterRaceEnd,
   detectBattleWindows,
   detectCalloutWindows,
+  detectRaceEndMs,
+  filterRacingEventsBeforeRaceEnd,
   formatHudTimelineForPrompt,
   HUD_CALLOUT_SCORE_BOOST,
   inferResultsFromHud,
+  isPostRaceHudSession,
+  POST_RACE_SCORE_PENALTY,
   reconcileHudSnapshot,
   resolveFocusSubject,
   sliceHudWindow,
@@ -290,4 +295,217 @@ describe("race-hud", () => {
     expect(block).toContain("fieldTicker=");
     expect(block).toContain("Δbest=");
   });
+
+  it("detects post-race session strip tokens", () => {
+    expect(isPostRaceHudSession("CHECKERED", null)).toBe(true);
+    expect(isPostRaceHudSession(null, "Cool Down")).toBe(true);
+    expect(isPostRaceHudSession("FINISHED", null)).toBe(true);
+    expect(isPostRaceHudSession("RACE", "GREEN")).toBe(false);
+  });
+
+  it("detects raceEndMs from first checkered / cool-down snapshot", () => {
+    const timeline = raceEndTimeline();
+    expect(detectRaceEndMs(timeline)).toBe(20_000);
+    expect(detectRaceEndMs(sampleTimeline())).toBeNull();
+  });
+
+  it("gates finish to last position before raceEndMs (ignores cooldown P4)", () => {
+    const results = inferResultsFromHud(raceEndTimeline(), 7, undefined, {
+      raceEndMs: 20_000,
+    });
+    expect(results.startPosition).toBe(4);
+    expect(results.finishPosition).toBe(3);
+    expect(results.positionsGained).toBe(1);
+  });
+
+  it("overrides LLM finish when raceEndMs is known and HUD has pre-end position", () => {
+    const results = inferResultsFromHud(
+      raceEndTimeline(),
+      7,
+      {
+        qualiResult: null,
+        startPosition: 4,
+        finishPosition: 4,
+        fieldSize: 19,
+        positionsGained: 0,
+      },
+      { raceEndMs: 20_000 },
+    );
+    expect(results.finishPosition).toBe(3);
+    expect(results.positionsGained).toBe(1);
+  });
+
+  it("leaves finish inference unchanged when raceEndMs is null", () => {
+    const results = inferResultsFromHud(raceEndTimeline(), 7, undefined, {
+      raceEndMs: null,
+    });
+    expect(results.finishPosition).toBe(4);
+  });
+
+  it("stops battle windows at raceEndMs so cooldown gaps are ignored", () => {
+    const windows = detectBattleWindows(raceEndTimeline(), 1.0, 20_000);
+    expect(windows.every((w) => w.startMs < 20_000)).toBe(true);
+    expect(windows.some((w) => w.startMs >= 20_000)).toBe(false);
+  });
+
+  it("demotes short scores when the window is mostly post-race", () => {
+    const demoted = demoteScoreAfterRaceEnd(0.9, 21_000, 40_000, 20_000);
+    expect(demoted).toBeCloseTo(0.9 - POST_RACE_SCORE_PENALTY, 5);
+    const racing = demoteScoreAfterRaceEnd(0.9, 5_000, 15_000, 20_000);
+    expect(racing).toBe(0.9);
+  });
+
+  it("filters racing events that start at or after raceEndMs", () => {
+    const kept = filterRacingEventsBeforeRaceEnd(
+      [
+        {
+          kind: "overtake" as const,
+          startMs: 10_000,
+          endMs: 12_000,
+          summary: "pass",
+          involvingFocusCar: true,
+          confidence: "verified" as const,
+        },
+        {
+          kind: "battle" as const,
+          startMs: 22_000,
+          endMs: 25_000,
+          summary: "cooldown",
+          involvingFocusCar: true,
+          confidence: "verified" as const,
+        },
+        {
+          kind: "incident" as const,
+          startMs: 23_000,
+          endMs: 24_000,
+          summary: "spin",
+          involvingFocusCar: true,
+          confidence: "inferred" as const,
+        },
+      ],
+      20_000,
+    );
+    expect(kept.map((e) => e.kind)).toEqual(["overtake", "incident"]);
+  });
 });
+
+function raceEndTimeline(): RaceHudTimeline {
+  return [
+    snap({
+      timeMs: 0,
+      session: {
+        sessionType: "RACE",
+        status: "RACE",
+        trackName: "CTMP",
+        lap: 1,
+        sessionTime: "0:00",
+        flag: "GREEN",
+      },
+      focus: focus({
+        carNumber: 7,
+        driverName: "Simone Marcato",
+        position: 4,
+        fieldSize: 19,
+      }),
+      battle: {
+        rows: [
+          {
+            role: "ahead",
+            carNumber: 4,
+            driverName: "Yoan",
+            gapSec: -0.4,
+          },
+          {
+            role: "focus",
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapSec: 0,
+          },
+        ],
+      },
+    }),
+    snap({
+      timeMs: 10_000,
+      session: {
+        sessionType: "RACE",
+        status: "RACE",
+        trackName: "CTMP",
+        lap: 8,
+        sessionTime: "12:00",
+        flag: "GREEN",
+      },
+      focus: focus({
+        carNumber: 7,
+        driverName: "Simone Marcato",
+        position: 3,
+        fieldSize: 19,
+      }),
+      battle: {
+        rows: [
+          {
+            role: "ahead",
+            carNumber: 4,
+            driverName: "Yoan",
+            gapSec: -0.3,
+          },
+          {
+            role: "focus",
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapSec: 0,
+          },
+        ],
+      },
+    }),
+    snap({
+      timeMs: 20_000,
+      session: {
+        sessionType: "RACE",
+        status: "CHECKERED",
+        trackName: "CTMP",
+        lap: 10,
+        sessionTime: "15:00",
+        flag: "CHECKERED",
+      },
+      focus: focus({
+        carNumber: 7,
+        driverName: "Simone Marcato",
+        position: 3,
+        fieldSize: 19,
+      }),
+    }),
+    snap({
+      timeMs: 25_000,
+      session: {
+        sessionType: "RACE",
+        status: "COOL DOWN",
+        trackName: "CTMP",
+        lap: 10,
+        sessionTime: "15:40",
+        flag: "CHECKERED",
+      },
+      focus: focus({
+        carNumber: 7,
+        driverName: "Simone Marcato",
+        position: 4,
+        fieldSize: 19,
+      }),
+      battle: {
+        rows: [
+          {
+            role: "ahead",
+            carNumber: 9,
+            driverName: "Slow",
+            gapSec: -0.1,
+          },
+          {
+            role: "focus",
+            carNumber: 7,
+            driverName: "Simone Marcato",
+            gapSec: 0,
+          },
+        ],
+      },
+    }),
+  ];
+}

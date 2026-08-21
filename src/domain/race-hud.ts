@@ -9,6 +9,28 @@ export const BATTLE_GAP_THRESHOLD_SEC = 1.0;
 export const HUD_BATTLE_SCORE_BOOST = 0.08;
 /** Extra boost when the explicit "Battle for Px" callout is near a Short window. */
 export const HUD_CALLOUT_SCORE_BOOST = 0.12;
+/** Soft penalty when a Short candidate window sits mostly after race end. */
+export const POST_RACE_SCORE_PENALTY = 0.15;
+
+/** Event kinds that must not be treated as racing action after the flag. */
+export const POST_RACE_FILTERED_EVENT_KINDS = [
+  "overtake",
+  "battle",
+  "defense",
+  "pace_change",
+] as const;
+
+const POST_RACE_SESSION_TOKENS = [
+  "checkered",
+  "chequered",
+  "finished",
+  "finish",
+  "cool down",
+  "cooldown",
+  "cool-down",
+  "ending",
+  "after",
+] as const;
 
 export type SessionStripState = {
   sessionType: string | null;
@@ -346,8 +368,48 @@ function focusPositionAt(
 }
 
 /**
+ * True when HUD session status/flag text indicates the race is over
+ * (checkered, cool-down, finished, etc.).
+ */
+export function isPostRaceHudSession(
+  status: string | null | undefined,
+  flag: string | null | undefined,
+): boolean {
+  const haystack = [status, flag]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(" ")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (!haystack) return false;
+  return POST_RACE_SESSION_TOKENS.some((token) => haystack.includes(token));
+}
+
+/**
+ * First HUD snapshot time where session strip indicates race end.
+ * Returns null when no post-race token is found (no gate).
+ */
+export function detectRaceEndMs(timeline: RaceHudTimeline): number | null {
+  const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
+  for (const snap of ordered) {
+    const session = snap.session;
+    if (!session) continue;
+    if (isPostRaceHudSession(session.status, session.flag)) {
+      return snap.timeMs;
+    }
+  }
+  return null;
+}
+
+export type InferResultsFromHudOptions = {
+  /** When set, only positions strictly before this time count toward finish. */
+  raceEndMs?: number | null;
+};
+
+/**
  * Infer start/finish/fieldSize from first/last readable HUD positions for the
- * focus car. Only fills fields that are still null in `base`.
+ * focus car. Only fills fields that are still null in `base`, except when
+ * `raceEndMs` is set and a pre-end HUD finish exists — then finish (and
+ * positionsGained) override LLM/base values so cool-down readings cannot win.
  */
 export function inferResultsFromHud(
   timeline: RaceHudTimeline,
@@ -365,6 +427,7 @@ export function inferResultsFromHud(
     fieldSize: null,
     positionsGained: null,
   },
+  options: InferResultsFromHudOptions = {},
 ): {
   qualiResult: string | null;
   startPosition: number | null;
@@ -372,12 +435,14 @@ export function inferResultsFromHud(
   fieldSize: number | null;
   positionsGained: number | null;
 } {
+  const raceEndMs = options.raceEndMs ?? null;
   const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
   let first: { position: number; fieldSize: number | null } | null = null;
   let last: { position: number; fieldSize: number | null } | null = null;
   let fieldSize: number | null = null;
 
   for (const snap of ordered) {
+    if (raceEndMs != null && snap.timeMs >= raceEndMs) continue;
     const pos = focusPositionAt(snap, focusCarNumber);
     if (!pos) continue;
     if (!first) first = pos;
@@ -387,14 +452,21 @@ export function inferResultsFromHud(
   }
 
   const startPosition = base.startPosition ?? first?.position ?? null;
-  const finishPosition = base.finishPosition ?? last?.position ?? null;
+  const gatedFinish = last?.position ?? null;
+  const finishPosition =
+    raceEndMs != null && gatedFinish != null
+      ? gatedFinish
+      : (base.finishPosition ?? gatedFinish);
   const resolvedField =
     base.fieldSize ?? fieldSize ?? first?.fieldSize ?? last?.fieldSize ?? null;
-  const positionsGained =
-    base.positionsGained ??
-    (startPosition != null && finishPosition != null
+  const computedGained =
+    startPosition != null && finishPosition != null
       ? startPosition - finishPosition
-      : null);
+      : null;
+  const positionsGained =
+    raceEndMs != null && gatedFinish != null
+      ? computedGained
+      : (base.positionsGained ?? computedGained);
 
   return {
     qualiResult: base.qualiResult,
@@ -426,12 +498,16 @@ function minAbsBattleGap(battle: BattleRelativeState | null): number | null {
 
 /**
  * Merge contiguous snapshots where an ahead/behind gap is within threshold.
+ * Snapshots at/after `raceEndMs` are ignored (post-flag cool-down / pit-in).
  */
 export function detectBattleWindows(
   timeline: RaceHudTimeline,
   thresholdSec: number = BATTLE_GAP_THRESHOLD_SEC,
+  raceEndMs: number | null = null,
 ): HudBattleWindow[] {
-  const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
+  const ordered = [...timeline]
+    .filter((snap) => raceEndMs == null || snap.timeMs < raceEndMs)
+    .sort((a, b) => a.timeMs - b.timeMs);
   const windows: HudBattleWindow[] = [];
   let open: HudBattleWindow | null = null;
 
@@ -510,11 +586,15 @@ function formatCalloutSummary(callout: BattleCalloutState): string {
 
 /**
  * Contiguous snapshots where the bottom-center "Battle for Px" callout is visible.
+ * Snapshots at/after `raceEndMs` are ignored.
  */
 export function detectCalloutWindows(
   timeline: RaceHudTimeline,
+  raceEndMs: number | null = null,
 ): HudBattleWindow[] {
-  const ordered = [...timeline].sort((a, b) => a.timeMs - b.timeMs);
+  const ordered = [...timeline]
+    .filter((snap) => raceEndMs == null || snap.timeMs < raceEndMs)
+    .sort((a, b) => a.timeMs - b.timeMs);
   const windows: HudBattleWindow[] = [];
   let open: HudBattleWindow | null = null;
 
@@ -816,6 +896,46 @@ export function boostScoreNearHudCallouts(
     return Math.abs(windowMid - mid) <= 8_000;
   });
   return near ? Math.min(1, score + HUD_CALLOUT_SCORE_BOOST) : score;
+}
+
+/**
+ * Soft-demote Shorts whose midpoint (or majority of duration) sits after race end.
+ */
+export function demoteScoreAfterRaceEnd(
+  score: number,
+  startMs: number,
+  endMs: number,
+  raceEndMs: number | null,
+): number {
+  if (raceEndMs == null) return score;
+  const duration = Math.max(0, endMs - startMs);
+  if (duration <= 0) return score;
+  const postMs = Math.max(0, endMs - Math.max(startMs, raceEndMs));
+  const mid = (startMs + endMs) / 2;
+  const mostlyPost = mid >= raceEndMs || postMs / duration >= 0.5;
+  if (!mostlyPost) return score;
+  return Math.max(0, score - POST_RACE_SCORE_PENALTY);
+}
+
+type RacingEventLike = {
+  kind: string;
+  startMs: number;
+};
+
+/**
+ * Drop overtake/battle/defense/pace_change events that start at/after race end.
+ * Other kinds (incident, finish celebration, etc.) are kept.
+ */
+export function filterRacingEventsBeforeRaceEnd<T extends RacingEventLike>(
+  events: T[],
+  raceEndMs: number | null,
+): T[] {
+  if (raceEndMs == null) return events;
+  const filtered = new Set<string>(POST_RACE_FILTERED_EVENT_KINDS);
+  return events.filter(
+    (event) =>
+      !(filtered.has(event.kind) && event.startMs >= raceEndMs),
+  );
 }
 
 export function summarizeHudForNarration(
