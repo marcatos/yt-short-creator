@@ -4,16 +4,21 @@ import { spawn } from "node:child_process";
 
 import {
   resolveVideoEncoder,
-  type VideoEncoderPreference,
 } from "@/src/adapters/ffmpeg/ffmpeg-encoder";
 import { probeMediaDurationSec } from "@/src/adapters/media/ffprobe-duration";
+import type { GamingActivityPort } from "@/src/ports/gaming-activity";
 import type {
   FullVideoEncodeInput,
   FullVideoEncodePort,
   FullVideoEncodeResult,
 } from "@/src/ports/full-video-encode";
 import type { Logger } from "@/src/ports/logger";
-import type { SettingsRepository } from "@/src/ports/settings-repository";
+import type {
+  SettingsRepository,
+  VideoEncoderPreference,
+} from "@/src/ports/settings-repository";
+
+import { resolveVideoEncoderPreference } from "./resolve-video-encoder-preference";
 
 const MANIFEST_NAME = "full-encode-manifest.json";
 
@@ -37,36 +42,27 @@ type Manifest = {
 type Deps = {
   logger: Logger;
   settings?: SettingsRepository;
+  gamingActivity?: GamingActivityPort;
   ffmpegPath?: string;
   ffprobePath?: string;
   videoEncoderPreference?: VideoEncoderPreference;
 };
 
-function preferenceFromEnv(): VideoEncoderPreference | undefined {
-  const raw = process.env.FFMPEG_VIDEO_ENCODER?.trim();
-  if (
-    raw === "auto_igpu" ||
-    raw === "auto_dgpu" ||
-    raw === "h264_qsv" ||
-    raw === "h264_nvenc" ||
-    raw === "h264_amf" ||
-    raw === "h264_mf" ||
-    raw === "libx264"
-  ) {
-    return raw;
+async function resolvePreference(deps: Deps) {
+  if (deps.videoEncoderPreference && deps.videoEncoderPreference !== "auto") {
+    return {
+      configured: deps.videoEncoderPreference,
+      effective: deps.videoEncoderPreference,
+      gamingActive: null,
+    };
   }
-  return undefined;
-}
-
-async function resolvePreference(deps: Deps): Promise<VideoEncoderPreference> {
-  if (deps.videoEncoderPreference) return deps.videoEncoderPreference;
-  const fromEnv = preferenceFromEnv();
-  if (fromEnv) return fromEnv;
-  if (deps.settings) {
-    const settings = await deps.settings.get();
-    return settings.videoEncoderPreference;
-  }
-  return "auto_dgpu";
+  return resolveVideoEncoderPreference({
+    settings: deps.settings,
+    gamingActivity: deps.gamingActivity,
+    videoEncoderPreference: deps.videoEncoderPreference,
+    logger: deps.logger,
+    fallback: "auto",
+  });
 }
 
 export function deliveryEncoderArgs(
@@ -307,8 +303,11 @@ export function createFfmpegFullVideoEncode(
         sourceMediaPath,
         ffprobePath,
       );
-      const preference = await resolvePreference(deps);
-      const baseEncoder = resolveVideoEncoder(ffmpegPath, preference);
+      const encoderPreference = await resolvePreference(deps);
+      const baseEncoder = resolveVideoEncoder(
+        ffmpegPath,
+        encoderPreference.effective,
+      );
       const encoderArgs = deliveryEncoderArgs(
         baseEncoder.codec,
         targetBitrateMbps,
@@ -330,6 +329,9 @@ export function createFfmpegFullVideoEncode(
         maxBitrateMbps,
         source: geometry,
         encoder: baseEncoder.label,
+        videoEncoderPreference: encoderPreference.configured,
+        videoEncoderPreferenceEffective: encoderPreference.effective,
+        gamingActive: encoderPreference.gamingActive,
         durationSec,
       });
 

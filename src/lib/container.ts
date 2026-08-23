@@ -24,6 +24,7 @@ import { createFfmpegMediaProxy } from "@/src/adapters/media/ffmpeg-media-proxy"
 import { createFfprobeMediaDuration } from "@/src/adapters/media/ffprobe-media-duration";
 import { createYtdlpDownload } from "@/src/adapters/media/ytdlp-download";
 import { createFsReplayCapture } from "@/src/adapters/replay/fs-replay-capture";
+import { createGamingActivity } from "@/src/adapters/system/windows-gaming-activity";
 import { SystemClock } from "@/src/adapters/system/clock";
 import { UuidIdPort } from "@/src/adapters/system/id";
 import { createOpenAiCompatibleTts } from "@/src/adapters/tts/openai-compatible-tts";
@@ -249,7 +250,7 @@ export function createContainer(env: AppEnv): AppContainer {
       brandRoot: env.BRAND_ROOT,
       logLevel: env.LOG_LEVEL,
       defaultPrivacy: "public",
-      videoEncoderPreference: "auto_igpu",
+      videoEncoderPreference: "auto",
       brandVoiceProfile: "coral",
       italianVoiceProfile: "ash",
       shortsBurnInCaptions: true,
@@ -271,9 +272,14 @@ export function createContainer(env: AppEnv): AppContainer {
   const mediaStore = createFsMediaStore({ mediaRoot: env.MEDIA_ROOT });
   const hardwareConfig = createFsHardwareConfig({ logger });
   const brandPack = createFsBrandPack({ brandRoot: env.BRAND_ROOT });
-  const render = createFfmpegRender({ logger, settings });
-  const fullVideoEncode = createFfmpegFullVideoEncode({ logger, settings });
-  const fullVoMix = createFfmpegFullVoMix({ logger, settings });
+  const gamingActivity = createGamingActivity({ logger });
+  const render = createFfmpegRender({ logger, settings, gamingActivity });
+  const fullVideoEncode = createFfmpegFullVideoEncode({
+    logger,
+    settings,
+    gamingActivity,
+  });
+  const fullVoMix = createFfmpegFullVoMix({ logger, settings, gamingActivity });
   const videoDownload = createYtdlpDownload({ mediaStore, logger });
   const mediaDuration = createFfprobeMediaDuration();
   const ibtTelemetry = createIbtFileTelemetry({ logger });

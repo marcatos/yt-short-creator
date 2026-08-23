@@ -1,13 +1,8 @@
 import { spawnSync } from "node:child_process";
 
-export type VideoEncoderPreference =
-  | "auto_igpu"
-  | "auto_dgpu"
-  | "h264_qsv"
-  | "h264_nvenc"
-  | "h264_amf"
-  | "h264_mf"
-  | "libx264";
+import type { VideoEncoderPreference } from "@/src/ports/settings-repository";
+
+export type { VideoEncoderPreference };
 
 export type VideoEncoderChoice = {
   codec: string;
@@ -106,6 +101,8 @@ function orderedCodecs(
   preference: VideoEncoderPreference,
 ): VideoEncoderChoice[] {
   switch (preference) {
+    case "auto":
+      return orderedCodecs("auto_igpu");
     case "auto_igpu":
       return [
         BY_CODEC.h264_qsv!,

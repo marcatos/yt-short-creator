@@ -8,13 +8,13 @@ import {
 } from "@/src/adapters/ffmpeg/ffmpeg-audio-filters";
 import {
   resolveVideoEncoder,
-  type VideoEncoderPreference,
 } from "@/src/adapters/ffmpeg/ffmpeg-encoder";
 import {
   DEFAULT_MAX_MBPS,
   DEFAULT_TARGET_MBPS,
   deliveryEncoderArgs,
 } from "@/src/adapters/ffmpeg/ffmpeg-full-video-encode";
+import type { GamingActivityPort } from "@/src/ports/gaming-activity";
 import type {
   AudioConcatInput,
   AudioConcatPort,
@@ -24,40 +24,36 @@ import type {
   FullVoMixResult,
 } from "@/src/ports/full-vo-mix";
 import type { Logger } from "@/src/ports/logger";
-import type { SettingsRepository } from "@/src/ports/settings-repository";
+import type {
+  SettingsRepository,
+  VideoEncoderPreference,
+} from "@/src/ports/settings-repository";
+
+import { resolveVideoEncoderPreference } from "./resolve-video-encoder-preference";
 
 type Deps = {
   logger: Logger;
   settings?: SettingsRepository;
+  gamingActivity?: GamingActivityPort;
   ffmpegPath?: string;
   videoEncoderPreference?: VideoEncoderPreference;
 };
 
-function preferenceFromEnv(): VideoEncoderPreference | undefined {
-  const raw = process.env.FFMPEG_VIDEO_ENCODER?.trim();
-  if (
-    raw === "auto_igpu" ||
-    raw === "auto_dgpu" ||
-    raw === "h264_qsv" ||
-    raw === "h264_nvenc" ||
-    raw === "h264_amf" ||
-    raw === "h264_mf" ||
-    raw === "libx264"
-  ) {
-    return raw;
+async function resolvePreference(deps: Deps) {
+  if (deps.videoEncoderPreference && deps.videoEncoderPreference !== "auto") {
+    return {
+      configured: deps.videoEncoderPreference,
+      effective: deps.videoEncoderPreference,
+      gamingActive: null,
+    };
   }
-  return undefined;
-}
-
-async function resolvePreference(deps: Deps): Promise<VideoEncoderPreference> {
-  if (deps.videoEncoderPreference) return deps.videoEncoderPreference;
-  const fromEnv = preferenceFromEnv();
-  if (fromEnv) return fromEnv;
-  if (deps.settings) {
-    const settings = await deps.settings.get();
-    return settings.videoEncoderPreference;
-  }
-  return "auto_dgpu";
+  return resolveVideoEncoderPreference({
+    settings: deps.settings,
+    gamingActivity: deps.gamingActivity,
+    videoEncoderPreference: deps.videoEncoderPreference,
+    logger: deps.logger,
+    fallback: "auto",
+  });
 }
 
 async function runFfmpeg(
@@ -192,13 +188,13 @@ export function createFfmpegFullVoMix(
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
       // Stream-copying the picture keeps a 40-minute race mix at audio speed;
       // burn-in is the only path that pays for a full re-encode.
+      const encoderPreference = await resolvePreference(deps);
       const videoArgs = burnedInCaptions
         ? [
             "-vf",
             `subtitles=filename='${filterFilename(input.subtitlesPath!)}'`,
             ...deliveryEncoderArgs(
-              resolveVideoEncoder(ffmpegPath, await resolvePreference(deps))
-                .codec,
+              resolveVideoEncoder(ffmpegPath, encoderPreference.effective).codec,
               DEFAULT_TARGET_MBPS,
               DEFAULT_MAX_MBPS,
             ),
@@ -210,6 +206,9 @@ export function createFfmpegFullVoMix(
         voiceAudioPath,
         outputPath,
         burnedInCaptions,
+        videoEncoderPreference: encoderPreference.configured,
+        videoEncoderPreferenceEffective: encoderPreference.effective,
+        gamingActive: encoderPreference.gamingActive,
         voiceDuckDb: input.voiceDuckDb ?? null,
         voiceDurationMs: input.voiceDurationMs ?? null,
       });

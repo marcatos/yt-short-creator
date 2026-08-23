@@ -21,6 +21,7 @@ export const BRAND_VOICE_PROFILES = [
 export type BrandVoiceProfile = (typeof BRAND_VOICE_PROFILES)[number];
 
 export type VideoEncoderPreference =
+  | "auto"
   | "auto_igpu"
   | "auto_dgpu"
   | "h264_qsv"
@@ -33,7 +34,10 @@ export type AppSettings = {
   brandRoot: string;
   logLevel: LogLevel;
   defaultPrivacy: DefaultPrivacy;
-  /** Prefer iGPU by default to leave the discrete GPU free for other apps. */
+  /**
+   * `auto` uses iGPU while gaming and NVENC when idle. Force options pin a
+   * specific encoder family regardless of gaming state.
+   */
   videoEncoderPreference: VideoEncoderPreference;
   /** English VO voice (kept as coral by default — preferred EN delivery). */
   brandVoiceProfile: BrandVoiceProfile;

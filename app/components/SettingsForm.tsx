@@ -10,7 +10,7 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [logLevel, setLogLevel] = useState(initial.logLevel);
   const [defaultPrivacy, setDefaultPrivacy] = useState(initial.defaultPrivacy);
   const [videoEncoderPreference, setVideoEncoderPreference] = useState(
-    initial.videoEncoderPreference ?? "auto_igpu",
+    initial.videoEncoderPreference ?? "auto",
   );
   const [brandVoiceProfile, setBrandVoiceProfile] = useState(
     initial.brandVoiceProfile,
@@ -127,8 +127,9 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
         <div className="settings-section-header">
           <h2>Encoder</h2>
           <p>
-            Prefer iGPU when gaming or other apps need the discrete GPU. Falls
-            back automatically if the chosen encoder is unavailable.
+            Auto mode uses Intel Quick Sync while you are sim-racing so the RTX
+            4070 stays free, then switches to NVENC when idle. Force options
+            pin a specific encoder regardless of gaming state.
           </p>
         </div>
         <label>
@@ -141,6 +142,9 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
               )
             }
           >
+            <option value="auto">
+              Auto — iGPU while gaming, NVENC when idle
+            </option>
             <option value="auto_igpu">Auto — prefer iGPU (QSV / MF)</option>
             <option value="auto_dgpu">Auto — prefer discrete GPU (NVENC / AMF)</option>
             <option value="h264_qsv">Force Intel Quick Sync (iGPU)</option>

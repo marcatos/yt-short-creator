@@ -9,6 +9,7 @@ const settingsSchema = z.object({
   logLevel: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
   defaultPrivacy: z.enum(["public", "unlisted", "private"]),
   videoEncoderPreference: z.enum([
+    "auto",
     "auto_igpu",
     "auto_dgpu",
     "h264_qsv",

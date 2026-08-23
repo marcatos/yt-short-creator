@@ -10,6 +10,7 @@ import type {
 import { BRAND_VOICE_PROFILES } from "@/src/ports/settings-repository";
 
 const VALID_ENCODERS = new Set<VideoEncoderPreference>([
+  "auto",
   "auto_igpu",
   "auto_dgpu",
   "h264_qsv",
