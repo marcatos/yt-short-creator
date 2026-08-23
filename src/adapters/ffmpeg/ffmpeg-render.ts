@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
 import { JobCancelledError } from "@/src/domain/queue-control";
+import type { GamingActivityPort } from "@/src/ports/gaming-activity";
 import type { Logger } from "@/src/ports/logger";
 import type { RenderInput, RenderPort } from "@/src/ports/render";
 import type {
@@ -13,9 +14,12 @@ import type {
 
 import { probeMediaDurationSec } from "@/src/adapters/media/ffprobe-duration";
 
+import { SHORT_CAPTION_FONTS_DIR } from "@/src/domain/voice-over";
+
 import { duckedVoiceMixFilter, filterFilename } from "./ffmpeg-audio-filters";
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
 import { deliveryEncoderArgs } from "./ffmpeg-full-video-encode";
+import { resolveVideoEncoderPreference } from "./resolve-video-encoder-preference";
 
 /**
  * When narration outlasts the approved clip window, extend into following
@@ -75,6 +79,7 @@ type FfmpegRenderDeps = {
   logger: Logger;
   ffmpegPath?: string;
   settings?: SettingsRepository;
+  gamingActivity?: GamingActivityPort;
   /** Override settings / env when set (mainly for tests). */
   videoEncoderPreference?: VideoEncoderPreference;
 };
@@ -83,6 +88,7 @@ function preferenceFromEnv(): VideoEncoderPreference | undefined {
   const raw = process.env.FFMPEG_VIDEO_ENCODER?.trim();
   if (!raw) return undefined;
   if (
+    raw === "auto" ||
     raw === "auto_igpu" ||
     raw === "auto_dgpu" ||
     raw === "h264_qsv" ||
@@ -96,17 +102,25 @@ function preferenceFromEnv(): VideoEncoderPreference | undefined {
   return undefined;
 }
 
-async function resolvePreference(
-  deps: FfmpegRenderDeps,
-): Promise<VideoEncoderPreference> {
-  if (deps.videoEncoderPreference) return deps.videoEncoderPreference;
-  const fromEnv = preferenceFromEnv();
-  if (fromEnv) return fromEnv;
-  if (deps.settings) {
-    const settings = await deps.settings.get();
-    return settings.videoEncoderPreference;
+async function resolvePreference(deps: FfmpegRenderDeps) {
+  if (deps.videoEncoderPreference && deps.videoEncoderPreference !== "auto") {
+    return {
+      configured: deps.videoEncoderPreference,
+      effective: deps.videoEncoderPreference,
+      gamingActive: null,
+    };
   }
-  return "auto_igpu";
+  const fromEnv = preferenceFromEnv();
+  if (fromEnv && fromEnv !== "auto") {
+    return { configured: fromEnv, effective: fromEnv, gamingActive: null };
+  }
+  return resolveVideoEncoderPreference({
+    settings: deps.settings,
+    gamingActivity: deps.gamingActivity,
+    videoEncoderPreference: deps.videoEncoderPreference ?? fromEnv,
+    logger: deps.logger,
+    fallback: "auto",
+  });
 }
 
 const OUTPUT_WIDTH = 1080;
@@ -141,8 +155,11 @@ function brandedVideoFilter(input: RenderInput, baseLabel: string): string[] {
     `[${baseLabel}]drawbox=x=0:y=0:w=18:h=ih:color=${accentForFilter(input.accentColor)}:t=fill[${accentLabel}]`,
   ];
   if (input.burnInCaptions && input.assPath) {
+    const fontsDir = filterFilename(
+      path.join(process.cwd(), SHORT_CAPTION_FONTS_DIR),
+    );
     filters.push(
-      `[branded]ass=filename='${filterFilename(input.assPath)}'[outv]`,
+      `[branded]ass=filename='${filterFilename(input.assPath)}':fontsdir='${fontsDir}'[outv]`,
     );
   }
   return filters;
@@ -413,13 +430,18 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
       if (options?.signal?.aborted) {
         throw new JobCancelledError();
       }
-      const preference = await resolvePreference(deps);
-      const encoder = resolveVideoEncoder(ffmpegPath, preference);
+      const encoderPreference = await resolvePreference(deps);
+      const encoder = resolveVideoEncoder(
+        ffmpegPath,
+        encoderPreference.effective,
+      );
       logger.info("FFmpeg render started", {
         candidateId: input.candidateId,
         origin: input.origin,
         outputPath: input.outputPath,
-        videoEncoderPreference: preference,
+        videoEncoderPreference: encoderPreference.configured,
+        videoEncoderPreferenceEffective: encoderPreference.effective,
+        gamingActive: encoderPreference.gamingActive,
         videoEncoder: encoder.codec,
         videoEncoderLabel: encoder.label,
         hasVoiceOver: Boolean(input.voiceAssetPath),
@@ -499,7 +521,9 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.info("FFmpeg render completed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
-          videoEncoderPreference: preference,
+          videoEncoderPreference: encoderPreference.configured,
+          videoEncoderPreferenceEffective: encoderPreference.effective,
+          gamingActive: encoderPreference.gamingActive,
           videoEncoder: encoder.codec,
           targetBitrateMbps: SHORT_TARGET_MBPS,
           hasVoiceOver: Boolean(input.voiceAssetPath),
@@ -511,7 +535,9 @@ export function createFfmpegRender(deps: FfmpegRenderDeps): RenderPort {
         logger.error("FFmpeg render failed", {
           candidateId: input.candidateId,
           outputPath: input.outputPath,
-          videoEncoderPreference: preference,
+          videoEncoderPreference: encoderPreference.configured,
+          videoEncoderPreferenceEffective: encoderPreference.effective,
+          gamingActive: encoderPreference.gamingActive,
           videoEncoder: encoder.codec,
           durationMs: Math.round(performance.now() - startedAt),
           error: error instanceof Error ? error.stack : String(error),

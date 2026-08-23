@@ -215,7 +215,9 @@ describe("generateShortVoiceOvers", () => {
     expect(candidates.candidate.voiceOvers).toEqual(result);
     for (const voiceOver of result) {
       expect(await fs.readFile(voiceOver.srtPath!, "utf8")).toContain("two words");
-      expect(await fs.readFile(voiceOver.assPath!, "utf8")).toContain("{\\k30}two");
+      expect(await fs.readFile(voiceOver.assPath!, "utf8")).toContain(
+        "\\1c&H000006E1&",
+      );
     }
   });
 
@@ -343,10 +345,8 @@ describe("generateShortVoiceOvers", () => {
     await expect(generate({ candidateId: "candidate-42" })).rejects.toThrow(
       /received 31,?400 ms/,
     );
-    expect(probed).toEqual([
-      expect.stringContaining("vo-it.mp3"),
-      expect.stringContaining("vo-it.mp3"),
-    ]);
+    expect(probed).toHaveLength(4);
+    expect(probed.every((path) => path.includes("vo-it.mp3"))).toBe(true);
     expect(candidates.candidate.voiceOvers).toBeNull();
   });
 

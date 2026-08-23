@@ -220,6 +220,62 @@ export function escapeAssText(text: string): string {
     .replace(/\}/g, "\\}");
 }
 
+/** Bundled with the repo; FFmpeg `ass` filter uses `fontsdir` to load it. */
+export const SHORT_CAPTION_FONTS_DIR = "assets/fonts";
+
+/** Condensed display face tuned for vertical Shorts / Reels burn-in. */
+export const SHORT_CAPTION_FONT = "Anton";
+
+export const SHORT_CAPTION_DEFAULTS = {
+  fontSize: 80,
+  /** Rosso Corsa — matches brand pack accent. */
+  accentHex: "#E10600",
+  /** Scale while the word is spoken (`\fscx` / `\fscy` are percent). */
+  activeScalePercent: 115,
+  /** Ease back to white + 100% after the word ends. */
+  returnTransitionMs: 120,
+} as const;
+
+export type AssKaraokeOptions = {
+  accentHex?: string;
+  fontName?: string;
+  fontSize?: number;
+  activeScalePercent?: number;
+  returnTransitionMs?: number;
+};
+
+/** `#RRGGBB` → ASS primary colour (`&HAABBGGRR&`, opaque). */
+export function hexToAssPrimaryColor(hex: string): string {
+  const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!match) {
+    throw new Error(`Invalid hex color for ASS: ${hex}`);
+  }
+  const [, r, g, b] = match;
+  return `&H00${b}${g}${r}&`.toUpperCase();
+}
+
+const ASS_WHITE = "&H00FFFFFF&";
+
+function buildAssWordSpan(
+  cueStartMs: number,
+  cueEndMs: number,
+  word: TimedWord,
+  accentAss: string,
+  activeScalePercent: number,
+  returnTransitionMs: number,
+): string {
+  const relStart = Math.max(0, word.startMs - cueStartMs);
+  const relEnd = Math.max(relStart + 1, word.endMs - cueStartMs);
+  const cueDuration = cueEndMs - cueStartMs;
+  const returnEnd = Math.min(cueDuration, relEnd + returnTransitionMs);
+  return (
+    `{\\rDefault\\1c${ASS_WHITE}\\fscx100\\fscy100` +
+    `\\t(${relStart},${relEnd},\\1c${accentAss}\\fscx${activeScalePercent}\\fscy${activeScalePercent})` +
+    `\\t(${relEnd},${returnEnd},\\1c${ASS_WHITE}\\fscx100\\fscy100)}` +
+    escapeAssText(word.text)
+  );
+}
+
 export type CaptionCue = {
   startMs: number;
   endMs: number;
@@ -268,11 +324,22 @@ export function buildSrt(words: TimedWord[]): string {
 }
 
 /**
- * Burn-in captions: one Dialogue event per cue so only the current phrase is
- * on screen. Within the cue, `\k` highlights the active word as it is spoken
- * (karaoke fill) without revealing the rest of the narration early.
+ * Burn-in captions: one Dialogue per cue on a single layer. Each word resets
+ * to the default style, then animates red + pop only while it is spoken.
  */
-export function buildAssKaraoke(words: TimedWord[]): string {
+export function buildAssKaraoke(
+  words: TimedWord[],
+  options: AssKaraokeOptions = {},
+): string {
+  const fontName = options.fontName ?? SHORT_CAPTION_FONT;
+  const fontSize = options.fontSize ?? SHORT_CAPTION_DEFAULTS.fontSize;
+  const accentHex = options.accentHex ?? SHORT_CAPTION_DEFAULTS.accentHex;
+  const activeScalePercent =
+    options.activeScalePercent ?? SHORT_CAPTION_DEFAULTS.activeScalePercent;
+  const returnTransitionMs =
+    options.returnTransitionMs ?? SHORT_CAPTION_DEFAULTS.returnTransitionMs;
+  const accentAss = hexToAssPrimaryColor(accentHex);
+
   const header = `[Script Info]
 Title: S.Marcato VO
 ScriptType: v4.00+
@@ -281,7 +348,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,220,1
+Style: Default,${fontName},${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,220,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -290,16 +357,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (!cues.length) return header;
 
   const dialogues = cues.map((cue) => {
-    let text = "";
-    let cursor = cue.startMs;
-    for (const word of cue.words) {
-      const gapCs = Math.max(0, Math.round((word.startMs - cursor) / 10));
-      if (gapCs > 0) text += `{\\k${gapCs}}`;
-      const durCs = Math.max(1, Math.round((word.endMs - word.startMs) / 10));
-      text += `{\\k${durCs}}${escapeAssText(word.text)} `;
-      cursor = word.endMs;
-    }
-    return `Dialogue: 0,${assTime(cue.startMs)},${assTime(cue.endMs)},Default,,0,0,0,,${text.trim()}`;
+    const text = cue.words
+      .map((word) =>
+        buildAssWordSpan(
+          cue.startMs,
+          cue.endMs,
+          word,
+          accentAss,
+          activeScalePercent,
+          returnTransitionMs,
+        ),
+      )
+      .join(" ");
+    return `Dialogue: 0,${assTime(cue.startMs)},${assTime(cue.endMs)},Default,,0,0,0,,${text}`;
   });
 
   return `${header}${dialogues.join("\n")}\n`;

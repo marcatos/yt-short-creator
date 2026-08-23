@@ -3,8 +3,10 @@ import {
   buildAssKaraoke,
   buildSrt,
   chunkNarration,
+  hexToAssPrimaryColor,
   hashVoiceScript,
   offsetWords,
+  SHORT_CAPTION_FONT,
   TTS_CHUNK_LIMITS,
 } from "@/src/domain/voice-over";
 
@@ -22,10 +24,23 @@ describe("voice-over captions", () => {
     expect(srt).toContain("Sorpasso pulito");
   });
 
-  it("builds ASS with per-word timing tags", () => {
+  it("builds ASS with isolated per-word highlight on a single layer", () => {
     const ass = buildAssKaraoke(words);
     expect(ass).toContain("[Events]");
-    expect(ass).toMatch(/\{\\k\d+\}/);
+    expect(ass).toContain(`Style: Default,${SHORT_CAPTION_FONT},`);
+    expect(ass).not.toContain("Dialogue: 1,");
+    expect(ass).toContain("Sorpasso");
+    expect(ass).toContain("pulito");
+    expect(ass).not.toMatch(/\\k\d+/);
+    expect(ass).not.toContain("\\alpha&HFF&");
+    expect(ass).toMatch(/\\rDefault\\1c&H00FFFFFF&/);
+    expect(ass).toMatch(
+      /\\t\(400,900,\\1c&H000006E1&\\fscx115\\fscy115\)/,
+    );
+  });
+
+  it("maps brand red hex to ASS BGR primary colour", () => {
+    expect(hexToAssPrimaryColor("#E10600")).toBe("&H000006E1&");
   });
 
   it("advances ASS one short cue at a time instead of dumping the whole script", () => {

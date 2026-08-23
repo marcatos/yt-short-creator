@@ -77,8 +77,9 @@ describe("FFmpeg VO and ASS render", () => {
       "[ga][va]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
     );
     expect(filter).toContain(
-      "ass=filename='C\\:/media/captions-it.ass'[outv]",
+      "ass=filename='C\\:/media/captions-it.ass':fontsdir='",
     );
+    expect(filter).toContain("/assets/fonts'[outv]");
     expect(args.slice(args.indexOf("-map"), args.indexOf("-map") + 4)).toEqual([
       "-map",
       "[outv]",
@@ -166,7 +167,7 @@ describe("FFmpeg VO and ASS render", () => {
     )?.[1] as string[];
     const filter = args[args.indexOf("-filter_complex") + 1];
     expect(filter).toContain(
-      "ass=filename='C\\:/media/generated-en.ass'[outv]",
+      "ass=filename='C\\:/media/generated-en.ass':fontsdir='",
     );
   });
 });
