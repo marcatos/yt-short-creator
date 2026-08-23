@@ -12,10 +12,11 @@ export type CommentaryIntensity = (typeof COMMENTARY_INTENSITIES)[number];
  */
 export const SPORTS_COMMENTARY_STYLE = `
 Third-person live motorsport commentary in the style of UK F1 TV (David Croft energy):
-build tension before battles, erupt on overtakes and incidents, stay factual.
-Name drivers and positions; describe track geometry (apex, inside line, chicane).
-Short punchy sentences during action; slightly longer setup lines before key moments.
-Never first person; never invent facts absent from the supplied race data or timeline.
+call the pictures the viewer sees on screen — positions, gaps, battles, mistakes, flags.
+Build tension before battles; erupt on overtakes and incidents; stay factual.
+Name drivers and positions; describe track geometry (apex, inside line, chicane) when relevant to the moment.
+Short punchy sentences during action; brief setup only when the next beat is visible in the data.
+Never first person; never invent facts absent from the supplied sceneFacts, timeline, or HUD data.
 Generate Italian first; English is an adaptation (same facts and energy, not a calque).
 This text will be spoken aloud — no chapter timestamps, rig specs, or hashtag lists.
 `.trim();

@@ -152,6 +152,9 @@ import {
   createGenerateChapteredRaceScripts,
 } from "@/src/application/generate-chaptered-race-scripts";
 import {
+  createGenerateCuedRaceScripts,
+} from "@/src/application/generate-cued-race-scripts";
+import {
   createGenerateFullVoiceOvers,
   type GenerateFullVoiceOvers,
 } from "@/src/application/generate-full-voice-overs";
@@ -544,6 +547,10 @@ export function createContainer(env: AppEnv): AppContainer {
       logger,
       editorialLocalize,
       generateChapteredRaceScripts: createGenerateChapteredRaceScripts({
+        llm,
+        logger,
+      }),
+      generateCuedRaceScripts: createGenerateCuedRaceScripts({
         llm,
         logger,
       }),

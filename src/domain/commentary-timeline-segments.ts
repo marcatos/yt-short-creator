@@ -123,13 +123,17 @@ function splitEvenChapters(
   for (let index = 0; index < chapterCount; index += 1) {
     const startMs = index * sliceMs;
     const endMs = Math.min(durationMs, startMs + sliceMs);
+    const windowSummaries = timelineSummariesForWindow(analysis, startMs, endMs);
     chapters.push(
       finalizeChapter(
         analysis,
         {
           startMs,
           endMs,
-          summaries: [`Race segment ${index + 1}/${chapterCount}`],
+          summaries:
+            windowSummaries.length > 0
+              ? windowSummaries
+              : [`Race segment ${index + 1}/${chapterCount}`],
         },
         index,
         durationMs,
@@ -185,4 +189,27 @@ function formatChapterLabel(
 
 export function targetWordsForChapter(chapter: CommentaryTimelineChapter): string {
   return `${chapter.targetWordsMin}–${chapter.targetWordsMax} words`;
+}
+
+function overlapsTimeWindow(
+  startMs: number,
+  endMs: number,
+  windowStart: number,
+  windowEnd: number,
+): boolean {
+  return endMs >= windowStart && startMs <= windowEnd;
+}
+
+export function timelineSummariesForWindow(
+  analysis: RaceAnalysis,
+  startMs: number,
+  endMs: number,
+): string[] {
+  const beats = analysis.timeline
+    .filter((entry) =>
+      overlapsTimeWindow(entry.startMs, entry.endMs, startMs, endMs),
+    )
+    .map((entry) => entry.summary.trim())
+    .filter((summary) => summary.length > 0);
+  return [...new Set(beats)];
 }

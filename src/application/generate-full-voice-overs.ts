@@ -5,6 +5,11 @@ import { z } from "zod";
 import type { ReplaySession } from "@/src/domain/entities";
 import type { EditorialLocalize } from "@/src/application/editorial-localize";
 import type { GenerateChapteredRaceScripts } from "@/src/application/generate-chaptered-race-scripts";
+import type { GenerateCuedRaceScripts } from "@/src/application/generate-cued-race-scripts";
+import {
+  buildCommentarySpeechCues,
+  shouldUseCuedCommentaryScripts,
+} from "@/src/domain/commentary-speech-cues";
 import {
   buildCommentaryChaptersFromTimeline,
   shouldUseTimelineChapteredScripts,
@@ -130,6 +135,7 @@ type Dependencies = {
   /** Preferred when session.raceAnalysis is present (single-master editorial). */
   editorialLocalize?: EditorialLocalize;
   generateChapteredRaceScripts?: GenerateChapteredRaceScripts;
+  generateCuedRaceScripts?: GenerateCuedRaceScripts;
 };
 
 export type GenerateFullVoiceOvers = (input: {
@@ -211,14 +217,11 @@ function srtPathFor(audioPath: string): string {
 
 function languageScripts(
   scripts: z.infer<typeof scriptsSchema>,
-  chapterPlans?: CommentaryTimelineChapter[],
+  syncPlans?: Array<{ startMs: number; endMs: number }>,
 ): LanguageScript[] {
   const italian = scripts.chapters.map((chapter) => chapter.scriptIt.trim());
   const english = scripts.chapters.map((chapter) => chapter.scriptEn.trim());
-  const chapterTimings = chapterPlans?.map((chapter) => ({
-    startMs: chapter.startMs,
-    endMs: chapter.endMs,
-  }));
+  const chapterTimings = syncPlans;
   return [
     {
       language: "it",
@@ -363,14 +366,15 @@ export function createGenerateFullVoiceOvers(
     let ttsChunkTotal = 0;
 
     if (useTimelineChapters) {
-      log.info("Full voice-over timeline chapter synthesis started", {
+      log.info("Full voice-over timeline sync synthesis started", {
         sessionId: input.sessionId,
         language,
-        chapterCount: input.languageScript.segments.length,
+        segmentCount: input.languageScript.segments.length,
       });
       for (const [chapterIndex, segment] of input.languageScript.segments.entries()) {
         const timing = chapterTimings![chapterIndex]!;
-        const silenceMs = Math.max(0, timing.startMs - offsetMs);
+        const anchorMs = timing.startMs;
+        const silenceMs = Math.max(0, anchorMs - offsetMs);
         if (silenceMs >= 50 && deps.audioConcat.generateSilence) {
           const silencePath = path.join(
             path.dirname(audioPath),
@@ -505,34 +509,74 @@ export function createGenerateFullVoiceOvers(
 
       const scriptStartedAt = performance.now();
       let scripts: z.infer<typeof scriptsSchema>;
-      let chapterPlans: CommentaryTimelineChapter[] | undefined;
+      let syncPlans: Array<{ startMs: number; endMs: number }> | undefined;
       const analysis = session.raceAnalysis;
+      const useCued =
+        analysis &&
+        deps.generateCuedRaceScripts &&
+        shouldUseCuedCommentaryScripts(analysis, voiceOverMode);
       const useChaptered =
+        !useCued &&
         analysis &&
         shouldUseTimelineChapteredScripts(analysis, voiceOverMode) &&
         deps.generateChapteredRaceScripts;
 
-      if (useChaptered && analysis) {
-        chapterPlans = buildCommentaryChaptersFromTimeline(analysis);
-        let titleIt: string;
-        let titleEn: string;
-        let descriptionIt: string;
-        let descriptionEn: string;
-        if (deps.editorialLocalize) {
+      async function editorialTitles(): Promise<{
+        titleIt: string;
+        titleEn: string;
+        descriptionIt: string;
+        descriptionEn: string;
+      }> {
+        if (analysis && deps.editorialLocalize) {
           const editorial = await deps.editorialLocalize({
             analysis,
             voiceOverMode,
           });
-          titleIt = editorial.it.title;
-          titleEn = editorial.en.title;
-          descriptionIt = editorial.it.description;
-          descriptionEn = editorial.en.description;
-        } else {
-          titleIt = session.title;
-          titleEn = session.title;
-          descriptionIt = analysis.mainStoryline;
-          descriptionEn = analysis.mainStoryline;
+          return {
+            titleIt: editorial.it.title,
+            titleEn: editorial.en.title,
+            descriptionIt: editorial.it.description,
+            descriptionEn: editorial.en.description,
+          };
         }
+        const fallbackTitle = session!.title;
+        return {
+          titleIt: fallbackTitle,
+          titleEn: fallbackTitle,
+          descriptionIt: analysis?.mainStoryline ?? fallbackTitle,
+          descriptionEn: analysis?.mainStoryline ?? fallbackTitle,
+        };
+      }
+
+      if (useCued && analysis) {
+        const speechCues = buildCommentarySpeechCues(analysis);
+        const titles = await editorialTitles();
+        const cuedScripts = await deps.generateCuedRaceScripts!({
+          analysis,
+          cues: speechCues,
+          voiceOverMode,
+        });
+        scripts = {
+          chapters: cuedScripts.map((script, index) => ({
+            label: speechCues[index]!.label,
+            scriptIt: script.scriptIt,
+            scriptEn: script.scriptEn,
+          })),
+          ...titles,
+        };
+        syncPlans = speechCues.map((cue) => ({
+          startMs: cue.targetMs,
+          endMs: cue.endMs ?? cue.targetMs + 15_000,
+        }));
+        log.info("Full voice-over scripts from speech cues", {
+          sessionId,
+          cueCount: speechCues.length,
+          voiceOverMode,
+          durationMs: Math.round(performance.now() - scriptStartedAt),
+        });
+      } else if (useChaptered && analysis) {
+        const chapterPlans = buildCommentaryChaptersFromTimeline(analysis);
+        const titles = await editorialTitles();
         const chapterScripts = await deps.generateChapteredRaceScripts!({
           analysis,
           chapters: chapterPlans,
@@ -540,11 +584,12 @@ export function createGenerateFullVoiceOvers(
         });
         scripts = {
           chapters: chapterScripts,
-          titleIt,
-          titleEn,
-          descriptionIt,
-          descriptionEn,
+          ...titles,
         };
+        syncPlans = chapterPlans.map((chapter) => ({
+          startMs: chapter.startMs,
+          endMs: chapter.endMs,
+        }));
         log.info("Full voice-over scripts from timeline chapters", {
           sessionId,
           chapterCount: chapterScripts.length,
@@ -593,7 +638,7 @@ export function createGenerateFullVoiceOvers(
       const packages: VoiceOverPackage[] = [];
       let reusedCount = 0;
 
-      for (const languageScript of languageScripts(scripts, chapterPlans)) {
+      for (const languageScript of languageScripts(scripts, syncPlans)) {
         const languageStartedAt = performance.now();
         const voiceProfile = voiceProfileForMode(
           appSettings,

@@ -46,6 +46,9 @@ const analysis = {
     positionsGained: 5,
   },
   narrativeIt: "n",
+  audioTranscriptSegments: [],
+  commentaryMarkers: [],
+  hudTimeline: [],
 } as unknown as RaceAnalysis;
 
 function logger(): Logger {

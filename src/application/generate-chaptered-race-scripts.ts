@@ -9,6 +9,10 @@ import {
   type VoiceOverMode,
 } from "@/src/domain/commentary-style";
 import {
+  buildCommentaryChapterScene,
+  PLAY_BY_PLAY_COMMENTARY_RULES,
+} from "@/src/domain/commentary-chapter-scene";
+import {
   type CommentaryTimelineChapter,
   targetWordsForChapter,
 } from "@/src/domain/commentary-timeline-segments";
@@ -55,45 +59,61 @@ Continuity across the full race (mandatory):
 - Treat all chapters as ONE live broadcast split only for timeline alignment.
 - Chapter N+1 must flow naturally from chapter N: no repeated intros ("Benvenuti", "Siamo a…") after the first segment.
 - Carry forward position, gaps, rivals, and incidents already stated; do not contradict earlier facts.
-- Brief callbacks are good ("dopo quella rimonta…", "as we saw earlier…") but avoid re-explaining the whole race each segment.
+- Brief callbacks are good ("dopo quella rimonta…", "as we saw earlier…") but only when still relevant on screen.
 - End mid-thought or on tension when the next segment continues the same battle; do not wrap up the entire race until the final chapter.
-- Keep each chapter within its targetWordsMin–targetWordsMax; trim repetition instead of adding filler.
+- Keep each chapter within its targetWordsMin–targetWordsMax unless sceneDensity is sparse (then shorter is correct).
 `.trim();
 
 function systemPromptForMode(mode: VoiceOverMode): string {
   const spokenStyle =
     mode === "commentator" ? SPORTS_COMMENTARY_STYLE : RACE_VOICE_OVER_STYLE;
-  return `${spokenStyle}
+  const playByPlay =
+    mode === "commentator" ? `\n\n${PLAY_BY_PLAY_COMMENTARY_RULES}` : "";
+  return `${spokenStyle}${playByPlay}
 
 Write bilingual spoken scripts for a full simracing race upload, one chapter per supplied timeline segment.
+Each chapter includes sceneFacts — use ONLY those facts to describe what is on screen in that time window.
 Follow the race timeline strictly: one output chapter per input chapter, same order and labels.
 Italian script first; English is an adaptation (same facts and energy, not a calque).
 Spoken text only — no timestamps, rig specs, or hashtags (${RACE_METADATA_STYLE} applies to titles/descriptions elsewhere).
-Each chapter must respect targetWordsMin–targetWordsMax so total commentary spans the race.
+Respect targetWordsMin–targetWordsMax when sceneFacts are rich; write less when sceneDensity is sparse.
 
 ${CONTINUITY_RULES}`;
 }
 
 const REVISION_SYSTEM_PROMPT = `You are a senior motorsport script editor.
-Revise a draft chaptered race commentary for smooth continuity across the full upload.
-Keep the same chapter count, labels, and order. Preserve facts from raceContext; do not invent events.
+Revise a draft chaptered race commentary for live play-by-play accuracy and smooth continuity.
+Keep the same chapter count, labels, and order. Preserve facts from raceContext and each chapter's sceneFacts.
+Remove generic race recap, motivational filler, and anything not grounded in that chapter's on-screen facts.
 Improve transitions between chapters, remove repetition, and align EN with IT energy.
+${PLAY_BY_PLAY_COMMENTARY_RULES}
 ${CONTINUITY_RULES}`;
 
 function chapterSpecs(
+  analysis: RaceAnalysis,
   timelineChapters: CommentaryTimelineChapter[],
 ): Record<string, unknown>[] {
-  return timelineChapters.map((chapter) => ({
-    label: chapter.label,
-    startMs: chapter.startMs,
-    endMs: chapter.endMs,
-    durationSec: Math.round((chapter.endMs - chapter.startMs) / 1_000),
-    summaries: chapter.summaries,
-    events: chapter.events.slice(0, 10),
-    targetWords: targetWordsForChapter(chapter),
-    targetWordsMin: chapter.targetWordsMin,
-    targetWordsMax: chapter.targetWordsMax,
-  }));
+  return timelineChapters.map((chapter) => {
+    const sceneFacts = buildCommentaryChapterScene(analysis, chapter);
+    return {
+      label: chapter.label,
+      startMs: chapter.startMs,
+      endMs: chapter.endMs,
+      durationSec: Math.round((chapter.endMs - chapter.startMs) / 1_000),
+      targetWords: targetWordsForChapter(chapter),
+      targetWordsMin: chapter.targetWordsMin,
+      targetWordsMax: chapter.targetWordsMax,
+      sceneFacts,
+      events: sceneFacts.events.slice(0, 12).map((event) => ({
+        kind: event.kind,
+        startMs: event.startMs,
+        endMs: event.endMs,
+        summary: event.summary,
+        involvingFocusCar: event.involvingFocusCar,
+        confidence: event.confidence,
+      })),
+    };
+  });
 }
 
 function totalWordsIt(chapters: ChapterScript[]): number {
@@ -136,16 +156,20 @@ export function createGenerateChapteredRaceScripts(
       chapterCount: chapters.length,
       voiceOverMode,
       durationSec: analysis.context.durationSec,
+      hudSnapshotCount: analysis.hudTimeline?.length ?? 0,
     });
 
     const raceContext = JSON.parse(analysisContextForEditorial(analysis));
+    const chapterPayload = chapterSpecs(analysis, chapters);
 
     const draftResponse = await deps.llm.complete({
       system: systemPromptForMode(voiceOverMode),
       user: JSON.stringify(
         {
           raceContext,
-          chapters: chapterSpecs(chapters),
+          instruction:
+            "For each chapter, script ONLY what sceneFacts show on screen in that time window.",
+          chapters: chapterPayload,
         },
         null,
         2,
@@ -182,7 +206,7 @@ export function createGenerateChapteredRaceScripts(
       user: JSON.stringify(
         {
           raceContext,
-          chapterTargets: chapterSpecs(chapters),
+          chapterTargets: chapterPayload,
           draftChapters: draft,
         },
         null,

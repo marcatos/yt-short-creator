@@ -2,7 +2,8 @@
  * Generate local sports-commentary assets (no YouTube upload).
  *
  * Usage:
- *   npx tsx scripts/generate-local-commentary.ts --session-id <uuid>
+ *   npx tsx scripts/generate-local-commentary.ts
+ *     [--session-id <uuid>]   Defaults to config/canonical-replay.json
  *     [--voice-over-mode commentator|driver] [--regenerate-shorts] [--limit N]
  *     [--skip-encode]   Reuse existing full-youtube.mp4 when present
  */
@@ -12,6 +13,12 @@ import path from "node:path";
 import { loadEnv } from "../src/lib/env";
 import { getContainer } from "../src/lib/container";
 import { isReplayProvenance } from "../src/domain/replay";
+import {
+  loadCanonicalReplayConfig,
+  pathsMatch,
+  resolveCanonicalMediaPath,
+} from "../src/domain/canonical-replay";
+import { isReplayAnalysisStale } from "../src/domain/replay-media-sync";
 import type { VoiceOverMode } from "../src/domain/commentary-style";
 import type { ShortCandidate } from "../src/domain/entities";
 
@@ -69,8 +76,8 @@ async function waitForJobs(
 
 async function main(): Promise<void> {
   loadEnvLocal();
-  const sessionId = argValue("--session-id");
-  if (!sessionId) throw new Error("Missing --session-id");
+  const canonical = loadCanonicalReplayConfig();
+  const sessionId = argValue("--session-id") ?? canonical.sessionId;
   const voiceOverMode = asVoiceOverMode(argValue("--voice-over-mode"));
   const regenerateShorts = hasFlag("--regenerate-shorts");
   const skipEncode = hasFlag("--skip-encode");
@@ -81,12 +88,31 @@ async function main(): Promise<void> {
   const container = getContainer();
   await container.mediaStore.ensureDirs();
 
-  const session = await container.repositories.replaySessions.getById(sessionId);
-  if (!session?.mediaPath) {
-    throw new Error(`Session not found or missing media: ${sessionId}`);
+  const canonicalMediaPath = resolveCanonicalMediaPath();
+  let session = await container.repositories.replaySessions.getById(sessionId);
+  if (!session) {
+    throw new Error(`Session not found: ${sessionId}`);
+  }
+  if (!session.mediaPath || !pathsMatch(session.mediaPath, canonicalMediaPath)) {
+    session = await container.attachReplayMedia({
+      sessionId,
+      mediaPath: canonicalMediaPath,
+    });
+  }
+  if (!session.mediaPath) {
+    throw new Error(`Session missing media after attach: ${sessionId}`);
   }
   if (!session.raceAnalysis) {
-    throw new Error("Run AV analysis first (raceAnalysis missing)");
+    throw new Error(
+      "Run AV analysis first (raceAnalysis missing). Example: npx tsx scripts/analyze-obs-replay.ts --session-id " +
+        sessionId,
+    );
+  }
+  if (isReplayAnalysisStale(session)) {
+    throw new Error(
+      "Race analysis is stale (does not match current media duration). Re-run: npx tsx scripts/analyze-obs-replay.ts --session-id " +
+        sessionId,
+    );
   }
 
   container.logger.info("Local commentary generation started", {
