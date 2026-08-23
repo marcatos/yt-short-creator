@@ -1,0 +1,7 @@
+{
+  "sessionId": "3ba5532d-3812-4868-82e7-9053c90bbf12",
+  "mediaPath": "data/media/imports/2026-08-21-rec2k-merged.mkv",
+  "label": "HUD overlay test replay (rec2k merged)",
+  "notes": "Default replay for sports commentary, HUD extraction, and local generate-local-commentary runs. Track and session facts come from HUD analysis, not this file."
+}
+

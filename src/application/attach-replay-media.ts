@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 
 import type { ReplaySession } from "@/src/domain/entities";
+import {
+  replayMediaChanged,
+  stripReplayDerivedArtifacts,
+} from "@/src/domain/replay-media-sync";
 import type { ClockPort } from "@/src/ports/clock";
 import type { Logger } from "@/src/ports/logger";
 import type { MediaDurationPort } from "@/src/ports/media-duration";
@@ -53,11 +57,15 @@ export function createAttachReplayMedia(deps: Dependencies): AttachReplayMedia {
 
     const session = await requireSession(deps.replaySessions, sessionId);
     const durationSec = await deps.mediaDuration.probeDurationSec(trimmed);
+    const mediaSwapped = replayMediaChanged(session.mediaPath, trimmed);
+    const base: ReplaySession = mediaSwapped
+      ? stripReplayDerivedArtifacts(session)
+      : session;
     const updated: ReplaySession = {
-      ...session,
+      ...base,
       mediaPath: trimmed,
-      durationSec: durationSec ?? session.durationSec,
-      status: session.status === "capturing" ? "ready" : "ready",
+      durationSec: durationSec ?? base.durationSec,
+      status: base.status === "capturing" ? "ready" : "ready",
       updatedAt: deps.clock.now(),
     };
     await deps.replaySessions.save(updated);
@@ -65,6 +73,8 @@ export function createAttachReplayMedia(deps: Dependencies): AttachReplayMedia {
       sessionId,
       mediaPath: trimmed,
       durationSec: updated.durationSec,
+      mediaSwapped,
+      clearedDerivedArtifacts: mediaSwapped,
       durationMs: Math.round(performance.now() - startedAt),
     });
     return updated;

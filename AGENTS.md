@@ -14,6 +14,10 @@ After finishing a development that the production daemon would serve, **restart 
 
 Full policy and commands: [docs/daemon.md](docs/daemon.md).
 
+## Canonical HUD test replay
+
+Local sports-commentary and reel work **starts from** `data/media/imports/2026-08-21-rec2k-merged.mkv` (session `3ba5532d-3812-4868-82e7-9053c90bbf12`). See `config/canonical-replay.json` and `npx tsx scripts/ensure-canonical-replay.ts`.
+
 <!-- plane-tracker -->
 Plane project **YTSC** (`YT short creator`). Work items live on Plane (`http://10.100.30.87`), workspace `personal`. STATUS/DECISIONS/product knowledge live on Outline — see `.cursor/rules/outline.mdc`. See `.cursor/rules/plane.mdc`.
 <!-- /plane-tracker -->

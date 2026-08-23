@@ -4,6 +4,7 @@ import path from "node:path";
 import { loadEnv } from "../src/lib/env";
 import { createContainer } from "../src/lib/container";
 import { isReplayProvenance } from "../src/domain/replay";
+import { loadCanonicalReplayConfig } from "../src/domain/canonical-replay";
 
 function loadEnvLocal(): void {
   const envPath = path.resolve(".env.local");
@@ -21,7 +22,7 @@ function loadEnvLocal(): void {
 
 async function main(): Promise<void> {
   loadEnvLocal();
-  const SESSION = "3ba5532d-3812-4868-82e7-9053c90bbf12";
+  const SESSION = loadCanonicalReplayConfig().sessionId;
   const c = createContainer(loadEnv());
   const session = await c.repositories.replaySessions.getById(SESSION);
   const settings = await c.settings.get();

@@ -1,0 +1,21 @@
+---
+description: Default HUD test replay for YTSC sports commentary and local generation
+alwaysApply: true
+---
+
+# Canonical replay (HUD test)
+
+For **sports commentary**, **HUD extraction**, **local VO**, and **reel** experiments on this machine, always start from:
+
+| Field | Value |
+|-------|--------|
+| Media | `data/media/imports/2026-08-21-rec2k-merged.mkv` (burned-in HUD overlays) |
+| Session | `3ba5532d-3812-4868-82e7-9053c90bbf12` |
+| Config | `config/canonical-replay.json` |
+
+Before encode / analysis / VO / short render:
+
+1. `npx tsx scripts/ensure-canonical-replay.ts` — re-attaches media if the session drifted.
+2. `npx tsx scripts/generate-local-commentary.ts` — defaults to the canonical session (no `--session-id` required).
+
+Do not substitute other replay files unless the user explicitly asks.
