@@ -102,10 +102,14 @@ async function publishFullReplayAction(formData: FormData): Promise<void> {
       ? privacyRaw
       : "unlisted";
   const voiceOver = formData.get("voiceOver") === "true";
+  const voiceOverModeRaw = String(formData.get("voiceOverMode") ?? "driver");
+  const voiceOverMode =
+    voiceOverModeRaw === "commentator" ? "commentator" : "driver";
   await getContainer().requestFullReplayPublish({
     sessionId,
     privacy,
     voiceOver,
+    voiceOverMode,
   });
   revalidatePath("/replays");
   revalidatePath("/jobs");
@@ -277,6 +281,15 @@ export default async function ReplaysPage() {
                     >
                       Encode + upload
                     </button>
+                    <select
+                      name="voiceOverMode"
+                      defaultValue="driver"
+                      disabled={!session.racePackage && !session.raceAnalysis}
+                      title="Narration style for multi-lang VO"
+                    >
+                      <option value="driver">Driver narrative</option>
+                      <option value="commentator">Sports commentary</option>
+                    </select>
                     <button
                       className="button button-ghost"
                       type="submit"

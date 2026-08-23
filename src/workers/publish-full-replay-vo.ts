@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { YoutubePrivacy } from "@/src/domain/entities";
+import type { VoiceOverMode } from "@/src/domain/commentary-style";
 import type {
   VoiceOverLanguage,
   VoiceOverPackage,
@@ -68,9 +69,10 @@ export async function runFullVoiceOverPublish(
     privacy: YoutubePrivacy;
     encodePath: string;
     scheduledAt?: Date | null;
+    voiceOverMode?: VoiceOverMode;
   },
 ): Promise<void> {
-  const { sessionId, privacy, scheduledAt = null } = input;
+  const { sessionId, privacy, scheduledAt = null, voiceOverMode = "driver" } = input;
   const log = deps.logger.child({
     component: "PublishFullReplaySingleMaster",
   });
@@ -84,9 +86,10 @@ export async function runFullVoiceOverPublish(
 
   await runStep(ctx, JOB_TYPE, "voice_over", async () => {
     ctx.setProgress(58, "Writing and synthesizing IT/EN narration");
-    const packages = await generate({ sessionId });
+    const packages = await generate({ sessionId, voiceOverMode });
     log.info("Full-race voice-over packages ready", {
       sessionId,
+      voiceOverMode,
       languages: packages.map(({ language }) => language),
     });
   });

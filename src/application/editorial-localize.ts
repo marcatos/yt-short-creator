@@ -10,6 +10,10 @@ import {
   RACE_METADATA_STYLE,
   RACE_VOICE_OVER_STYLE,
 } from "@/src/domain/race-copy-style";
+import {
+  SPORTS_COMMENTARY_STYLE,
+  type VoiceOverMode,
+} from "@/src/domain/commentary-style";
 import type { RaceAnalysis } from "@/src/domain/race-analysis";
 import type { HardwareConfigPort } from "@/src/ports/hardware-config";
 import type { LlmPort } from "@/src/ports/llm";
@@ -80,6 +84,7 @@ type Dependencies = {
 
 export type EditorialLocalize = (input: {
   analysis: RaceAnalysis;
+  voiceOverMode?: VoiceOverMode;
 }) => Promise<EditorialPackage>;
 
 export function createEditorialLocalize(
@@ -87,21 +92,28 @@ export function createEditorialLocalize(
 ): EditorialLocalize {
   const log = deps.logger.child({ operation: "editorialLocalize" });
 
-  return async ({ analysis }) => {
+  return async ({ analysis, voiceOverMode = "driver" }) => {
     const startedAt = performance.now();
     log.info("Editorial localize started", {
       whyWatch: analysis.whyWatch.slice(0, 120),
       mainStoryline: analysis.mainStoryline.slice(0, 120),
+      voiceOverMode,
     });
 
     const hardware = await deps.hardware.get();
+    const spokenStyle =
+      voiceOverMode === "commentator"
+        ? SPORTS_COMMENTARY_STYLE
+        : RACE_VOICE_OVER_STYLE;
     const response = await deps.llm.complete({
       system: [
         RACE_METADATA_STYLE,
-        RACE_VOICE_OVER_STYLE,
+        spokenStyle,
         TITLE_PRIORITY_GUIDANCE,
         "Produce independent IT and EN titles (not literal translation).",
-        "EN voiceOverEn is editorial localization of the Italian race story: same facts and approximate duration, natural simracing English — not a calque.",
+        voiceOverMode === "commentator"
+          ? "EN voiceOverEn is editorial localization of the Italian commentary: same facts and approximate duration, natural simracing English — not a calque."
+          : "EN voiceOverEn is editorial localization of the Italian race story: same facts and approximate duration, natural simracing English — not a calque.",
         "Descriptions: hook (2-3 lines) + story paragraphs separately; race info, opponent-invite, and hardware are appended by the system — do NOT invent hardware specs or replay contact emails.",
         "Thumbnail text must be VERY short; prefer universal (P18 → P8) when it works in both languages.",
         "CTA: brief subscribe only (system adds the rival/replay invite). Hashtags: few and relevant.",

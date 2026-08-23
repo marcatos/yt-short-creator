@@ -1,4 +1,5 @@
 import type { YoutubePrivacy } from "@/src/domain/entities";
+import type { VoiceOverMode } from "@/src/domain/commentary-style";
 import { isJobCancelledError, isJobPausedError } from "@/src/domain/queue-control";
 import { uploadOrDeferDailyLimit } from "@/src/application/defer-youtube-upload";
 import { youtubeUploadCircuitBreaker } from "@/src/application/youtube-upload-circuit-breaker";
@@ -32,6 +33,10 @@ function asScheduledAt(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function asVoiceOverMode(value: unknown): VoiceOverMode {
+  return value === "commentator" ? "commentator" : "driver";
+}
+
 export function createPublishFullReplayHandler(
   deps: Dependencies,
 ): JobHandler {
@@ -41,6 +46,7 @@ export function createPublishFullReplayHandler(
     const sessionId = requireStringPayload(ctx.payload, "sessionId");
     const privacy = asPrivacy(ctx.payload.privacy);
     const voiceOver = ctx.payload.voiceOver === true;
+    const voiceOverMode = asVoiceOverMode(ctx.payload.voiceOverMode);
     const scheduledAt = asScheduledAt(ctx.payload.scheduledAt);
     const startedAt = performance.now();
     log.info("publish_full_replay started", {
@@ -48,6 +54,7 @@ export function createPublishFullReplayHandler(
       sessionId,
       privacy,
       voiceOver,
+      voiceOverMode: voiceOver ? voiceOverMode : undefined,
       scheduledAt: scheduledAt?.toISOString() ?? null,
     });
 
@@ -97,6 +104,7 @@ export function createPublishFullReplayHandler(
           privacy,
           encodePath: deliveryPath,
           scheduledAt,
+          voiceOverMode,
         });
         log.info("publish_full_replay completed", {
           jobId: ctx.jobId,

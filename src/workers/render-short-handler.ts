@@ -59,6 +59,7 @@ async function renderInputForCandidate(
   const voiceDurationMs = voiceOver?.words.length
     ? voiceOver.words[voiceOver.words.length - 1]!.endMs
     : undefined;
+  let commentaryAudioPath: string | undefined;
   const common = {
     candidateId: candidate.id,
     origin: candidate.origin,
@@ -73,6 +74,7 @@ async function renderInputForCandidate(
       : undefined,
     burnInCaptions: settings.shortsBurnInCaptions,
     voiceDuckDb: settings.voiceDuckDb,
+    commentaryDuckDb: settings.commentaryDuckDb,
   };
 
   if (isClipProvenance(candidate.provenance)) {
@@ -103,10 +105,17 @@ async function renderInputForCandidate(
         `Replay media not found for candidate: ${candidate.id}`,
       );
     }
+    if (voiceOver && session.fullVoiceOvers?.length) {
+      const fullVo = session.fullVoiceOvers.find(
+        (item) => item.language === voiceOver.language,
+      );
+      commentaryAudioPath = fullVo?.audioPath;
+    }
     return {
       ...common,
       origin: "replay",
       sourceMediaPath: session.mediaPath,
+      commentaryAudioPath,
       startMs: candidate.provenance.startMs,
       endMs: candidate.provenance.endMs,
       segments: candidate.provenance.segments,

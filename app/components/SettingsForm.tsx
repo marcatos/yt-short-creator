@@ -18,6 +18,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
   const [italianVoiceProfile, setItalianVoiceProfile] = useState(
     initial.italianVoiceProfile,
   );
+  const [voiceOverMode, setVoiceOverMode] = useState(initial.voiceOverMode);
+  const [commentaryVoiceProfileEn, setCommentaryVoiceProfileEn] = useState(
+    initial.commentaryVoiceProfileEn,
+  );
+  const [commentaryVoiceProfileIt, setCommentaryVoiceProfileIt] = useState(
+    initial.commentaryVoiceProfileIt,
+  );
+  const [commentaryDuckDb, setCommentaryDuckDb] = useState(
+    initial.commentaryDuckDb,
+  );
   const [shortsBurnInCaptions, setShortsBurnInCaptions] = useState(
     initial.shortsBurnInCaptions,
   );
@@ -54,6 +64,10 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
           videoEncoderPreference,
           brandVoiceProfile,
           italianVoiceProfile,
+          voiceOverMode,
+          commentaryVoiceProfileEn,
+          commentaryVoiceProfileIt,
+          commentaryDuckDb,
           shortsBurnInCaptions,
           fullBurnInCaptions,
           voiceDuckDb,
@@ -200,6 +214,56 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
             </select>
           </label>
         </div>
+        <label>
+          Default full-race narration
+          <select
+            value={voiceOverMode}
+            onChange={(event) =>
+              setVoiceOverMode(
+                event.target.value as SettingsView["voiceOverMode"],
+              )
+            }
+          >
+            <option value="driver">Driver narrative (first person)</option>
+            <option value="commentator">Sports commentary (third person)</option>
+          </select>
+        </label>
+        <div className="field-pair">
+          <label>
+            Commentary EN voice
+            <select
+              value={commentaryVoiceProfileEn}
+              onChange={(event) =>
+                setCommentaryVoiceProfileEn(
+                  event.target.value as SettingsView["commentaryVoiceProfileEn"],
+                )
+              }
+            >
+              {BRAND_VOICE_PROFILES.map((voice) => (
+                <option key={`comm-en-${voice}`} value={voice}>
+                  {voice}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Commentary IT voice
+            <select
+              value={commentaryVoiceProfileIt}
+              onChange={(event) =>
+                setCommentaryVoiceProfileIt(
+                  event.target.value as SettingsView["commentaryVoiceProfileIt"],
+                )
+              }
+            >
+              {BRAND_VOICE_PROFILES.map((voice) => (
+                <option key={`comm-it-${voice}`} value={voice}>
+                  {voice}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="field-pair">
           <label>
             Voice ducking (dB)
@@ -207,6 +271,16 @@ export function SettingsForm({ initial }: { initial: SettingsView }) {
               type="number"
               value={voiceDuckDb}
               onChange={(event) => setVoiceDuckDb(event.target.valueAsNumber)}
+            />
+          </label>
+          <label>
+            Commentary duck during Short VO (dB)
+            <input
+              type="number"
+              value={commentaryDuckDb}
+              onChange={(event) =>
+                setCommentaryDuckDb(event.target.valueAsNumber)
+              }
             />
           </label>
         </div>

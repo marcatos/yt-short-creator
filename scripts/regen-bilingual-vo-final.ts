@@ -287,14 +287,22 @@ async function main(): Promise<void> {
       );
     }
 
+    const voiceOverModeArg = argValue("--voice-over-mode");
+    const voiceOverMode =
+      voiceOverModeArg === "driver" || voiceOverModeArg === "commentator"
+        ? voiceOverModeArg
+        : undefined;
+
     const packages = await container.generateFullVoiceOvers({
       sessionId,
       regenerate: true,
+      ...(voiceOverMode ? { voiceOverMode } : {}),
     });
     const { jobId } = await container.requestFullReplayPublish({
       sessionId,
       privacy: "unlisted",
       voiceOver: true,
+      ...(voiceOverMode ? { voiceOverMode } : {}),
     });
     report.full = {
       jobId,

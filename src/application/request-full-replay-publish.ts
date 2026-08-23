@@ -1,4 +1,5 @@
 import type { YoutubePrivacy } from "@/src/domain/entities";
+import type { VoiceOverMode } from "@/src/domain/commentary-style";
 import type { InspectableJobQueue } from "@/src/ports/job-queue";
 import type { Logger } from "@/src/ports/logger";
 import type { ReplaySessionRepository } from "@/src/ports/replay-session-repository";
@@ -14,6 +15,8 @@ export type RequestFullReplayPublish = (input: {
   privacy?: YoutubePrivacy;
   /** Produce the IT+EN narrated pair instead of the single silent upload. */
   voiceOver?: boolean;
+  /** Third-person sports commentary when voiceOver is true. */
+  voiceOverMode?: VoiceOverMode;
   /** When set, YouTube keeps the video private until this instant (public thereafter). */
   scheduledAt?: Date | null;
 }) => Promise<{ jobId: string }>;
@@ -27,6 +30,7 @@ export function createRequestFullReplayPublish(
     sessionId,
     privacy = "unlisted",
     voiceOver = false,
+    voiceOverMode = "driver",
     scheduledAt = null,
   }) => {
     const startedAt = performance.now();
@@ -50,6 +54,9 @@ export function createRequestFullReplayPublish(
         job.type === "publish_full_replay" &&
         job.payload.sessionId === sessionId &&
         Boolean(job.payload.voiceOver) === voiceOver &&
+        (voiceOver
+          ? job.payload.voiceOverMode === voiceOverMode
+          : true) &&
         ["queued", "running", "paused"].includes(job.status),
     );
     if (existing) {
@@ -67,6 +74,7 @@ export function createRequestFullReplayPublish(
         sessionId,
         privacy,
         voiceOver,
+        voiceOverMode: voiceOver ? voiceOverMode : undefined,
         scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
       },
     });
@@ -75,6 +83,7 @@ export function createRequestFullReplayPublish(
       jobId,
       privacy,
       voiceOver,
+      voiceOverMode: voiceOver ? voiceOverMode : undefined,
       scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
       durationMs: Math.round(performance.now() - startedAt),
     });

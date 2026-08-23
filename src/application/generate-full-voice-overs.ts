@@ -4,10 +4,23 @@ import { z } from "zod";
 
 import type { ReplaySession } from "@/src/domain/entities";
 import type { EditorialLocalize } from "@/src/application/editorial-localize";
+import type { GenerateChapteredRaceScripts } from "@/src/application/generate-chaptered-race-scripts";
+import {
+  buildCommentaryChaptersFromTimeline,
+  shouldUseTimelineChapteredScripts,
+  type CommentaryTimelineChapter,
+} from "@/src/domain/commentary-timeline-segments";
 import {
   RACE_METADATA_STYLE,
   RACE_VOICE_OVER_STYLE,
 } from "@/src/domain/race-copy-style";
+import {
+  commentaryIntensityForText,
+  SPORTS_COMMENTARY_STYLE,
+  ttsInstructionsForCommentary,
+  type VoiceOverMode,
+  voiceProfileForMode,
+} from "@/src/domain/commentary-style";
 import {
   buildSrt,
   chunkNarration,
@@ -80,7 +93,7 @@ const responseJsonSchema = {
   },
 } satisfies Record<string, unknown>;
 
-const SYSTEM_PROMPT = `${RACE_VOICE_OVER_STYLE}
+const SYSTEM_PROMPT_DRIVER = `${RACE_VOICE_OVER_STYLE}
 
 Write a chaptered spoken narration for a full simracing race upload.
 Follow the supplied race timeline: one chapter per timeline beat, chronological, dense but concrete.
@@ -88,13 +101,18 @@ Also return localized titles and YouTube descriptions for the two uploads (${RAC
 Spoken chapters = race story only; put CTA mid + end in the spoken text.
 Written description may add chapters/timestamps, rig block, and hashtags after the race story.`;
 
-function voiceProfileForLanguage(
-  settings: Pick<AppSettings, "brandVoiceProfile" | "italianVoiceProfile">,
-  language: VoiceOverLanguage,
-): string {
-  return language === "it"
-    ? settings.italianVoiceProfile
-    : settings.brandVoiceProfile;
+const SYSTEM_PROMPT_COMMENTATOR = `${SPORTS_COMMENTARY_STYLE}
+
+Write chaptered third-person live sports commentary for a full simracing race upload.
+Follow the supplied race timeline: one chapter per timeline beat, chronological, dense but concrete.
+Also return localized titles and YouTube descriptions for the two uploads (${RACE_METADATA_STYLE}).
+Spoken chapters = commentary only; put CTA mid + end in the spoken text.
+Written description may add chapters/timestamps, rig block, and hashtags after the race story.`;
+
+function systemPromptForMode(mode: VoiceOverMode): string {
+  return mode === "commentator"
+    ? SYSTEM_PROMPT_COMMENTATOR
+    : SYSTEM_PROMPT_DRIVER;
 }
 
 type Dependencies = {
@@ -111,12 +129,15 @@ type Dependencies = {
   mediaDuration?: MediaDurationPort;
   /** Preferred when session.raceAnalysis is present (single-master editorial). */
   editorialLocalize?: EditorialLocalize;
+  generateChapteredRaceScripts?: GenerateChapteredRaceScripts;
 };
 
 export type GenerateFullVoiceOvers = (input: {
   sessionId: string;
   /** Rebuilds already-published languages whose script drifted. */
   regenerate?: boolean;
+  /** Overrides settings.voiceOverMode for this generation run. */
+  voiceOverMode?: VoiceOverMode;
 }) => Promise<VoiceOverPackage[]>;
 
 type LanguageScript = {
@@ -125,6 +146,7 @@ type LanguageScript = {
   script: string;
   title: string;
   description: string;
+  chapterTimings?: Array<{ startMs: number; endMs: number }>;
 };
 
 function raceContext(session: ReplaySession): string {
@@ -189,9 +211,14 @@ function srtPathFor(audioPath: string): string {
 
 function languageScripts(
   scripts: z.infer<typeof scriptsSchema>,
+  chapterPlans?: CommentaryTimelineChapter[],
 ): LanguageScript[] {
   const italian = scripts.chapters.map((chapter) => chapter.scriptIt.trim());
   const english = scripts.chapters.map((chapter) => chapter.scriptEn.trim());
+  const chapterTimings = chapterPlans?.map((chapter) => ({
+    startMs: chapter.startMs,
+    endMs: chapter.endMs,
+  }));
   return [
     {
       language: "it",
@@ -199,6 +226,7 @@ function languageScripts(
       script: italian.join("\n\n"),
       title: scripts.titleIt,
       description: scripts.descriptionIt,
+      chapterTimings,
     },
     {
       language: "en",
@@ -206,6 +234,7 @@ function languageScripts(
       script: english.join("\n\n"),
       title: scripts.titleEn,
       description: scripts.descriptionEn,
+      chapterTimings,
     },
   ];
 }
@@ -259,14 +288,22 @@ export function createGenerateFullVoiceOvers(
     index: number;
     total: number;
     voiceProfile: string;
+    voiceOverMode: VoiceOverMode;
   }): Promise<{ words: TimedWord[]; durationMs: number }> {
     const startedAt = performance.now();
     const chunkLabel = `${input.index + 1}/${input.total}`;
+    const instructions =
+      input.voiceOverMode === "commentator"
+        ? ttsInstructionsForCommentary(
+            input.language,
+            commentaryIntensityForText(input.text),
+          )
+        : ttsInstructionsFor(input.language);
     await deps.tts.synthesize({
       text: input.text,
       voiceProfile: input.voiceProfile,
       outputPath: input.outputPath,
-      instructions: ttsInstructionsFor(input.language),
+      instructions,
     });
     const transcription = await deps.transcription.transcribe(
       input.outputPath,
@@ -308,45 +345,100 @@ export function createGenerateFullVoiceOvers(
     languageScript: LanguageScript;
     voiceProfile: string;
     scriptHash: string;
+    voiceOverMode: VoiceOverMode;
     voPath: (sessionId: string, language: VoiceOverLanguage) => string;
     writeText: (filePath: string, content: string) => Promise<void>;
   }): Promise<VoiceOverPackage> {
-    const { language, script, title, description } = input.languageScript;
+    const { language, script, title, description, chapterTimings } =
+      input.languageScript;
     const audioPath = input.voPath(input.sessionId, language);
-    const chunks = chunkNarration(
-      input.languageScript.segments,
-      TTS_CHUNK_LIMITS,
-    );
-    if (chunks.length === 0) {
-      throw new Error(`Voice-over script for ${language} is empty`);
-    }
-    log.info("Full voice-over synthesis started", {
-      sessionId: input.sessionId,
-      language,
-      chunkCount: chunks.length,
-      maxChunkChars: Math.max(...chunks.map((chunk) => chunk.length)),
-    });
+    const useTimelineChapters =
+      chapterTimings &&
+      chapterTimings.length === input.languageScript.segments.length &&
+      chapterTimings.length > 1;
 
     const chunkPaths: string[] = [];
     const words: TimedWord[] = [];
     let offsetMs = 0;
-    // Sequential on purpose: chunk N's words are placed after chunk N-1's
-    // synthesized audio, and TTS providers rate-limit parallel calls.
-    for (const [index, text] of chunks.entries()) {
-      const outputPath = chunkPath(audioPath, index);
-      const chunk = await synthesizeChunk({
+    let ttsChunkTotal = 0;
+
+    if (useTimelineChapters) {
+      log.info("Full voice-over timeline chapter synthesis started", {
         sessionId: input.sessionId,
         language,
-        text,
-        outputPath,
-        offsetMs,
-        index,
-        total: chunks.length,
-        voiceProfile: input.voiceProfile,
+        chapterCount: input.languageScript.segments.length,
       });
-      chunkPaths.push(outputPath);
-      words.push(...chunk.words);
-      offsetMs += chunk.durationMs;
+      for (const [chapterIndex, segment] of input.languageScript.segments.entries()) {
+        const timing = chapterTimings![chapterIndex]!;
+        const silenceMs = Math.max(0, timing.startMs - offsetMs);
+        if (silenceMs >= 50 && deps.audioConcat.generateSilence) {
+          const silencePath = path.join(
+            path.dirname(audioPath),
+            `${path.parse(audioPath).name}-silence-${chapterIndex}.mp3`,
+          );
+          await deps.audioConcat.generateSilence({
+            durationMs: silenceMs,
+            outputPath: silencePath,
+          });
+          chunkPaths.push(silencePath);
+          offsetMs += silenceMs;
+        }
+        const chapterChunks = chunkNarration([segment], TTS_CHUNK_LIMITS);
+        for (const text of chapterChunks) {
+          ttsChunkTotal += 1;
+          const outputPath = chunkPath(audioPath, chunkPaths.length);
+          const chunk = await synthesizeChunk({
+            sessionId: input.sessionId,
+            language,
+            text,
+            outputPath,
+            offsetMs,
+            index: chunkPaths.length,
+            total: chapterChunks.length,
+            voiceProfile: input.voiceProfile,
+            voiceOverMode: input.voiceOverMode,
+          });
+          chunkPaths.push(outputPath);
+          words.push(...chunk.words);
+          offsetMs += chunk.durationMs;
+        }
+      }
+    } else {
+      const chunks = chunkNarration(
+        input.languageScript.segments,
+        TTS_CHUNK_LIMITS,
+      );
+      if (chunks.length === 0) {
+        throw new Error(`Voice-over script for ${language} is empty`);
+      }
+      log.info("Full voice-over synthesis started", {
+        sessionId: input.sessionId,
+        language,
+        chunkCount: chunks.length,
+        maxChunkChars: Math.max(...chunks.map((chunk) => chunk.length)),
+      });
+      ttsChunkTotal = chunks.length;
+      for (const [index, text] of chunks.entries()) {
+        const outputPath = chunkPath(audioPath, index);
+        const chunk = await synthesizeChunk({
+          sessionId: input.sessionId,
+          language,
+          text,
+          outputPath,
+          offsetMs,
+          index,
+          total: chunks.length,
+          voiceProfile: input.voiceProfile,
+          voiceOverMode: input.voiceOverMode,
+        });
+        chunkPaths.push(outputPath);
+        words.push(...chunk.words);
+        offsetMs += chunk.durationMs;
+      }
+    }
+
+    if (chunkPaths.length === 0) {
+      throw new Error(`Voice-over script for ${language} is empty`);
     }
 
     const concatenated = await deps.audioConcat.concat({
@@ -359,7 +451,10 @@ export function createGenerateFullVoiceOvers(
     log.info("Full voice-over package built", {
       sessionId: input.sessionId,
       language,
-      chunkCount: chunks.length,
+      chunkCount: ttsChunkTotal,
+      timelineChapters: useTimelineChapters
+        ? input.languageScript.segments.length
+        : 0,
       wordCount: words.length,
       audioDurationMs: offsetMs,
       audioPath: concatenated.outputPath,
@@ -379,7 +474,7 @@ export function createGenerateFullVoiceOvers(
     };
   }
 
-  return async ({ sessionId, regenerate = false }) => {
+  return async ({ sessionId, regenerate = false, voiceOverMode: modeOverride }) => {
     const startedAt = performance.now();
     log.info("Full voice-over generation started", { sessionId, regenerate });
     try {
@@ -387,6 +482,7 @@ export function createGenerateFullVoiceOvers(
         deps.replaySessions.getById(sessionId),
         deps.settings.get(),
       ]);
+      const voiceOverMode = modeOverride ?? appSettings.voiceOverMode;
       if (!session) {
         throw new Error(`Replay session not found: ${sessionId}`);
       }
@@ -409,9 +505,56 @@ export function createGenerateFullVoiceOvers(
 
       const scriptStartedAt = performance.now();
       let scripts: z.infer<typeof scriptsSchema>;
-      if (session.raceAnalysis && deps.editorialLocalize) {
+      let chapterPlans: CommentaryTimelineChapter[] | undefined;
+      const analysis = session.raceAnalysis;
+      const useChaptered =
+        analysis &&
+        shouldUseTimelineChapteredScripts(analysis, voiceOverMode) &&
+        deps.generateChapteredRaceScripts;
+
+      if (useChaptered && analysis) {
+        chapterPlans = buildCommentaryChaptersFromTimeline(analysis);
+        let titleIt: string;
+        let titleEn: string;
+        let descriptionIt: string;
+        let descriptionEn: string;
+        if (deps.editorialLocalize) {
+          const editorial = await deps.editorialLocalize({
+            analysis,
+            voiceOverMode,
+          });
+          titleIt = editorial.it.title;
+          titleEn = editorial.en.title;
+          descriptionIt = editorial.it.description;
+          descriptionEn = editorial.en.description;
+        } else {
+          titleIt = session.title;
+          titleEn = session.title;
+          descriptionIt = analysis.mainStoryline;
+          descriptionEn = analysis.mainStoryline;
+        }
+        const chapterScripts = await deps.generateChapteredRaceScripts!({
+          analysis,
+          chapters: chapterPlans,
+          voiceOverMode,
+        });
+        scripts = {
+          chapters: chapterScripts,
+          titleIt,
+          titleEn,
+          descriptionIt,
+          descriptionEn,
+        };
+        log.info("Full voice-over scripts from timeline chapters", {
+          sessionId,
+          chapterCount: chapterScripts.length,
+          voiceOverMode,
+          durationMs: Math.round(performance.now() - scriptStartedAt),
+        });
+      } else if (analysis && deps.editorialLocalize) {
         const editorial = await deps.editorialLocalize({
-          analysis: session.raceAnalysis,
+          analysis,
+          voiceOverMode,
         });
         scripts = {
           chapters: [
@@ -433,7 +576,7 @@ export function createGenerateFullVoiceOvers(
         });
       } else {
         const response = await deps.llm.complete({
-          system: SYSTEM_PROMPT,
+          system: systemPromptForMode(voiceOverMode),
           user: `Write the bilingual full-race narration for this race package:\n${raceContext(session)}`,
           jsonSchema: responseJsonSchema,
         });
@@ -450,11 +593,12 @@ export function createGenerateFullVoiceOvers(
       const packages: VoiceOverPackage[] = [];
       let reusedCount = 0;
 
-      for (const languageScript of languageScripts(scripts)) {
+      for (const languageScript of languageScripts(scripts, chapterPlans)) {
         const languageStartedAt = performance.now();
-        const voiceProfile = voiceProfileForLanguage(
+        const voiceProfile = voiceProfileForMode(
           appSettings,
           languageScript.language,
+          voiceOverMode,
         );
         const scriptHash = hashVoiceScript(
           languageScript.script,
@@ -498,6 +642,7 @@ export function createGenerateFullVoiceOvers(
             languageScript,
             voiceProfile,
             scriptHash,
+            voiceOverMode,
             voPath,
             writeText,
           }),
@@ -505,6 +650,7 @@ export function createGenerateFullVoiceOvers(
         log.info("Full voice-over language completed", {
           sessionId,
           language: languageScript.language,
+          voiceOverMode,
           durationMs: Math.round(performance.now() - languageStartedAt),
         });
       }

@@ -116,11 +116,17 @@ export function createFfmpegFullVoMix(
         throw new Error("Voice-over concat requires at least one chunk");
       }
       if (input.inputPaths.length === 1) {
+        const outputPath = path.resolve(input.outputPath);
+        const single = path.resolve(input.inputPaths[0]!);
+        if (single !== outputPath) {
+          await fs.mkdir(path.dirname(outputPath), { recursive: true });
+          await fs.copyFile(single, outputPath);
+        }
         log.info("Voice-over concat skipped for single chunk", {
-          outputPath: input.inputPaths[0],
+          outputPath,
         });
         return {
-          outputPath: input.inputPaths[0]!,
+          outputPath,
           durationMs: Math.round(performance.now() - startedAt),
         };
       }
@@ -169,6 +175,36 @@ export function createFfmpegFullVoMix(
         durationMs,
       });
       return { outputPath, durationMs };
+    },
+
+    async generateSilence(input: {
+      durationMs: number;
+      outputPath: string;
+    }): Promise<void> {
+      if (input.durationMs < 50) return;
+      const outputPath = path.resolve(input.outputPath);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      const seconds = (input.durationMs / 1_000).toFixed(3);
+      await runFfmpeg(
+        ffmpegPath,
+        [
+          "-y",
+          "-hide_banner",
+          "-f",
+          "lavfi",
+          "-i",
+          "anullsrc=r=44100:cl=mono",
+          "-t",
+          seconds,
+          "-c:a",
+          "libmp3lame",
+          "-q:a",
+          "9",
+          outputPath,
+        ],
+        log,
+        "generate_silence",
+      );
     },
 
     async mix(input: FullVoMixInput): Promise<FullVoMixResult> {

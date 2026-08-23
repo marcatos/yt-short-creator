@@ -47,6 +47,25 @@ function normalizeSettings(
       VALID_VOICE_PROFILES.has(stored.italianVoiceProfile)
         ? stored.italianVoiceProfile
         : defaults.italianVoiceProfile,
+    voiceOverMode:
+      stored.voiceOverMode === "commentator" || stored.voiceOverMode === "driver"
+        ? stored.voiceOverMode
+        : defaults.voiceOverMode,
+    commentaryVoiceProfileEn:
+      stored.commentaryVoiceProfileEn &&
+      VALID_VOICE_PROFILES.has(stored.commentaryVoiceProfileEn)
+        ? stored.commentaryVoiceProfileEn
+        : defaults.commentaryVoiceProfileEn,
+    commentaryVoiceProfileIt:
+      stored.commentaryVoiceProfileIt &&
+      VALID_VOICE_PROFILES.has(stored.commentaryVoiceProfileIt)
+        ? stored.commentaryVoiceProfileIt
+        : defaults.commentaryVoiceProfileIt,
+    commentaryDuckDb:
+      typeof stored.commentaryDuckDb === "number" &&
+      Number.isFinite(stored.commentaryDuckDb)
+        ? stored.commentaryDuckDb
+        : defaults.commentaryDuckDb,
     shortsBurnInCaptions:
       stored.shortsBurnInCaptions ?? defaults.shortsBurnInCaptions,
     fullBurnInCaptions:

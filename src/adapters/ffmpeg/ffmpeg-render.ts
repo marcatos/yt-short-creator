@@ -16,7 +16,7 @@ import { probeMediaDurationSec } from "@/src/adapters/media/ffprobe-duration";
 
 import { SHORT_CAPTION_FONTS_DIR } from "@/src/domain/voice-over";
 
-import { duckedVoiceMixFilter, filterFilename } from "./ffmpeg-audio-filters";
+import { duckedVoiceMixFilter, filterFilename, shortThreeWayMixFilter } from "./ffmpeg-audio-filters";
 import { resolveVideoEncoder } from "./ffmpeg-encoder";
 import { deliveryEncoderArgs } from "./ffmpeg-full-video-encode";
 import { resolveVideoEncoderPreference } from "./resolve-video-encoder-preference";
@@ -165,18 +165,29 @@ function brandedVideoFilter(input: RenderInput, baseLabel: string): string[] {
   return filters;
 }
 
-function voiceMixFilter(
+function audioMixFilter(
   input: RenderInput,
   gameAudioLabel: string,
-  voiceInputIndex: number,
-  voiceDurationMs?: number,
+  shortVoInputIndex: number,
+  shortVoDurationMs?: number,
+  commentaryAudioLabel?: string,
 ): string[] {
   if (!input.voiceAssetPath) return [];
+  if (commentaryAudioLabel) {
+    return shortThreeWayMixFilter({
+      gameAudioLabel,
+      shortVoAudioLabel: `${shortVoInputIndex}:a`,
+      commentaryAudioLabel,
+      voiceDuckDb: input.voiceDuckDb,
+      commentaryDuckDb: input.commentaryDuckDb,
+      shortVoDurationMs,
+    });
+  }
   return duckedVoiceMixFilter({
     sourceAudioLabel: gameAudioLabel,
-    voiceAudioLabel: `${voiceInputIndex}:a`,
+    voiceAudioLabel: `${shortVoInputIndex}:a`,
     voiceDuckDb: input.voiceDuckDb,
-    voiceDurationMs,
+    voiceDurationMs: shortVoDurationMs,
   });
 }
 
@@ -199,7 +210,9 @@ function clipArgs(
     ...brandedVideoFilter(input, "base"),
   ];
   if (input.voiceAssetPath) {
-    filterParts.push(...voiceMixFilter(input, "0:a", 1, voiceDurationMs));
+    filterParts.push(
+      ...audioMixFilter(input, "0:a", 1, voiceDurationMs, input.commentaryAudioPath ? "2:a" : undefined),
+    );
   }
 
   return [
@@ -210,6 +223,16 @@ function clipArgs(
     "-i",
     input.sourceMediaPath,
     ...(input.voiceAssetPath ? ["-i", input.voiceAssetPath] : []),
+    ...(input.voiceAssetPath && input.commentaryAudioPath
+      ? [
+          "-ss",
+          seconds(window.startMs),
+          "-t",
+          seconds(durationMs),
+          "-i",
+          input.commentaryAudioPath,
+        ]
+      : []),
     "-filter_complex",
     filterParts.join(";"),
     "-map",
@@ -249,6 +272,19 @@ function multiSegmentClipArgs(
   const videoConcat: string[] = [];
   const audioConcat: string[] = [];
 
+  const voiceIndex = segments.length;
+  const hasVoice = Boolean(input.voiceAssetPath);
+  const hasCommentary = hasVoice && Boolean(input.commentaryAudioPath);
+  if (hasVoice) {
+    args.push("-i", input.voiceAssetPath!);
+  }
+  const commentaryIndex = hasVoice ? voiceIndex + 1 : segments.length;
+  if (hasCommentary) {
+    args.push("-i", input.commentaryAudioPath!);
+  }
+
+  const commentaryConcat: string[] = [];
+
   segments.forEach((segment, index) => {
     const durationMs = segment.endMs - segment.startMs;
     if (durationMs <= 0) {
@@ -269,14 +305,15 @@ function multiSegmentClipArgs(
     filterParts.push(
       `[${index}:a]atrim=duration=${seconds(durationMs)},asetpts=PTS-STARTPTS[a${index}]`,
     );
+    if (hasCommentary) {
+      filterParts.push(
+        `[${commentaryIndex}:a]atrim=start=${seconds(segment.startMs)}:duration=${seconds(durationMs)},asetpts=PTS-STARTPTS[c${index}]`,
+      );
+      commentaryConcat.push(`[c${index}]`);
+    }
     videoConcat.push(`[v${index}]`);
     audioConcat.push(`[a${index}]`);
   });
-
-  const voiceIndex = segments.length;
-  if (input.voiceAssetPath) {
-    args.push("-i", input.voiceAssetPath);
-  }
 
   filterParts.push(
     `${videoConcat.join("")}concat=n=${segments.length}:v=1:a=0[vcat]`,
@@ -284,9 +321,20 @@ function multiSegmentClipArgs(
   filterParts.push(
     `${audioConcat.join("")}concat=n=${segments.length}:v=0:a=1[acat]`,
   );
+  if (hasCommentary) {
+    filterParts.push(
+      `${commentaryConcat.join("")}concat=n=${segments.length}:v=0:a=1[ccat]`,
+    );
+  }
   filterParts.push(
     ...brandedVideoFilter(input, "vcat"),
-    ...voiceMixFilter(input, "acat", voiceIndex, voiceDurationMs),
+    ...audioMixFilter(
+      input,
+      "acat",
+      voiceIndex,
+      voiceDurationMs,
+      hasCommentary ? "ccat" : undefined,
+    ),
   );
 
   return [
@@ -296,7 +344,7 @@ function multiSegmentClipArgs(
     "-map",
     "[outv]",
     "-map",
-    input.voiceAssetPath ? "[aout]" : "[acat]",
+    hasVoice ? "[aout]" : "[acat]",
   ];
 }
 

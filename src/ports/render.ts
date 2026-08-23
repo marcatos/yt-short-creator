@@ -16,6 +16,12 @@ export type RenderInput = {
   crop?: ClipCrop;
   voiceAssetPath?: string;
   /**
+   * Full-race commentary stem (vo-it/en.mp3). Mixed under Short VO with a
+   * deeper duck than game audio; not baked into the source master.
+   */
+  commentaryAudioPath?: string;
+  commentaryDuckDb?: number;
+  /**
    * Narration length in ms. When longer than the clip window, the renderer
    * extends into surrounding source footage so VO is not cut mid-sentence.
    */

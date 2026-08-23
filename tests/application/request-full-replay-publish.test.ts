@@ -115,6 +115,7 @@ describe("requestFullReplayPublish", () => {
           sessionId: "session-1",
           privacy: "unlisted",
           voiceOver: true,
+          voiceOverMode: "driver",
           scheduledAt: null,
         },
       },
@@ -135,6 +136,7 @@ describe("requestFullReplayPublish", () => {
             sessionId: "session-1",
             privacy: "unlisted",
             voiceOver: true,
+            voiceOverMode: "driver",
           },
         },
       ],
@@ -268,6 +270,7 @@ describe("requestFullReplayPublish", () => {
         sessionId: "session-1",
         privacy: "public",
         voiceOver: true,
+        voiceOverMode: "driver",
         scheduledAt: "2026-08-21T06:30:00.000Z",
       },
     });

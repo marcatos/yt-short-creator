@@ -225,17 +225,23 @@ describe("FFmpeg full-race VO mix", () => {
     ).rejects.toThrow();
   });
 
-  it("returns the single chunk untouched instead of spawning FFmpeg", async () => {
+  it("copies a single chunk to the output path without spawning FFmpeg", async () => {
     succeedingSpawn();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "vo-single-"));
+    tempDirs.push(root);
+    const inputPath = path.join(root, "vo-it-part-1.mp3");
+    const outputPath = path.join(root, "vo-it.mp3");
+    await fs.writeFile(inputPath, "chunk");
     const mixer = createFfmpegFullVoMix({ logger: logger() });
 
     const result = await mixer.concat({
-      inputPaths: ["C:/media/vo-it-part-1.mp3"],
-      outputPath: "C:/media/vo-it.mp3",
+      inputPaths: [inputPath],
+      outputPath,
     });
 
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
-    expect(result.outputPath).toBe("C:/media/vo-it-part-1.mp3");
+    expect(result.outputPath).toBe(outputPath);
+    await expect(fs.readFile(outputPath, "utf8")).resolves.toBe("chunk");
   });
 
   it("fails with FFmpeg stderr when the mix exits non-zero", async () => {

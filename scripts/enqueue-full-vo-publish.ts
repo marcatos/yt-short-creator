@@ -74,10 +74,14 @@ async function main(): Promise<void> {
       2,
     ),
   );
+  const voiceOverModeArg = argValue("--voice-over-mode");
   const result = await container.requestFullReplayPublish({
     sessionId,
     privacy,
     voiceOver: true,
+    ...(voiceOverModeArg === "driver" || voiceOverModeArg === "commentator"
+      ? { voiceOverMode: voiceOverModeArg }
+      : {}),
     scheduledAt,
   });
   console.log(

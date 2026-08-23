@@ -45,6 +45,38 @@ export function duckedVoiceMixFilter(input: {
   ];
 }
 
+/**
+ * Short render: duck game + commentary stems during Short VO, then release.
+ * Commentary duck is typically deeper (e.g. -30 dB) than game duck (-12 dB).
+ */
+export function shortThreeWayMixFilter(input: {
+  gameAudioLabel: string;
+  shortVoAudioLabel: string;
+  commentaryAudioLabel: string;
+  voiceDuckDb?: number;
+  commentaryDuckDb?: number;
+  shortVoDurationMs?: number;
+}): string[] {
+  const gameDuck = voiceDuckVolume(input.voiceDuckDb);
+  const commDuck = voiceDuckVolume(input.commentaryDuckDb);
+  const gated =
+    input.shortVoDurationMs !== undefined &&
+    Number.isFinite(input.shortVoDurationMs) &&
+    input.shortVoDurationMs > 0;
+  const gameVolume = gated
+    ? gatedDuckVolume(gameDuck, input.shortVoDurationMs!)
+    : `volume=${gameDuck}`;
+  const commVolume = gated
+    ? gatedDuckVolume(commDuck, input.shortVoDurationMs!)
+    : `volume=${commDuck}`;
+  return [
+    `[${input.gameAudioLabel}]${gameVolume}[ga]`,
+    `[${input.commentaryAudioLabel}]${commVolume}[ca]`,
+    `[${input.shortVoAudioLabel}]volume=1[va]`,
+    "[ga][ca][va]amix=inputs=3:duration=first:dropout_transition=0:normalize=0[aout]",
+  ];
+}
+
 /** FFmpeg filter arguments treat `:` and `'` as syntax, even in Windows paths. */
 export function filterFilename(filePath: string): string {
   return filePath

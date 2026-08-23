@@ -12,6 +12,11 @@ export type AudioConcatResult = {
 
 export interface AudioConcatPort {
   concat(input: AudioConcatInput): Promise<AudioConcatResult>;
+  /** MP3 silence pad for timeline-aligned chapter VO. */
+  generateSilence?(input: {
+    durationMs: number;
+    outputPath: string;
+  }): Promise<void>;
 }
 
 export type FullVoMixInput = {

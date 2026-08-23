@@ -149,6 +149,9 @@ import {
   type PackageFullDeliveryAssets,
 } from "@/src/application/package-full-delivery-assets";
 import {
+  createGenerateChapteredRaceScripts,
+} from "@/src/application/generate-chaptered-race-scripts";
+import {
   createGenerateFullVoiceOvers,
   type GenerateFullVoiceOvers,
 } from "@/src/application/generate-full-voice-overs";
@@ -253,6 +256,10 @@ export function createContainer(env: AppEnv): AppContainer {
       videoEncoderPreference: "auto",
       brandVoiceProfile: "coral",
       italianVoiceProfile: "ash",
+      voiceOverMode: "driver",
+      commentaryVoiceProfileEn: "verse",
+      commentaryVoiceProfileIt: "marin",
+      commentaryDuckDb: -30,
       shortsBurnInCaptions: true,
       fullBurnInCaptions: false,
       voiceDuckDb: -12,
@@ -536,6 +543,10 @@ export function createContainer(env: AppEnv): AppContainer {
       clock,
       logger,
       editorialLocalize,
+      generateChapteredRaceScripts: createGenerateChapteredRaceScripts({
+        llm,
+        logger,
+      }),
     }),
     packageFullDeliveryAssets: createPackageFullDeliveryAssets({
       mediaStore,

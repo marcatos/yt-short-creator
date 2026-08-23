@@ -46,6 +46,14 @@ export type AppSettings = {
    * which otherwise reads slow/mature.
    */
   italianVoiceProfile: BrandVoiceProfile;
+  /** Driver narrative vs third-person sports commentary for full-race VO. */
+  voiceOverMode: "driver" | "commentator";
+  /** EN commentary voice (broadcast-friendly; default verse). */
+  commentaryVoiceProfileEn: BrandVoiceProfile;
+  /** IT commentary voice (broadcast F1 energy; default marin). */
+  commentaryVoiceProfileIt: BrandVoiceProfile;
+  /** Duck commentary stem during Short VO (e.g. -30 dB). */
+  commentaryDuckDb: number;
   shortsBurnInCaptions: boolean;
   fullBurnInCaptions: boolean;
   voiceDuckDb: number;
