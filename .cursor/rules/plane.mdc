@@ -25,4 +25,14 @@ If MCP create fails (`title` vs `name`), run:
 python C:\Users\simot\Documents\Projects\opnsense-server\scripts\plane_issue.py create --project YTSC --title "..."
 ```
 
+## Workflow state
+
+Follow **Workflow state** in the user rule `plane-personal-projects.mdc` (always apply).
+
+YTSC states: **Backlog** → **Todo** → **In Progress** → **Done** | **Cancelled**.
+
+- Start coding → **In Progress**
+- Finish + push → **Done** (not Backlog)
+- Verify with `workitem retrieve_by_identifier` after every state change
+
 Do not use Linear or GitHub Issues. Do not put secrets on Plane. Do not treat git STATUS/TODO/ROADMAP/DECISIONS as live.
