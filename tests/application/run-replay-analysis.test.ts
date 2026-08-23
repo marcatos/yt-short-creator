@@ -675,6 +675,89 @@ describe("runReplayAnalysis", () => {
     ).toBe(true);
   });
 
+  it("prefers HUD track over stale session and LLM context", async () => {
+    const sessions = new MemoryReplaySessions(
+      baseSession({ trackName: "Oschersleben" }),
+    );
+    const candidates = new MemoryCandidates();
+
+    const run = createRunReplayAnalysis({
+      replaySessions: sessions,
+      candidates,
+      ibtTelemetry: {
+        async parse() {
+          return { events: [], trackName: null };
+        },
+      },
+      mediaProxy: fakeMediaProxy(),
+      transcription: fakeTranscription(),
+      mediaStore: fakeMediaStore(),
+      raceHudExtractor: fakeRaceHudExtractor([
+        {
+          timeMs: 0,
+          session: {
+            sessionType: "RACE",
+            status: "REPLAY",
+            trackName: "Canadian Tire Motorsport Park",
+            lap: 1,
+            sessionTime: "0:10",
+            flag: "GREEN",
+          },
+          focus: {
+            carNumber: 3,
+            driverName: "Simone Marcato",
+            position: 5,
+            fieldSize: 19,
+            lastLap: null,
+            bestLap: null,
+            gapToLeader: "+1.0s",
+            deltaBest: null,
+            fuelPct: null,
+            sectors: null,
+          },
+          battle: { rows: [] },
+          standings: { rows: [] },
+          battleCallout: null,
+          fieldTicker: null,
+          confidence: "verified",
+        },
+      ]),
+      llm: {
+        async complete(input) {
+          if (input.userParts?.length) {
+            return JSON.stringify({ moments: [] });
+          }
+          return JSON.stringify({
+            raceAnalysis: raceAnalysisLlmFixture({
+              context: {
+                simulator: "iRacing",
+                track: "Oschersleben",
+                car: "GR86",
+                durationSec: 180,
+              },
+            }),
+          });
+        },
+      },
+      id: {
+        generate: (() => {
+          let n = 0;
+          return () => `id-${++n}`;
+        })(),
+      },
+      clock: { now: () => now },
+      logger: createLogger(),
+      inspirationStore: emptyInspirationStore(),
+    });
+
+    await run({ sessionId: "session-1" });
+
+    expect(sessions.session.trackName).toBe("Canadian Tire Motorsport Park");
+    expect(sessions.session.raceAnalysis?.context.track).toBe(
+      "Canadian Tire Motorsport Park",
+    );
+  });
+
   it("keeps a low-score Inspiration match in the MAX_SHORTS set", async () => {
     const sessions = new MemoryReplaySessions(baseSession());
     const candidates = new MemoryCandidates();

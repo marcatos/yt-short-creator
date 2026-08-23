@@ -17,6 +17,8 @@ import {
   POST_RACE_SCORE_PENALTY,
   reconcileHudSnapshot,
   resolveFocusSubject,
+  resolveHudRaceContext,
+  resolveTrackNameFromHud,
   sliceHudWindow,
   type FocusCardState,
   type RaceHudSnapshot,
@@ -509,3 +511,91 @@ function raceEndTimeline(): RaceHudTimeline {
     }),
   ];
 }
+
+describe("resolveTrackNameFromHud", () => {
+  it("majority-votes track from session strip", () => {
+    const timeline: RaceHudTimeline = [
+      snap({
+        timeMs: 0,
+        session: {
+          sessionType: "RACE",
+          status: "REPLAY",
+          trackName: "Canadian Tire Motorsport Park",
+          lap: 1,
+          sessionTime: "0:10",
+          flag: "GREEN",
+        },
+      }),
+      snap({
+        timeMs: 60_000,
+        session: {
+          sessionType: "RACE",
+          status: "REPLAY",
+          trackName: "Canadian Tire Motorsport Park",
+          lap: 5,
+          sessionTime: "5:00",
+          flag: "GREEN",
+        },
+      }),
+      snap({
+        timeMs: 120_000,
+        session: {
+          sessionType: "RACE",
+          status: "REPLAY",
+          trackName: "Oschersleben",
+          lap: 6,
+          sessionTime: "6:00",
+          flag: "GREEN",
+        },
+        confidence: "unknown",
+      }),
+    ];
+    expect(resolveTrackNameFromHud(timeline)).toBe(
+      "Canadian Tire Motorsport Park",
+    );
+  });
+
+  it("resolveHudRaceContext exposes track, session type, and field size", () => {
+    const timeline: RaceHudTimeline = [
+      snap({
+        timeMs: 0,
+        session: {
+          sessionType: "RACE",
+          status: "REPLAY",
+          trackName: "Canadian Tire Motorsport Park",
+          lap: 1,
+          sessionTime: "0:10",
+          flag: "GREEN",
+        },
+        focus: focus({
+          carNumber: 7,
+          driverName: "Simone Marcato",
+          position: 5,
+          fieldSize: 19,
+        }),
+      }),
+      snap({
+        timeMs: 60_000,
+        session: {
+          sessionType: "RACE",
+          status: "REPLAY",
+          trackName: "Canadian Tire Motorsport Park",
+          lap: 5,
+          sessionTime: "5:00",
+          flag: "GREEN",
+        },
+        focus: focus({
+          carNumber: 7,
+          driverName: "Simone Marcato",
+          position: 3,
+          fieldSize: 19,
+        }),
+      }),
+    ];
+    const ctx = resolveHudRaceContext(timeline, "fallback");
+    expect(ctx.track).toBe("Canadian Tire Motorsport Park");
+    expect(ctx.sessionType).toBe("RACE");
+    expect(ctx.fieldSize).toBe(19);
+    expect(ctx.focus.carNumber).toBe(7);
+  });
+});

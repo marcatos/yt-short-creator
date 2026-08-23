@@ -274,9 +274,6 @@ export function formatFocusSubjectHint(subject: FocusSubject): string {
   return `${parts.join(" ")} (camera focus from HUD)`;
 }
 
-/**
- * Majority vote on Focus card car number + name across the timeline.
- */
 export function resolveFocusSubject(
   timeline: RaceHudTimeline,
   fallbackHint: string,
@@ -324,6 +321,82 @@ function pickMajority<T>(counts: Map<T, number>): T | null {
     }
   }
   return best;
+}
+
+function pickMajorityString(
+  values: Array<string | null | undefined>,
+  options: { minWeight?: number } = {},
+): string | null {
+  const counts = new Map<string, number>();
+  for (const raw of values) {
+    const value = raw?.trim();
+    if (!value) continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  const best = pickMajority(counts);
+  if (!best) return null;
+  const minWeight = options.minWeight ?? 1;
+  if ((counts.get(best) ?? 0) < minWeight) return null;
+  return best;
+}
+
+/**
+ * Majority vote on session-strip track name across HUD snapshots.
+ * Verified/inferred readings count fully; unknown count at 25%.
+ */
+export function resolveTrackNameFromHud(
+  timeline: RaceHudTimeline,
+): string | null {
+  const counts = new Map<string, number>();
+  for (const snap of timeline) {
+    const name = snap.session?.trackName?.trim();
+    if (!name) continue;
+    const weight = snap.confidence === "unknown" ? 0.25 : 1;
+    counts.set(name, (counts.get(name) ?? 0) + weight);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+export type HudDerivedRaceContext = {
+  track: string | null;
+  sessionType: string | null;
+  fieldSize: number | null;
+  focus: FocusSubject;
+};
+
+/**
+ * Canonical race metadata derived from burned-in HUD overlays.
+ * HUD wins over session/CLI hints when readable track text is present.
+ */
+export function resolveHudRaceContext(
+  timeline: RaceHudTimeline,
+  fallbackFocusHint: string,
+): HudDerivedRaceContext {
+  const focus = resolveFocusSubject(timeline, fallbackFocusHint);
+  return {
+    track: resolveTrackNameFromHud(timeline),
+    sessionType: pickMajorityString(
+      timeline.map((snap) => snap.session?.sessionType),
+    ),
+    fieldSize: pickMajority(
+      timeline.reduce((counts, snap) => {
+        const size = snap.focus?.fieldSize;
+        if (size != null) {
+          counts.set(size, (counts.get(size) ?? 0) + 1);
+        }
+        return counts;
+      }, new Map<number, number>()),
+    ),
+    focus,
+  };
 }
 
 export function sliceHudWindow(

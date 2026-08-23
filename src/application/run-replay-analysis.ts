@@ -38,7 +38,8 @@ import {
   filterRacingEventsBeforeRaceEnd,
   formatHudTimelineForPrompt,
   inferResultsFromHud,
-  resolveFocusSubject,
+  resolveHudRaceContext,
+  resolveTrackNameFromHud,
   type HudBattleWindow,
   type RaceHudTimeline,
 } from "@/src/domain/race-hud";
@@ -836,8 +837,22 @@ export function createRunReplayAnalysis(
         });
       }
 
-      const focusSubject = resolveFocusSubject(hudTimeline, FOCUS_CAR_DEFAULT);
-      const focusCarHint = focusSubject.hint;
+      const hudRaceContext = resolveHudRaceContext(hudTimeline, FOCUS_CAR_DEFAULT);
+      const focusSubject = hudRaceContext.focus;
+      if (hudRaceContext.track) {
+        trackName = hudRaceContext.track;
+        log.info("Track resolved from HUD session strip", {
+          sessionId,
+          trackName,
+        });
+      } else if (session.trackName && session.trackName !== trackName) {
+        log.warn("No readable HUD track; using session hint (unverified)", {
+          sessionId,
+          sessionTrackName: session.trackName,
+        });
+        trackName = session.trackName;
+      }
+      const focusCarHint = hudRaceContext.focus.hint;
       const raceEndMs = detectRaceEndMs(hudTimeline);
       if (raceEndMs != null) {
         log.info("Race end detected from HUD session strip", {
@@ -903,7 +918,17 @@ export function createRunReplayAnalysis(
         ].join(" "),
         user: [
           `Titolo sessione: ${session.title}`,
-          trackName ? `Pista: ${trackName}` : null,
+          hudRaceContext.track
+            ? `Pista (HUD verified): ${hudRaceContext.track}`
+            : trackName
+              ? `Pista (non verificata — preferisci HUD se presente sotto): ${trackName}`
+              : null,
+          hudRaceContext.sessionType
+            ? `Tipo sessione (HUD): ${hudRaceContext.sessionType}`
+            : null,
+          hudRaceContext.fieldSize != null
+            ? `Field size (HUD focus): ${hudRaceContext.fieldSize}`
+            : null,
           `Durata media: ${durationSec} secondi`,
           `Focus car: ${focusCarHint}`,
           focusSubject.carNumber != null
@@ -1006,14 +1031,14 @@ export function createRunReplayAnalysis(
         context: {
           ...llmAnalysis.context,
           track:
-            llmAnalysis.context.track ||
+            resolveTrackNameFromHud(hudTimeline) ||
             trackName ||
-            hudTimeline.find((snap) => snap.session?.trackName)?.session
-              ?.trackName ||
+            llmAnalysis.context.track ||
             null,
           durationSec:
+            (durationSec > 0 ? durationSec : null) ??
             llmAnalysis.context.durationSec ??
-            (durationSec > 0 ? durationSec : null),
+            null,
         },
         results: {
           ...hudResults,
@@ -1042,6 +1067,13 @@ export function createRunReplayAnalysis(
       };
 
       const racePackage = raceAnalysisToRacePackage(raceAnalysis);
+
+      if (hudTimeline.length === 0) {
+        log.warn(
+          "HUD overlay extract returned zero snapshots — track/position facts may be wrong; re-check proxy frames and ROI",
+          { sessionId },
+        );
+      }
 
       log.info("Race analysis drafted", {
         sessionId,

@@ -4,6 +4,7 @@
  * Usage:
  *   npx tsx scripts/analyze-obs-replay.ts --media "C:\path\file.mkv" [--title "..."] [--track "..."] [--notes "..."]
  *   npx tsx scripts/analyze-obs-replay.ts --session-id <uuid> [--notes-file path.txt]
+ *   --track is an optional fallback only when HUD/IBT cannot be read; analysis prefers HUD session strip.
  *   Optional: --commentary "C:\path\comment.wav" [--commentary-offset-ms 0]
  */
 import fs from "node:fs";
