@@ -83,7 +83,7 @@ const analysisSchema = z.object({
         kind: z.enum(["race_start", "lap", "race_end"]),
         timeMs: z.number().int(),
         rawText: z.string().trim().min(1),
-        lapNumber: z.number().int().positive().optional(),
+        lapNumber: z.number().int().positive().nullish(),
       }),
     )
     .default([]),
@@ -303,7 +303,7 @@ const responseJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "timeMs", "rawText"],
+        required: ["kind", "timeMs", "rawText", "lapNumber"],
         properties: {
           kind: {
             type: "string",
@@ -311,7 +311,7 @@ const responseJsonSchema = {
           },
           timeMs: { type: "integer" },
           rawText: { type: "string" },
-          lapNumber: { type: "integer", minimum: 1 },
+          lapNumber: nullableIntSchema,
         },
       },
     },
@@ -968,6 +968,7 @@ export function createRunReplayAnalysis(
       ).map((marker) => ({
         ...marker,
         source: "llm" as const,
+        lapNumber: marker.lapNumber ?? undefined,
       }));
       const commentaryMarkers = filterMarkersInDuration(
         mergeCommentaryMarkers(heuristicMarkers, llmMarkers),
