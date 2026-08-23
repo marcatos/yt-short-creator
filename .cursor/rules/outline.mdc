@@ -8,6 +8,8 @@ alwaysApply: true
 Collection aligned with Plane **YTSC** (`yt-short-creator`).
 LAN `http://10.100.30.91:3000` · UI `https://outline.marcatos.ddns.net` · IdP Authentik.
 
+Follow the same Outline operating rules as all personal projects under `Documents/Projects` (user rule `outline-personal-projects`).
+
 ## Document set (use all of these — not only STATUS/DECISIONS)
 
 | Document | Purpose |
@@ -20,18 +22,18 @@ LAN `http://10.100.30.91:3000` · UI `https://outline.marcatos.ddns.net` · IdP 
 | **Implementation** | How it is built and verified |
 | **Options** | Alternatives explored (accepted, rejected, deferred) |
 
-Optional deeper docs: `Spec: <Feature name>`, `Runbook: <Topic>`.
-
 ## Canonical owners
 
 | Artefact | Owner |
 |---|---|
 | Live facts | Outline **STATUS** |
-| Locked choices (+ rejected options) | Outline **DECISIONS** (append at top) |
+| Locked choices (+ rejected options) | Outline **DECISIONS** (append at top) + full **ADR …** docs |
 | Explored alternatives | Outline **Options** |
 | Feature catalog | Outline **Features** |
 | Requirements | Outline **Specs** / `Spec: …` |
 | How built / verified | Outline **Implementation** |
+| Technical debt | Outline **Technical debt** (when the project tracks TD) |
+| Research / runbooks | Outline `Research: …` / `Runbook: …` |
 | Work + session notes | Plane work items + comments |
 | Changelog | conventional commits |
 | Code | git |
@@ -40,8 +42,21 @@ Optional deeper docs: `Spec: <Feature name>`, `Runbook: <Topic>`.
 
 1. **Session start:** list open Plane items; read **STATUS**; skim **Features** if changing product behaviour.
 2. **New capability:** row in **Features** → requirements in **Specs** (or `Spec: …`) → Plane work item before coding.
-3. **Design choice:** capture alternatives in **Options**; when locking, append **DECISIONS** with **Accepted / Rejected / Deferred**.
+3. **Design choice:** capture alternatives in **Options**; when locking, append **DECISIONS** with **Accepted / Rejected / Deferred**. Create a full **ADR …** (or equivalent) Outline document when the choice is architectural.
 4. **After ship:** update **Implementation** + **STATUS** facts; set Feature status; comment the Plane issue.
 5. Keep **STATUS** short. Never put secrets on Outline. Do not treat git STATUS/DECISIONS as live.
 
+## Repo mirroring (mandatory)
+
+If Outline cites an ADR, research note, technical-debt item, acceptance checklist, playbook, or other repo doc, the **full body must exist on Outline** in this collection (e.g. `ADR 0011 — …`, `Research: …`, `Technical debt`). Do **not** leave “see `docs/adr/….md`” (or similar git paths) as the only source. When you add or change such a doc in git, upsert the Outline document in the **same session**.
+
+## Cross-links (mandatory)
+
+When updating Outline docs, use real internal links (`[Title](/doc/…-urlId)` from the Outline API `url` field), not bare titles alone. Hub pages (**Overview**, **STATUS**, **DECISIONS**, **Features**, **Specs**, **Implementation**, **Options**, **ADRs**) must link to the docs they reference; Specs/ADRs/Runbooks should link back to Features / DECISIONS / STATUS as relevant.
+
+## Optional deeper docs
+
+`Spec: <name>` · `Runbook: <Topic>` · `Research: <Topic>` · `ADR NNNN — <title>` (under **ADRs** or **DECISIONS**) · **Technical debt**
+
 CLI: `python C:/Users/simot/Documents/Projects/opnsense-server/scripts/outline_doc.py`
+

@@ -19,5 +19,5 @@ Plane project **YTSC** (`YT short creator`). Work items live on Plane (`http://1
 <!-- /plane-tracker -->
 
 <!-- outline-kb -->
-Outline collection for **YTSC** (`YT short creator`). Structured KB: Overview, STATUS, DECISIONS, Features, Specs, Implementation, Options (`http://10.100.30.91:3000`). See `.cursor/rules/outline.mdc`.
+Outline collection for **YTSC** (`YT short creator`). Structured KB: Overview, STATUS, DECISIONS, Features, Specs, Implementation, Options (`http://10.100.30.91:3000`). Mirror full ADR/research/TD bodies on Outline; cross-link docs. See `.cursor/rules/outline.mdc`.
 <!-- /outline-kb -->
