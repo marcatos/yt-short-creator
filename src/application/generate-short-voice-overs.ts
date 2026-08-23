@@ -330,7 +330,7 @@ export function createGenerateShortVoiceOvers(
             });
             break;
           }
-          if (attempts >= 2) {
+          if (attempts >= 4) {
             throw new Error(
               `Voice-over duration for ${language} must be between 8,000 and 25,000 ms; received ${measured.durationMs} ms`,
             );
