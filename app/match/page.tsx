@@ -4,7 +4,9 @@ import { MatchBoard } from "@/app/components/MatchBoard";
 import { PageHeader } from "@/app/components/PageHeader";
 import { formatListDateTime } from "@/app/lib/format";
 import { parseInspirationConfig } from "@/src/domain/inspiration-config";
+import type { SourceVideo } from "@/src/domain/entities";
 import { getContainer } from "@/src/lib/container";
+import type { InspirationIdeaRecord } from "@/src/ports/inspiration-store";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +30,11 @@ export default async function MatchPage() {
   const channel = channels[0] ?? null;
 
   const [videos, ideas, latestSuccessfulSyncAt] = channel
-    ? await Promise.all([
+    ? ((await Promise.all([
         container.repositories.sourceVideos.listByChannelId(channel.id),
         container.repositories.inspiration.listActiveIdeas(),
         container.repositories.inspiration.getLatestSuccessfulSyncAt(),
-      ])
+      ])) as [SourceVideo[], InspirationIdeaRecord[], Date | null])
     : [[], [], null];
 
   const now = container.clock.now();

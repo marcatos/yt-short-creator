@@ -4,7 +4,9 @@ import { z } from "zod";
 import { recordToInspirationIdea } from "@/src/application/inspiration-prompt-block";
 import { rankVideoIdeaPairs } from "@/src/domain/inspiration";
 import { parseInspirationConfig } from "@/src/domain/inspiration-config";
+import type { SourceVideo } from "@/src/domain/entities";
 import { getContainer } from "@/src/lib/container";
+import type { InspirationIdeaRecord } from "@/src/ports/inspiration-store";
 
 const previewSchema = z.object({
   sourceVideoIds: z.array(z.string().trim().min(1)).min(1),
@@ -32,17 +34,22 @@ export async function POST(request: NextRequest) {
   const ideaIdSet = new Set(ideaIds);
   const inspirationConfig = parseInspirationConfig(process.env);
 
-  const [allIdeas, latestSuccessfulSyncAt, videos] = await Promise.all([
+  const [allIdeas, latestSuccessfulSyncAt, loadedVideos] = (await Promise.all([
     container.repositories.inspiration.listActiveIdeas(),
     container.repositories.inspiration.getLatestSuccessfulSyncAt(),
     Promise.all(
       [...videoIdSet].map((id) =>
         container.repositories.sourceVideos.getById(id),
       ),
-    ).then((rows) => rows.filter((video) => video != null)),
-  ]);
+    ).then((rows): SourceVideo[] =>
+      rows.filter((video): video is SourceVideo => video != null),
+    ),
+  ])) as [InspirationIdeaRecord[], Date | null, SourceVideo[]];
 
-  const ideaRecords = allIdeas.filter((idea) => ideaIdSet.has(idea.id));
+  const videos: SourceVideo[] = loadedVideos;
+  const ideaRecords: InspirationIdeaRecord[] = allIdeas.filter((idea) =>
+    ideaIdSet.has(idea.id),
+  );
   if (ideaRecords.length === 0) {
     return NextResponse.json(
       { error: "No matching active Inspiration ideas found" },

@@ -48,11 +48,11 @@ function formatRelatedInterest(value: unknown): string | null {
 export default async function InspirationPage() {
   const store = getContainer().repositories.inspiration;
   const config = parseInspirationConfig(process.env);
-  const [ideas, syncRuns, latestSuccessfulSyncAt] = await Promise.all([
+  const [ideas, syncRuns, latestSuccessfulSyncAt] = (await Promise.all([
     store.listActiveIdeas(),
     store.listSyncRuns(20),
     store.getLatestSuccessfulSyncAt(),
-  ]);
+  ])) as [InspirationIdeaRecord[], InspirationSyncRun[], Date | null];
   const now = new Date();
   const stale = isStale(latestSuccessfulSyncAt, now, config.staleDays);
   const failedRuns = syncRuns.filter((run) => run.status === "failed").length;
