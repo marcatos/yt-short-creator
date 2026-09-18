@@ -20,13 +20,30 @@ type RawBrandTokens = {
   colors: {
     carbon: string;
     ice: string;
+    electric_blue?: string;
   };
-  racing_colors: {
-    rosso_corsa: {
+  racing_colors?: {
+    rosso_corsa?: {
       hex: string;
     };
   };
+  hero_accent?: {
+    hex: string;
+  };
 };
+
+function resolveAccentHex(raw: RawBrandTokens): string {
+  const accent =
+    raw.racing_colors?.rosso_corsa?.hex ??
+    raw.hero_accent?.hex ??
+    raw.colors.electric_blue;
+  if (!accent) {
+    throw new Error(
+      "Brand tokens missing accent color (racing_colors.rosso_corsa, hero_accent.hex, or colors.electric_blue)",
+    );
+  }
+  return accent;
+}
 
 function mapTokens(raw: RawBrandTokens): BrandTokens {
   return {
@@ -35,7 +52,7 @@ function mapTokens(raw: RawBrandTokens): BrandTokens {
       ice: raw.colors.ice,
     },
     racingColors: {
-      rossoCorsa: raw.racing_colors.rosso_corsa.hex,
+      rossoCorsa: resolveAccentHex(raw),
     },
   };
 }

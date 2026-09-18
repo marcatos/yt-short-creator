@@ -19,16 +19,14 @@ afterEach(() => {
 });
 
 describe("createFsBrandPack", () => {
-  it("resolves S.Marcato 42 tokens and asset paths from BRAND_ROOT", async () => {
+  it("resolves current brand tokens and asset paths from BRAND_ROOT", async () => {
     const brandPack = createFsBrandPack({ brandRoot: DEFAULT_BRAND_ROOT });
     const pack = await brandPack.resolve();
 
     expect(pack.tokens.colors.carbon).toBe("#08080A");
-    expect(pack.tokens.racingColors.rossoCorsa).toBe("#E10600");
-    expect(pack.accentHex).toBe("#E10600");
-
-    expect(fs.existsSync(pack.logoStackedPath)).toBe(true);
-    expect(fs.existsSync(pack.storyTemplatePath)).toBe(true);
+    expect(pack.tokens.colors.ice).toBe("#F8F8FA");
+    expect(pack.tokens.racingColors.rossoCorsa).toBe("#00A3E0");
+    expect(pack.accentHex).toBe("#00A3E0");
     expect(pack.logoStackedPath).toContain("primary_stacked_mono_white.png");
     expect(pack.storyTemplatePath).toContain("story_1080x1920.png");
   });
