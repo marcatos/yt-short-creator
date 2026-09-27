@@ -87,7 +87,7 @@ Heavy work never runs inside the Next process. The UI enqueues jobs; a dedicated
    npm run daemon:stop
    ```
 
-   Optional: auto-start at Windows logon → `npm run daemon:install-autostart`
+   Optional: system tray at Windows logon (start the app only when you need it) → `npm run daemon:install-autostart`
 
    **Local UI development (two terminals):**
 

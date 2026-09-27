@@ -17,6 +17,7 @@
     "daemon:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/restart.ps1",
     "daemon:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/status.ps1",
     "daemon:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/logs.ps1",
+    "daemon:tray": "powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File scripts/daemon/tray.ps1",
     "daemon:install-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/install-autostart.ps1",
     "daemon:uninstall-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/daemon/uninstall-autostart.ps1",
     "pretest": "node scripts/check-node-version.mjs",

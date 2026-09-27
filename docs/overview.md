@@ -101,7 +101,7 @@ Design details and env knobs: [2026-08-14 youtube-inspiration](superpowers/specs
 | AI | OpenAI-compatible LLM + TTS (+ optional Whisper) |
 | Logging | Pino |
 | Tests | Vitest |
-| Runtime | Node 25 (see `.nvmrc`); Windows production daemon via PowerShell |
+| Runtime | Node 25 (see `.nvmrc`); Windows production daemon + optional system tray via PowerShell |
 
 ### Code layout (hexagonal)
 
