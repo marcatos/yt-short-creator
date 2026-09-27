@@ -15,8 +15,16 @@ $trayArgs = "-STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `
 function Remove-LegacyDaemonAutostart {
   Unregister-ScheduledTask -TaskName $LegacyDaemonTaskName -Confirm:$false -ErrorAction SilentlyContinue
   $startup = [Environment]::GetFolderPath("Startup")
-  $legacyLnk = Join-Path $startup "YT Short Creator Daemon.lnk"
-  if (Test-Path $legacyLnk) { Remove-Item $legacyLnk -Force }
+  foreach ($name in @(
+      "YT Short Creator Daemon.lnk",
+      "yt-short-creator-daemon.lnk"
+    )) {
+    $legacyLnk = Join-Path $startup $name
+    if (Test-Path $legacyLnk) {
+      Remove-Item $legacyLnk -Force
+      Write-Host "Removed legacy Startup shortcut: $legacyLnk"
+    }
+  }
 }
 
 function Install-ScheduledTrayTask {

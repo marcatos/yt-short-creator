@@ -9,7 +9,7 @@ Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Silent
 Unregister-ScheduledTask -TaskName $LegacyDaemonTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $startup = [Environment]::GetFolderPath("Startup")
-foreach ($name in @($StartupShortcutName, "YT Short Creator Daemon.lnk")) {
+foreach ($name in @($StartupShortcutName, "YT Short Creator Daemon.lnk", "yt-short-creator-daemon.lnk")) {
   $path = Join-Path $startup $name
   if (Test-Path $path) {
     Remove-Item $path -Force
